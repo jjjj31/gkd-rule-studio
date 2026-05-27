@@ -4,10 +4,12 @@ import { CollapsiblePanel } from "./CollapsiblePanel";
 import { createDeviceApiClient } from "../lib/deviceApi";
 import {
   addAppDraftToTestSubscription,
+  clearImportedRules,
   createEmptyTestSubscription,
   exportRawSubscription,
   importJson5ToTestSubscription,
   markImportedAndClearBuffer,
+  removeImportedRule,
   summarizeTestSubscription,
   type AppIdentity,
   type TestSubscriptionDraft,
@@ -30,6 +32,7 @@ export function TestSubscriptionPanel({
   const [importing, setImporting] = useState(false);
   const summary = useMemo(() => summarizeTestSubscription(draft), [draft]);
   const activeSummary = draft.lastImportedSummary;
+  const importedRules = draft.importedRules ?? [];
 
   function importAiRule(): void {
     try {
@@ -165,6 +168,49 @@ export function TestSubscriptionPanel({
       ) : (
         <p className="muted">还没有测试规则。可从候选 selector 或 JSON5 草稿加入。</p>
       )}
+      {importedRules.length > 0 && (
+        <section className="test-zone-imported">
+          <div className="test-zone-section-title">
+            <strong>已导入区</strong>
+            <button
+              className="text-link-button"
+              type="button"
+              onClick={() => {
+                onChange(clearImportedRules(draft));
+                setMessage("已导入区记录已清空。");
+              }}
+            >
+              清空记录
+            </button>
+          </div>
+          <div className="test-zone-list compact">
+            {importedRules.map((rule) => (
+              <div key={rule.id} className="test-zone-item">
+                <div className="test-zone-item-head">
+                  <strong>
+                    {rule.appName} / {rule.groupName} / {rule.ruleName}
+                  </strong>
+                  <button
+                    className="text-link-button danger"
+                    type="button"
+                    onClick={() => {
+                      onChange(removeImportedRule(draft, rule.id));
+                      setMessage("已移除一条导入记录。");
+                    }}
+                  >
+                    删除
+                  </button>
+                </div>
+                {rule.activityIds && (
+                  <span>activityIds: {formatActivityIds(rule.activityIds)}</span>
+                )}
+                <span>导入时间: {formatImportedAt(rule.importedAt)}</span>
+                <code>{rule.matches.join(" && ")}</code>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </CollapsiblePanel>
   );
 }
@@ -178,4 +224,13 @@ export function addAppDraftToTestZone(
 
 function formatActivityIds(value: string | string[]): string {
   return Array.isArray(value) ? value.join(", ") : value;
+}
+
+function formatImportedAt(value: number): string {
+  return new Date(value).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }

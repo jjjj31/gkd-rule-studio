@@ -15,12 +15,24 @@ export interface TestSubscriptionDraft {
   lastImportedAt?: number;
   lastImportedSummary?: TestSubscriptionSummary;
   importedSelectors: string[];
+  importedRules: ImportedRuleRecord[];
 }
 
 export interface TestSubscriptionSummary {
   appCount: number;
   groupCount: number;
   ruleCount: number;
+}
+
+export interface ImportedRuleRecord {
+  id: string;
+  importedAt: number;
+  appId: string;
+  appName: string;
+  groupName: string;
+  ruleName: string;
+  activityIds?: string | string[];
+  matches: string[];
 }
 
 export interface AppIdentity {
@@ -33,6 +45,7 @@ export function createEmptyTestSubscription(): TestSubscriptionDraft {
     apps: [],
     dirty: false,
     importedSelectors: [],
+    importedRules: [],
   };
 }
 
@@ -95,7 +108,13 @@ export function markImportedAndClearBuffer(
   importedAt = Date.now(),
 ): TestSubscriptionDraft {
   const selectors = new Set(draft.importedSelectors);
+  const ruleRecords = new Map(
+    (draft.importedRules ?? []).map((rule) => [rule.id, rule]),
+  );
   collectRuleSelectors(draft).forEach((selector) => selectors.add(selector));
+  collectImportedRuleRecords(draft, importedAt).forEach((rule) => {
+    ruleRecords.set(rule.id, rule);
+  });
   const lastImportedSummary = summarizeTestSubscription(draft);
 
   return {
@@ -104,6 +123,7 @@ export function markImportedAndClearBuffer(
     lastImportedAt: importedAt,
     lastImportedSummary,
     importedSelectors: [...selectors],
+    importedRules: [...ruleRecords.values()],
   };
 }
 
@@ -112,6 +132,35 @@ export function wasSelectorImported(
   matches: string[],
 ): boolean {
   return draft.importedSelectors.includes(selectorKey(matches));
+}
+
+export function removeImportedRule(
+  draft: TestSubscriptionDraft,
+  importedRuleId: string,
+): TestSubscriptionDraft {
+  const importedRules = (draft.importedRules ?? []).filter(
+    (rule) => rule.id !== importedRuleId,
+  );
+
+  return {
+    ...draft,
+    importedRules,
+    importedSelectors: importedRules.map((rule) => selectorKey(rule.matches)),
+    lastImportedSummary: importedRules.length
+      ? summarizeImportedRules(importedRules)
+      : undefined,
+    lastImportedAt: importedRules.length ? draft.lastImportedAt : undefined,
+  };
+}
+
+export function clearImportedRules(draft: TestSubscriptionDraft): TestSubscriptionDraft {
+  return {
+    ...draft,
+    importedRules: [],
+    importedSelectors: [],
+    lastImportedAt: undefined,
+    lastImportedSummary: undefined,
+  };
 }
 
 export function summarizeTestSubscription(
@@ -270,6 +319,41 @@ function collectRuleSelectors(draft: TestSubscriptionDraft): string[] {
       group.rules.map((rule) => selectorKey(normalizeMatches(rule.matches))),
     ),
   );
+}
+
+function collectImportedRuleRecords(
+  draft: TestSubscriptionDraft,
+  importedAt: number,
+): ImportedRuleRecord[] {
+  return draft.apps.flatMap((app) =>
+    app.groups.flatMap((group) =>
+      group.rules.map((rule) => {
+        const matches = normalizeMatches(rule.matches);
+        return {
+          id: [app.id, group.key, rule.key, selectorKey(matches)].join("|"),
+          importedAt,
+          appId: app.id,
+          appName: app.name,
+          groupName: group.name,
+          ruleName: rule.name ?? `规则 ${rule.key}`,
+          activityIds: rule.activityIds,
+          matches,
+        };
+      }),
+    ),
+  );
+}
+
+function summarizeImportedRules(
+  rules: ImportedRuleRecord[],
+): TestSubscriptionSummary {
+  const apps = new Set(rules.map((rule) => rule.appId));
+  const groups = new Set(rules.map((rule) => `${rule.appId}\n${rule.groupName}`));
+  return {
+    appCount: apps.size,
+    groupCount: groups.size,
+    ruleCount: rules.length,
+  };
 }
 
 function selectorKey(matches: string[]): string {

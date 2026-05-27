@@ -46,10 +46,12 @@ import { generateRegionSelectorCandidates } from "../lib/regionCandidates";
 import { createAppRuleDraft, selectFallbackCandidates } from "../lib/ruleDraft";
 import {
   addAppDraftToTestSubscription,
+  clearImportedRules,
   createEmptyTestSubscription,
   exportRawSubscription,
   importJson5ToTestSubscription,
   markImportedAndClearBuffer,
+  removeImportedRule,
   summarizeTestSubscription,
   type TestSubscriptionDraft,
 } from "../lib/testSubscription";
@@ -814,8 +816,16 @@ export function AndroidLiteApp() {
               setTestSubscription(createEmptyTestSubscription());
               setMessage("测试区已清空");
             }}
+            onClearImportedRules={() => {
+              setTestSubscription((current) => clearImportedRules(current));
+              setMessage("已导入区记录已清空");
+            }}
             onImportAiRule={importAiRuleToTestZone}
             onImportToGkd={() => void importTestZoneToGkd()}
+            onRemoveImportedRule={(id) => {
+              setTestSubscription((current) => removeImportedRule(current, id));
+              setMessage("已移除一条导入记录");
+            }}
           />
         )}
       </section>
@@ -1122,15 +1132,20 @@ function AndroidTestZonePanel({
   onImportAiRule,
   onImportToGkd,
   onClear,
+  onClearImportedRules,
+  onRemoveImportedRule,
 }: {
   draft: TestSubscriptionDraft;
   loading: boolean;
   onImportAiRule: (source: string) => void;
   onImportToGkd: () => void;
   onClear: () => void;
+  onClearImportedRules: () => void;
+  onRemoveImportedRule: (id: string) => void;
 }) {
   const [aiJson5, setAiJson5] = useState("");
   const summary = summarizeTestSubscription(draft);
+  const importedRules = draft.importedRules ?? [];
 
   return (
     <div className="android-tab-content">
@@ -1219,6 +1234,40 @@ function AndroidTestZonePanel({
         </div>
       ) : (
         <p className="android-muted">还没有测试规则。可从候选 selector 或 AI JSON5 加入。</p>
+      )}
+      {importedRules.length > 0 && (
+        <section className="test-zone-imported">
+          <div className="test-zone-section-title">
+            <strong>已导入区</strong>
+            <button
+              className="text-link-button"
+              type="button"
+              onClick={onClearImportedRules}
+            >
+              清空记录
+            </button>
+          </div>
+          <div className="test-zone-list compact">
+            {importedRules.map((rule) => (
+              <div key={rule.id} className="test-zone-item">
+                <div className="test-zone-item-head">
+                  <strong>
+                    {rule.appName} / {rule.groupName} / {rule.ruleName}
+                  </strong>
+                  <button
+                    className="text-link-button danger"
+                    type="button"
+                    onClick={() => onRemoveImportedRule(rule.id)}
+                  >
+                    删除
+                  </button>
+                </div>
+                <span>导入时间: {formatImportedAt(rule.importedAt)}</span>
+                <code>{rule.matches.join(" && ")}</code>
+              </div>
+            ))}
+          </div>
+        </section>
       )}
     </div>
   );
@@ -1705,6 +1754,15 @@ function reconcileActivity(
 
 function shortActivity(activityId: string): string {
   return activityId.split(".").slice(-2).join(".");
+}
+
+function formatImportedAt(value: number): string {
+  return new Date(value).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function resolveConnectOrigin(input: string): string {

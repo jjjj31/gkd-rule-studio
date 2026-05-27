@@ -5,11 +5,13 @@ import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.view.Window;
 
 public class MainActivity extends Activity {
     private WebView webView;
@@ -19,7 +21,12 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        Window window = getWindow();
+        window.setStatusBarColor(Color.rgb(14, 19, 26));
+        window.setNavigationBarColor(Color.rgb(14, 19, 26));
+
         webView = new WebView(this);
+        webView.setBackgroundColor(Color.rgb(14, 19, 26));
         setContentView(webView);
 
         WebSettings settings = webView.getSettings();

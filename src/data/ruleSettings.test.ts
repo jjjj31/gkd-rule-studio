@@ -23,6 +23,24 @@ describe("rule settings presets", () => {
       resetMatch: "match",
     });
   });
+
+  it("includes a resume ad preset for ads shown after returning from background", () => {
+    const snapshot = normalizeSnapshot(buildRawSnapshot(), "blob://demo", "demo");
+    const preset = RULE_SETTINGS_PRESETS.find((item) => item.id === "resume-ad");
+
+    expect(preset).toBeDefined();
+    expect(preset?.label).toContain("后台返回广告");
+    expect(preset?.description).toContain("后台");
+    expect(preset?.detail).toContain("重新回到应用");
+    expect(preset?.build(snapshot)).toEqual({
+      groupName: "后台返回广告",
+      activityIds: "com.demo.MainActivity",
+      matchTime: 15000,
+      actionMaximum: 1,
+      actionCd: null,
+      resetMatch: "activity",
+    });
+  });
 });
 
 function buildRawSnapshot(): RawGkdSnapshot {

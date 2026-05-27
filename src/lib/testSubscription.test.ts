@@ -5,6 +5,8 @@ import {
   exportRawSubscription,
   importJson5ToTestSubscription,
   markImportedAndClearBuffer,
+  removeImportedRule,
+  clearImportedRules,
   wasSelectorImported,
 } from "./testSubscription";
 import type { AppRuleDraft } from "../types/ruleDraft";
@@ -108,6 +110,36 @@ describe("test subscription draft", () => {
     });
     expect(wasSelectorImported(imported, ["[vid=\"skip\"]"])).toBe(true);
     expect(wasSelectorImported(imported, ["[vid=\"other\"]"])).toBe(false);
+  });
+
+  it("keeps manageable imported rule records after import", () => {
+    const draft = addAppDraftToTestSubscription(
+      createEmptyTestSubscription(),
+      appDraft("com.demo", "Demo", "开屏广告", "[vid=\"skip\"]"),
+    );
+    const imported = markImportedAndClearBuffer(draft, 123);
+
+    expect(imported.importedRules).toEqual([
+      {
+        id: "com.demo|0|0|[vid=\"skip\"]",
+        importedAt: 123,
+        appId: "com.demo",
+        appName: "Demo",
+        groupName: "开屏广告",
+        ruleName: "点击跳过",
+        activityIds: undefined,
+        matches: ["[vid=\"skip\"]"],
+      },
+    ]);
+
+    const removed = removeImportedRule(imported, imported.importedRules[0].id);
+    expect(removed.importedRules).toHaveLength(0);
+    expect(wasSelectorImported(removed, ["[vid=\"skip\"]"])).toBe(false);
+
+    const cleared = clearImportedRules(imported);
+    expect(cleared.importedRules).toHaveLength(0);
+    expect(cleared.importedSelectors).toHaveLength(0);
+    expect(cleared.lastImportedSummary).toBeUndefined();
   });
 });
 

@@ -1699,6 +1699,59 @@ svg {
   margin-top: 10px;
 }
 
+.test-zone-list.compact {
+  max-height: 220px;
+}
+
+.test-zone-imported {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(139, 154, 172, 0.12);
+}
+
+.test-zone-section-title,
+.test-zone-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.test-zone-section-title strong {
+  color: #eef4fb;
+  font-size: 12px;
+}
+
+.test-zone-item-head strong {
+  min-width: 0;
+}
+
+.text-link-button {
+  border: 0;
+  padding: 3px 0;
+  background: transparent;
+  color: #8ec7ff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.text-link-button:hover {
+  color: #c7e3ff;
+}
+
+.text-link-button.danger {
+  color: #ffb1b1;
+}
+
+.text-link-button.danger:hover {
+  color: #ffd0d0;
+}
+
 .test-zone-item {
   display: grid;
   gap: 5px;
@@ -2164,16 +2217,16 @@ svg {
   width: min(100%, 680px);
   min-height: 100vh;
   margin: 0 auto;
-  padding: 10px 10px 18px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) 10px
+    calc(18px + env(safe-area-inset-bottom, 0px));
   gap: 10px;
   background:
-    radial-gradient(circle at 50% -20%, rgba(61, 123, 180, 0.16), transparent 34%),
     #0e131a;
 }
 
 .android-header {
   position: sticky;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   z-index: 20;
   display: flex;
   align-items: center;

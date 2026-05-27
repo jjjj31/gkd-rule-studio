@@ -85,6 +85,22 @@ export const RULE_SETTINGS_PRESETS: RuleSettingsPreset[] = [
     }),
   },
   {
+    id: "resume-ad",
+    label: "后台返回广告",
+    shortLabel: "后台返回",
+    description: "把应用放到后台再切回来后出现的广告，推荐限制当前 Activity。",
+    detail:
+      "适合切到后台、锁屏、从其它应用重新回到应用后弹出的广告。通常填当前 activityIds，matchTime=15000 覆盖重新回到应用后的短窗口，actionMaximum=1 防重复点击，resetMatch=activity 表示重新回到应用页面后可以再次判断。",
+    build: (snapshot) => ({
+      groupName: "后台返回广告",
+      activityIds: snapshot?.activityId ?? "",
+      matchTime: 15000,
+      actionMaximum: 1,
+      actionCd: null,
+      resetMatch: "activity",
+    }),
+  },
+  {
     id: "feed-ad",
     label: "局部/信息流广告",
     shortLabel: "局部广告",
