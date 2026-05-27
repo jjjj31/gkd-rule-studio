@@ -1,0 +1,17 @@
+node_modules
+dist
+*.local
+.vite
+coverage
+
+logs
+release
+
+android/.gradle
+android/build
+android/app/build
+android/app/src/main/assets
+
+tools/android-sdk
+tools/gradle
+tools/downloads

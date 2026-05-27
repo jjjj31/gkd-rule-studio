@@ -1,0 +1,6 @@
+如果 ADB 检测提示“找不到 adb”，可以把 Android Platform Tools 里的 adb.exe 放到这个目录。
+
+期望路径：
+adb\adb.exe
+
+如果你的电脑已经安装了 adb 并加入 PATH，可以不放。
