@@ -1,13 +1,20 @@
+/** 桌面版测试订阅面板：显示已加入测试的规则集合、导入状态、历史记录。安卓版同功能集成在测试管理全屏页。 */
 import { Play, Plus, Trash2, Upload } from "lucide-react";
 import { useMemo, useState } from "react";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { createDeviceApiClient } from "../lib/deviceApi";
+import {
+  isDebugTarget,
+  targetPackageLabel,
+  type GkdTargetPackage,
+} from "../lib/gkdTarget";
 import {
   addAppDraftToTestSubscription,
   clearImportedRules,
   createEmptyTestSubscription,
   exportRawSubscription,
   importJson5ToTestSubscription,
+  markTestSubscriptionImported,
   markImportedAndClearBuffer,
   removeImportedRule,
   summarizeTestSubscription,
@@ -19,17 +26,20 @@ import type { AppRuleDraft } from "../types/ruleDraft";
 interface TestSubscriptionPanelProps {
   draft: TestSubscriptionDraft;
   currentApp?: AppIdentity | null;
+  targetPackage: GkdTargetPackage;
   onChange: (draft: TestSubscriptionDraft) => void;
 }
 
 export function TestSubscriptionPanel({
   draft,
   currentApp,
+  targetPackage,
   onChange,
 }: TestSubscriptionPanelProps) {
   const [aiJson5, setAiJson5] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [savingLocal, setSavingLocal] = useState(false);
   const summary = useMemo(() => summarizeTestSubscription(draft), [draft]);
   const activeSummary = draft.lastImportedSummary;
   const importedRules = draft.importedRules ?? [];
@@ -65,12 +75,57 @@ export function TestSubscriptionPanel({
     try {
       const client = await createDeviceApiClient(origin);
       await client.updateSubscription(exportRawSubscription(draft));
-      onChange(markImportedAndClearBuffer(draft));
-      setMessage(`已导入到 GKD 内存订阅：${summary.ruleCount} 条规则，测试区缓冲已清空。`);
+      onChange(markTestSubscriptionImported(draft));
+      setMessage(
+        `已导入到 ${targetPackageLabel(
+          targetPackage,
+        )} 内存订阅：${summary.ruleCount} 条规则。测试区缓冲已保留。`,
+      );
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "导入到 GKD 失败");
     } finally {
       setImporting(false);
+    }
+  }
+
+  async function saveToLocalRulesBeta(): Promise<void> {
+    if (!isDebugTarget(targetPackage)) {
+      setMessage("正式版 GKD 不支持本地规则 Beta API，请切换到 Debug/Beta 目标。");
+      return;
+    }
+
+    if (summary.ruleCount === 0) {
+      setMessage("测试区没有规则。");
+      return;
+    }
+
+    const origin = localStorage.getItem("gkd-rule-builder-device-url") ?? "";
+    if (!origin.trim()) {
+      setMessage("请先在首页连接 GKD HTTP 服务。");
+      return;
+    }
+
+    setSavingLocal(true);
+    try {
+      const client = await createDeviceApiClient(origin);
+      const results = [];
+      for (const app of draft.apps) {
+        results.push(await client.appendLocalRules(app));
+      }
+      onChange(markImportedAndClearBuffer(draft));
+      const addedRules = results.reduce((sum, item) => sum + item.addedRules, 0);
+      const skipped = results.reduce((sum, item) => sum + item.skippedDuplicates, 0);
+      setMessage(
+        `已保存到 GKD 本地规则 Beta：新增 ${addedRules} 条，跳过重复 ${skipped} 条，测试区缓冲已清空。`,
+      );
+    } catch (cause) {
+      setMessage(
+        cause instanceof Error
+          ? `${cause.message}。当前 GKD 可能还不支持本地规则 Beta API。`
+          : "保存到 GKD 本地规则失败",
+      );
+    } finally {
+      setSavingLocal(false);
     }
   }
 
@@ -80,7 +135,7 @@ export function TestSubscriptionPanel({
         <div className="preview-actions">
           <button
             className="copy-button"
-            disabled={summary.ruleCount === 0 || importing}
+            disabled={summary.ruleCount === 0 || importing || savingLocal}
             type="button"
             onClick={() => void importToGkd()}
           >
@@ -89,7 +144,27 @@ export function TestSubscriptionPanel({
           </button>
           <button
             className="copy-button"
-            disabled={summary.ruleCount === 0}
+            disabled={
+              summary.ruleCount === 0 ||
+              importing ||
+              savingLocal ||
+              !isDebugTarget(targetPackage)
+            }
+            type="button"
+            onClick={() => void saveToLocalRulesBeta()}
+          >
+            <Upload size={15} />
+            <span>
+              {savingLocal
+                ? "保存中"
+                : isDebugTarget(targetPackage)
+                  ? "保存到本地 Beta"
+                  : "仅 Debug 可保存"}
+            </span>
+          </button>
+          <button
+            className="copy-button"
+            disabled={summary.ruleCount === 0 || importing || savingLocal}
             type="button"
             onClick={() => {
               onChange(createEmptyTestSubscription());
@@ -105,7 +180,7 @@ export function TestSubscriptionPanel({
       title="测试区"
     >
       <p className="preview-note">
-        测试区会作为完整内存订阅导入 GKD；每次导入都会覆盖 GKD 当前内存订阅，不会修改正式订阅。
+        当前目标：{targetPackageLabel(targetPackage)}。测试导入只覆盖内存订阅；本地保存只支持 Debug/Beta。
       </p>
       {activeSummary && (
         <div className="test-zone-active-status">

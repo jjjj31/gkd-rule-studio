@@ -13,15 +13,21 @@ const ROOT_DIR = path.resolve(__dirname, "..");
 const PORT = Number(process.env.GKD_ADB_HELPER_PORT || 18741);
 const HOST = "127.0.0.1";
 const ADB = resolveAdbPath();
-const GKD_PACKAGE = process.env.GKD_PACKAGE || "li.songe.gkd";
-const SNAPSHOT_DIRS = [
-  `/sdcard/Android/data/${GKD_PACKAGE}/files/snapshot`,
-  `/sdcard/Android/data/${GKD_PACKAGE}/files/snapshots`,
-  `/sdcard/Android/data/${GKD_PACKAGE}/cache/snapshot`,
-  `/sdcard/Android/data/${GKD_PACKAGE}/cache/snapshots`,
-  `/sdcard/Download/GKD/snapshot`,
-  `/sdcard/Download/GKD/snapshots`,
-];
+const DEFAULT_GKD_PACKAGE = process.env.GKD_PACKAGE || "li.songe.gkd";
+const KNOWN_GKD_PACKAGES = new Set(["li.songe.gkd", "li.songe.gkd.debug"]);
+
+// In-memory ring buffer for debug log entries pushed from the phone app
+const debugLogEntries = [];
+const DEBUG_LOG_MAX = 600;
+
+function readBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    request.on("error", reject);
+  });
+}
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${HOST}:${PORT}`);
@@ -40,6 +46,10 @@ const server = createServer(async (request, response) => {
       await handleSnapshots(url, response);
     } else if (url.pathname === "/api/adb/snapshot") {
       await handleSnapshot(url, response);
+    } else if (url.pathname === "/api/adb/debug-log" && request.method === "POST") {
+      await handleDebugLogPost(request, response);
+    } else if (url.pathname === "/api/adb/debug-report") {
+      await handleDebugReport(url, response);
     } else {
       writeJson(response, 404, { message: "Unknown ADB helper endpoint" });
     }
@@ -122,7 +132,8 @@ async function handleStatus(url, response) {
 
 async function handleSnapshots(url, response) {
   const serial = await requireDevice(url.searchParams.get("serial"));
-  const files = await listSnapshotFiles(serial);
+  const packageId = resolveGkdPackage(url);
+  const files = await listSnapshotFiles(serial, packageId);
   const summaries = [];
 
   for (const group of groupFilesById(files)) {
@@ -160,12 +171,13 @@ async function handleSnapshots(url, response) {
 
 async function handleSnapshot(url, response) {
   const serial = await requireDevice(url.searchParams.get("serial"));
+  const packageId = resolveGkdPackage(url);
   const id = Number(url.searchParams.get("id"));
   if (!Number.isFinite(id)) {
     throw new Error("缺少有效的快照 id");
   }
 
-  const files = await listSnapshotFiles(serial);
+  const files = await listSnapshotFiles(serial, packageId);
   const group = groupFilesById(files).find((item) => item.id === id);
   if (!group) {
     throw new Error(`没有找到快照 ${id}`);
@@ -213,11 +225,12 @@ async function requireDevice(serial) {
   return selected.serial;
 }
 
-async function listSnapshotFiles(serial) {
+async function listSnapshotFiles(serial, packageId) {
   const files = [];
   const errors = [];
+  const dirs = getSnapshotDirs(packageId);
 
-  for (const dir of SNAPSHOT_DIRS) {
+  for (const dir of dirs) {
     try {
       const output = await adbText(serial, [
         "shell",
@@ -257,13 +270,32 @@ async function listSnapshotFiles(serial) {
         "ADB 已连接，但没有在常见目录找到 GKD 快照。",
         "请先在 GKD 内保存快照，再刷新。",
         "已扫描目录:",
-        ...SNAPSHOT_DIRS.map((dir) => `- ${dir}`),
+        ...dirs.map((dir) => `- ${dir}`),
         ...errors.slice(0, 4),
       ].join("\n"),
     );
   }
 
   return files;
+}
+
+function resolveGkdPackage(url) {
+  const packageId = url.searchParams.get("packageId") || DEFAULT_GKD_PACKAGE;
+  if (!KNOWN_GKD_PACKAGES.has(packageId)) {
+    throw new Error(`不支持的 GKD 包名: ${packageId}`);
+  }
+  return packageId;
+}
+
+function getSnapshotDirs(packageId) {
+  return [
+    `/sdcard/Android/data/${packageId}/files/snapshot`,
+    `/sdcard/Android/data/${packageId}/files/snapshots`,
+    `/sdcard/Android/data/${packageId}/cache/snapshot`,
+    `/sdcard/Android/data/${packageId}/cache/snapshots`,
+    `/sdcard/Download/GKD/snapshot`,
+    `/sdcard/Download/GKD/snapshots`,
+  ];
 }
 
 function groupFilesById(files) {
@@ -397,9 +429,63 @@ function formatSnapshotTime(id) {
   });
 }
 
+async function handleDebugLogPost(request, response) {
+  try {
+    const body = await readBody(request);
+    const parsed = JSON.parse(body);
+    if (!parsed.entries || !Array.isArray(parsed.entries)) {
+      writeJson(response, 400, { error: "expected { entries: [...] }" });
+      return;
+    }
+    for (const entry of parsed.entries) {
+      debugLogEntries.push(entry);
+    }
+    // Keep only the last DEBUG_LOG_MAX entries
+    while (debugLogEntries.length > DEBUG_LOG_MAX) {
+      debugLogEntries.shift();
+    }
+    writeJson(response, 200, { ok: true, received: parsed.entries.length });
+  } catch (cause) {
+    writeJson(response, 400, { error: cause instanceof Error ? cause.message : String(cause) });
+  }
+}
+
+function handleDebugReport(url, response) {
+  const format = url.searchParams.get("format") || "json";
+  const entries = [...debugLogEntries];
+
+  if (format === "markdown") {
+    const byCategory = {};
+    for (const e of entries) {
+      (byCategory[e.category] ??= []).push(e);
+    }
+    let md = "# GKD Rule Studio Debug Report\n\n";
+    md += `Generated: ${new Date().toISOString()}\n`;
+    md += `Total entries: ${entries.length}\n\n`;
+    for (const [cat, catEntries] of Object.entries(byCategory)) {
+      md += `## ${cat} (${catEntries.length})\n\n`;
+      for (const e of catEntries.slice(-60)) {
+        const time = (e.ts || "").replace("T", " ").slice(0, 19);
+        md += `- **${time}** | ${e.action}`;
+        if (e.detail) md += ` — ${e.detail}`;
+        md += "\n";
+      }
+      md += "\n";
+    }
+    response.writeHead(200, { "Content-Type": "text/markdown;charset=utf-8" });
+    response.end(md);
+    return;
+  }
+
+  writeJson(response, 200, {
+    total: entries.length,
+    entries: entries.slice(-200),
+  });
+}
+
 function setCors(response) {
-  response.setHeader("Access-Control-Allow-Origin", "http://127.0.0.1:5174");
-  response.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  response.setHeader("Access-Control-Allow-Origin", "*");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 

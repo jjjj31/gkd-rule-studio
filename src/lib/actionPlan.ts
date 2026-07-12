@@ -1,3 +1,4 @@
+/** 动作计划：为每条候选决定触发后的行为（action/max/cd/delay/matchRoot 等）。 */
 import { nodeArea } from "../types/gkdSnapshot";
 import type {
   NormalizedSnapshotNode,

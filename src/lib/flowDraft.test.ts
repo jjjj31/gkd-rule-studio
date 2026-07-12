@@ -92,6 +92,9 @@ describe("flow draft generation", () => {
     expect(prompt).toContain("用户点击只是手指常点的大概区域");
     expect(prompt).toContain("同一可视区域可能有多个节点");
     expect(prompt).toContain("不要把当前 pickedNode 当成唯一正确目标");
+    expect(prompt).toContain("- 当前步骤节点树摘要：");
+    expect(prompt).toContain("#0 FrameLayout");
+    expect(prompt).toContain("#1 Button");
     expect(prompt).not.toContain("请审查下面这个本地生成的多步骤 GKD 规则草稿");
   });
 });

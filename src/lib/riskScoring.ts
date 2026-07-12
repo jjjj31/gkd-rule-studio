@@ -1,3 +1,10 @@
+/**
+ * 候选评分系统。
+ * 基础分来自策略优先级，加上/减去命中数、活动匹配、坐标稳定性、文字风险、
+ * 广告上下文检测、父节点风险、复杂度等维度 → 最终 finalScore + 风险等级。
+ * 扣分规则数据来自 data/riskWords.ts。
+ * @see actionPlan.ts 动作计划与评分并列
+ */
 import {
   DANGEROUS_CLICK_WORDS,
   GENERIC_ACTION_TEXT,
@@ -13,6 +20,7 @@ import type {
   SimpleSelector,
 } from "../types/ruleDraft";
 
+/** 评分入口：从基准分开始，累计各维度加减分 → RiskBreakdown。不改变候选结构，只产出打分。 */
 export function scoreCandidate(input: {
   baseScore: number;
   snapshot: ParsedGkdSnapshot;

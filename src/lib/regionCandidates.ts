@@ -1,3 +1,10 @@
+/**
+ * 候选生成总入口。
+ * 输入：快照 + 选点结果 + 规则设置 → 输出：一组排序后的 SelectorCandidate[]。
+ * 内部先对 pickedNode 跑 14 种策略，再找"同框区域"的其他节点也各跑一遍策略，
+ * 最后去重并按分数从高到低排列。
+ * @see selectorStrategies 14 种策略的具体实现
+ */
 import type {
   NodePickResult,
   NormalizedSnapshotNode,
@@ -7,6 +14,7 @@ import type { RuleSettings, SelectorCandidate } from "../types/ruleDraft";
 import { pickExistingNode } from "./nodePicker";
 import { generateSelectorCandidates } from "./selectorStrategies";
 
+/** 主入口：生成、去重、排序所有候选，供前端 CandidateList / CandidateSummary 渲染。 */
 export function generateRegionSelectorCandidates({
   snapshot,
   ruleSettings,

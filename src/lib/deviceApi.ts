@@ -1,9 +1,15 @@
+/**
+ * GKD HTTP 服务的 API 客户端。
+ * 负责：连接设备、获取快照列表、加载快照数据、导入规则到 GKD 内存订阅或本地规则。
+ * 所有方法返回的 / 接受的快照类型有多个层级：原始 → 摘要 → 解析后。
+ */
 import type {
   DeviceServerInfo,
   DeviceSnapshotSummary,
   ParsedGkdSnapshot,
   RawGkdSnapshot,
 } from "../types/gkdSnapshot";
+import type { AppRuleDraft } from "../types/ruleDraft";
 import type { RawSubscriptionDraft } from "./testSubscription";
 import { enhancedFetch, extensionFetch, hasNetworkExtension, fetchWithTimeout } from "./networkExtension";
 import { normalizeSnapshot } from "./snapshotZip";
@@ -32,6 +38,16 @@ export interface DeviceAddressProbe {
   channel?: "fetch" | "gm";
 }
 
+export interface LocalRulesAppendResponse {
+  ok: boolean;
+  action: "append";
+  appId: string;
+  appName?: string | null;
+  addedGroups: number;
+  addedRules: number;
+  skippedDuplicates: number;
+}
+
 export interface DeviceApiClient {
   origin: string;
   serverInfo: DeviceServerInfo;
@@ -41,8 +57,15 @@ export interface DeviceApiClient {
   captureSnapshot: () => Promise<RawGkdSnapshot>;
   loadSnapshot: (id: number) => Promise<ParsedGkdSnapshot>;
   updateSubscription: (subscription: RawSubscriptionDraft) => Promise<void>;
+  appendLocalRules: (app: AppRuleDraft) => Promise<LocalRulesAppendResponse>;
 }
 
+/**
+ * 建立与 GKD HTTP 服务的连接。
+ * 先发 getServerInfo 确认版本和包名，再封装 getSnapshots / loadSnapshot / updateSubscription 等方法。
+ * input 可以是 "192.168.1.5:8888" 或 "http://192.168.1.5:8888" 等形式。
+ * 返回的 DeviceApiClient.origin 是规范化后的完整 URL。
+ */
 export async function createDeviceApiClient(input: string): Promise<DeviceApiClient> {
   const origin = normalizeDeviceOrigin(input);
   const serverInfo = await postJson<DeviceServerInfo>(origin, "getServerInfo");
@@ -70,6 +93,12 @@ export async function createDeviceApiClient(input: string): Promise<DeviceApiCli
     },
     updateSubscription: async (subscription) => {
       await postJson(origin, "updateSubscription", subscription);
+    },
+    appendLocalRules: async (app) => {
+      return postJson<LocalRulesAppendResponse>(origin, "localRules/append", {
+        app,
+        dedupe: true,
+      });
     },
     loadSnapshot: async (id) => {
       const [snapshot, screenshot] = await Promise.all([

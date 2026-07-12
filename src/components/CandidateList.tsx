@@ -1,3 +1,4 @@
+/** 桌面版右侧候选列表。仅被 DesktopApp 使用，安卓版用 AndroidLiteApp 内部的 CandidateSummary 替代。 */
 import { AlertTriangle, CheckCircle2, CircleAlert } from "lucide-react";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import { getCandidateGuidance } from "../lib/candidateGuidance";

@@ -24,6 +24,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html {
@@ -48,6 +49,23 @@ select {
 
 button {
   border: 0;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+}
+
+a,
+label,
+[role="button"],
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible),
+summary:focus:not(:focus-visible) {
+  outline: none;
 }
 
 button:disabled,
@@ -248,6 +266,21 @@ svg {
 .home-mode-switch {
   width: fit-content;
   min-width: 220px;
+}
+
+.target-version-switch {
+  min-width: 190px;
+}
+
+.android-target-switch {
+  min-width: 112px;
+  min-height: 32px;
+}
+
+.android-target-switch button {
+  min-width: 48px;
+  padding: 0 7px;
+  font-size: 11px;
 }
 
 .diagnostics-panel {
@@ -661,6 +694,12 @@ svg {
   background: rgba(45, 92, 145, 0.22);
 }
 
+.header-button-active {
+  border-color: rgba(88, 166, 255, 0.5) !important;
+  background: rgba(45, 92, 145, 0.35) !important;
+  color: #fff !important;
+}
+
 .file-input input {
   display: none;
 }
@@ -862,7 +901,7 @@ svg {
 
 .screenshot-stage-drag {
   cursor: grab;
-  touch-action: none;
+  touch-action: pan-x;
 }
 
 .screenshot-stage-drag:active {
@@ -1061,6 +1100,125 @@ svg {
   gap: 12px;
 }
 
+.settings-compact {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-compact label {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.settings-compact label > span {
+  color: #dce5ee;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.settings-compact select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid rgba(139, 154, 172, 0.24);
+  border-radius: 8px;
+  outline: none;
+  background: rgba(10, 15, 21, 0.68);
+  color: #e6edf3;
+}
+
+.settings-compact small {
+  color: #8f9cab;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #c4d4e8;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #58a6ff;
+}
+
+.checkbox-label small {
+  display: block;
+  color: #8f9cab;
+  font-size: 12px;
+}
+
+.settings-summary-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.settings-summary-chips span {
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid rgba(139, 154, 172, 0.13);
+  border-radius: 8px;
+  background: rgba(10, 15, 21, 0.34);
+  color: #a8b5c4;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.settings-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 28;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(4, 8, 13, 0.58);
+}
+
+.settings-modal {
+  display: grid;
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100vh - 36px));
+  overflow: auto;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(139, 154, 172, 0.18);
+  border-radius: 12px;
+  background: rgba(14, 20, 28, 0.98);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.34);
+}
+
+.settings-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-modal-header h3 {
+  margin: 0;
+  color: #f0f5fa;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.settings-modal-header p {
+  margin: 4px 0 0;
+  color: #8f9cab;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .settings-grid label,
 .device-grid label {
   display: grid;
@@ -1189,6 +1347,224 @@ svg {
   color: #bdd9f7;
   font-size: 12px;
   line-height: 1.55;
+}
+
+.custom-scenario-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.scenario-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.scenario-item {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid rgba(139, 154, 172, 0.14);
+  border-radius: 8px;
+  background: rgba(10, 15, 21, 0.28);
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.scenario-item-selected {
+  border-color: rgba(88, 166, 255, 0.38);
+  background: rgba(20, 30, 45, 0.44);
+}
+
+.scenario-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  background: transparent;
+  color: #dce6f0;
+  cursor: pointer;
+  text-align: left;
+  border: 0;
+  font-size: 12px;
+  min-width: 0;
+}
+
+.scenario-item-main:hover {
+  background: rgba(45, 92, 145, 0.12);
+}
+
+.scenario-item-name {
+  font-weight: 650;
+  color: #f1f6fb;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scenario-item-desc {
+  font-size: 11px;
+  color: #8f9cab;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scenario-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border-left: 1px solid rgba(139, 154, 172, 0.1);
+}
+
+.scenario-item-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: #8f9cab;
+  cursor: pointer;
+}
+
+.scenario-item-actions button:hover {
+  background: rgba(45, 92, 145, 0.24);
+  color: #dce6f0;
+}
+
+.scenario-empty {
+  font-size: 12px;
+  color: #8f9cab;
+  text-align: center;
+  padding: 10px 0;
+  margin: 0;
+}
+
+.scenario-detail {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(139, 154, 172, 0.14);
+  border-radius: 8px;
+  background: rgba(10, 15, 21, 0.28);
+}
+
+.scenario-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #f1f6fb;
+}
+
+.scenario-detail-header svg {
+  color: #86bfff;
+  flex-shrink: 0;
+}
+
+.scenario-detail-text {
+  margin: 0;
+  font-size: 11px;
+  color: #8f9cab;
+  line-height: 1.5;
+}
+
+.scenario-activity-mode {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 500;
+  color: #86bfff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(134, 191, 255, 0.08);
+}
+
+.scenario-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.scenario-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(139, 154, 172, 0.22);
+  border-radius: 8px;
+  background: rgba(31, 42, 56, 0.88);
+  color: #dce6f0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.scenario-actions button:hover:not(:disabled) {
+  border-color: rgba(88, 166, 255, 0.38);
+  background: rgba(45, 92, 145, 0.24);
+}
+
+.scenario-import-box {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(139, 154, 172, 0.14);
+  border-radius: 8px;
+  background: rgba(10, 15, 21, 0.28);
+}
+
+.scenario-import-box input,
+.scenario-import-box textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(139, 154, 172, 0.22);
+  border-radius: 6px;
+  background: rgba(10, 15, 21, 0.5);
+  color: #dce6f0;
+  font-size: 12px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.scenario-import-box input::placeholder,
+.scenario-import-box textarea::placeholder {
+  color: #5d6b7a;
+}
+
+.scenario-import-box input:focus,
+.scenario-import-box textarea:focus {
+  outline: none;
+  border-color: rgba(88, 166, 255, 0.45);
+}
+
+.scenario-import-box button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(139, 154, 172, 0.22);
+  border-radius: 8px;
+  background: rgba(31, 42, 56, 0.88);
+  color: #dce6f0;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.scenario-import-box button:hover:not(:disabled) {
+  border-color: rgba(88, 166, 255, 0.38);
+  background: rgba(45, 92, 145, 0.24);
 }
 
 .custom-scenario-box {
@@ -1322,9 +1698,10 @@ svg {
 
 .flow-step-item {
   display: grid;
+  grid-template-columns: auto 1fr;
   width: 100%;
   min-width: 0;
-  gap: 7px;
+  gap: 6px 7px;
   padding: 10px;
   border: 1px solid rgba(139, 154, 172, 0.16);
   border-radius: 8px;
@@ -1332,6 +1709,37 @@ svg {
   color: #dce5ee;
   cursor: pointer;
   text-align: left;
+}
+
+.flow-step-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  grid-row: 1 / 4;
+  color: #5d6b7a;
+  cursor: grab;
+  padding: 2px 0;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+
+.flow-step-drag-handle:hover {
+  opacity: 1;
+  color: #8f9cab;
+}
+
+.flow-step-drag-handle:active {
+  cursor: grabbing;
+}
+
+.flow-step-item-source-dragging {
+  opacity: 0.35;
+}
+
+.flow-step-item-dragging {
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  border-color: rgba(88, 166, 255, 0.5);
+  z-index: 100;
 }
 
 .flow-step-item:hover,
@@ -2224,33 +2632,49 @@ svg {
     #0e131a;
 }
 
+.android-workspace-shell {
+  padding-top: calc(8px + env(safe-area-inset-top, 0px));
+}
+
 .android-header {
-  position: sticky;
-  top: env(safe-area-inset-top, 0px);
+  position: static;
+  width: 100%;
   z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 11px;
-  border: 1px solid rgba(139, 154, 172, 0.14);
-  border-radius: 12px;
-  background: rgba(15, 21, 30, 0.92);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
-  backdrop-filter: blur(14px);
+  gap: 8px;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.android-workspace-shell .android-header {
+  display: none;
+}
+
+.android-workspace-shell .android-header h1 {
+  font-size: 13px;
+}
+
+.android-workspace-shell .android-header p {
+  display: none;
 }
 
 .android-header h1 {
   margin: 0;
   color: #f2f6fb;
-  font-size: 17px;
+  font-size: 14px;
   line-height: 1.2;
 }
 
 .android-header p {
-  margin: 3px 0 0;
+  margin: 1px 0 0;
   color: #8f9cab;
-  font-size: 12px;
+  font-size: 10px;
 }
 
 .android-title-row {
@@ -2262,6 +2686,26 @@ svg {
 
 .android-title-row > div {
   min-width: 0;
+}
+
+.android-brand-mark {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid rgba(111, 206, 166, 0.32);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba(88, 166, 255, 0.22), rgba(84, 214, 151, 0.18)),
+    rgba(20, 28, 39, 0.92);
+  color: #d9ffe8;
+  font-size: 16px;
+  font-weight: 820;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.android-brand-mark span {
+  transform: translateY(-0.5px);
 }
 
 .android-icon-button {
@@ -2282,27 +2726,28 @@ svg {
   background: rgba(45, 92, 145, 0.2);
 }
 
+.android-ai-ready {
+  border-color: rgba(73, 160, 120, 0.34);
+  background: rgba(32, 92, 68, 0.22);
+  color: #bfe4d1;
+}
+
 .android-back-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  min-width: 64px;
+  min-width: 34px;
   height: 34px;
-  padding: 0 10px 0 8px;
-  border: 1px solid rgba(139, 154, 172, 0.22);
-  border-radius: 9px;
-  background: rgba(31, 42, 56, 0.9);
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
   color: #dce6f0;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 720;
-  white-space: nowrap;
 }
 
 .android-back-button:hover {
-  border-color: rgba(88, 166, 255, 0.36);
-  background: rgba(45, 92, 145, 0.22);
+  background: rgba(45, 92, 145, 0.18);
 }
 
 .android-header-actions {
@@ -2498,7 +2943,7 @@ svg {
 
 .android-action-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(142px, 1fr));
   gap: 8px;
 }
 
@@ -2564,16 +3009,6 @@ svg {
   min-height: 130px;
 }
 
-.android-device-status {
-  padding: 9px 10px;
-  border: 1px solid rgba(73, 160, 120, 0.24);
-  border-radius: 8px;
-  background: rgba(32, 92, 68, 0.18);
-  color: #b7e4ca;
-  font-size: 12px;
-  line-height: 1.45;
-}
-
 .android-custom-scenario-box {
   display: grid;
   gap: 9px;
@@ -2593,11 +3028,11 @@ svg {
 .android-target-summary {
   display: grid;
   min-width: 0;
-  gap: 6px;
-  padding: 9px 10px;
-  border: 1px solid rgba(88, 166, 255, 0.18);
-  border-radius: 10px;
-  background: rgba(45, 92, 145, 0.1);
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid rgba(139, 154, 172, 0.12);
+  border-radius: 8px;
+  background: rgba(10, 15, 21, 0.28);
 }
 
 .android-target-summary strong {
@@ -2610,18 +3045,6 @@ svg {
 .android-target-summary span {
   color: #9aa8b8;
   font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
-.android-target-summary code {
-  padding: 8px;
-  border: 1px solid rgba(139, 154, 172, 0.14);
-  border-radius: 7px;
-  background: rgba(5, 10, 16, 0.46);
-  color: #bfd2e6;
-  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 
@@ -2639,13 +3062,14 @@ svg {
 
 .android-workspace-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
 }
 
-.android-workspace-meta > div {
+.android-workspace-title {
   display: grid;
   min-width: 0;
   gap: 2px;
@@ -2669,26 +3093,7 @@ svg {
   white-space: nowrap;
 }
 
-.android-canvas-hint {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  color: #8f9cab;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.android-canvas-hint strong {
-  flex: none;
-  color: #b9e7cb;
-  font-size: 12px;
-}
-
 .android-workspace-tabs {
-  position: sticky;
-  top: 66px;
-  z-index: 15;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 4px;
@@ -2713,6 +3118,317 @@ svg {
 .android-tab-active {
   background: rgba(45, 92, 145, 0.24) !important;
   color: #d9ebff !important;
+}
+
+.android-workspace-mode-switch {
+  min-width: 120px;
+}
+
+.android-test-manager-button {
+  min-height: 32px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.android-manager-page {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 12px 12px;
+  background: rgba(8, 12, 18, 0.98);
+}
+
+.android-manager-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.android-manager-head h2 {
+  margin: 0;
+  color: #f2f6fb;
+  font-size: 17px;
+  line-height: 1.25;
+}
+
+.android-manager-head span {
+  display: block;
+  margin-top: 4px;
+  color: #8f9cab;
+  font-size: 12px;
+}
+
+.android-manager-actions {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.debug-report-view {
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  font-size: 11px;
+  line-height: 1.55;
+  color: #c2cdd9;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 100%;
+}
+
+.android-button-danger {
+  color: #f28b82;
+  border-color: rgba(242, 139, 130, 0.35);
+  background: rgba(242, 139, 130, 0.08);
+}
+
+.android-button-danger:hover:not(:disabled) {
+  background: rgba(242, 139, 130, 0.16);
+}
+
+.inline-test-panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 9px;
+  border: 1px solid rgba(73, 160, 120, 0.2);
+  border-radius: 8px;
+  background: rgba(17, 29, 24, 0.72);
+}
+
+.inline-test-panel-head,
+.inline-test-item {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.inline-test-panel-head {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.inline-test-panel-head strong,
+.inline-test-item strong {
+  color: #eef7f0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.inline-test-panel-head span,
+.inline-test-item small {
+  color: #9db2a6;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.inline-test-list {
+  display: grid;
+  gap: 7px;
+}
+
+.inline-test-list.manager {
+  align-content: start;
+  overflow: auto;
+  padding-bottom: 20px;
+}
+
+.inline-test-item {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  padding: 7px;
+  border: 1px solid rgba(139, 154, 172, 0.12);
+  border-radius: 7px;
+  background: rgba(10, 15, 21, 0.28);
+}
+
+.inline-test-item.manager {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.inline-test-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.inline-test-main strong,
+.inline-test-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inline-test-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.inline-test-actions button {
+  min-height: 26px;
+  padding: 0 7px;
+  border: 1px solid rgba(139, 154, 172, 0.2);
+  border-radius: 999px;
+  background: rgba(28, 38, 51, 0.7);
+  color: #d7e1eb;
+  font-size: 11px;
+}
+
+.inline-test-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid rgba(139, 154, 172, 0.16);
+  border-radius: 999px;
+  background: rgba(28, 38, 51, 0.72);
+  color: #aab7c5;
+  font-size: 11px !important;
+  line-height: 1;
+}
+
+.inline-test-status.status-testing {
+  border-color: rgba(88, 166, 255, 0.28);
+  background: rgba(45, 92, 145, 0.18);
+  color: #b9d8ff;
+}
+
+.inline-test-status.status-valid {
+  border-color: rgba(73, 160, 120, 0.32);
+  background: rgba(32, 92, 68, 0.22);
+  color: #b7e4ca;
+}
+
+.inline-test-status.status-tested {
+  border-color: rgba(186, 140, 70, 0.28);
+  background: rgba(116, 82, 34, 0.18);
+  color: #e8c58f;
+}
+
+.inline-test-status.status-invalid,
+.inline-test-status.status-mistouch {
+  border-color: rgba(213, 100, 100, 0.3);
+  background: rgba(112, 42, 42, 0.22);
+  color: #ffb8b8;
+}
+
+.inline-test-status.status-other {
+  border-color: rgba(139, 154, 172, 0.2);
+  background: rgba(28, 38, 51, 0.5);
+  color: #b0bcc9;
+}
+
+.inline-test-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  color: #7f8d9d;
+}
+
+.inline-test-filter-chip {
+  min-height: 24px;
+  padding: 0 10px;
+  border: 1px solid rgba(139, 154, 172, 0.18);
+  border-radius: 999px;
+  background: rgba(28, 38, 51, 0.5);
+  color: #aab7c5;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.inline-test-filter-chip:hover {
+  border-color: rgba(88, 166, 255, 0.3);
+  color: #d7e1eb;
+}
+
+.inline-test-filter-chip.active {
+  border-color: rgba(88, 166, 255, 0.45);
+  background: rgba(45, 92, 145, 0.22);
+  color: #b9d8ff;
+}
+
+.inline-test-group {
+  margin-bottom: 8px;
+}
+
+.inline-test-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(139, 154, 172, 0.1);
+}
+
+.inline-test-group-header strong {
+  color: #b9d8ff;
+  font-size: 12px;
+}
+
+.inline-test-group-header small {
+  color: #7f8d9d;
+  font-size: 11px;
+}
+
+.inline-test-delete {
+  color: #ffb1b1 !important;
+}
+
+.inline-test-delete:hover {
+  background: rgba(112, 42, 42, 0.25) !important;
+}
+
+.inline-test-feedback-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 6px;
+  border: 1px solid rgba(139, 154, 172, 0.1);
+  border-radius: 6px;
+  background: rgba(10, 15, 21, 0.25);
+}
+
+.inline-test-feedback-entry {
+  display: grid;
+  gap: 2px;
+  font-size: 11px;
+}
+
+.inline-test-feedback-entry small {
+  color: #7f8d9d;
+  font-size: 10px;
+}
+
+.inline-test-feedback-entry span {
+  color: #b0bcc9;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.inline-test-status-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.android-restore-message {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .android-tab-panel {
@@ -2741,6 +3457,9 @@ svg {
   background: rgba(10, 15, 21, 0.34);
   cursor: pointer;
   text-align: left;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .android-candidate-item:hover {
@@ -2755,9 +3474,24 @@ svg {
 
 .android-candidate-heading {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   gap: 7px;
   align-items: center;
+}
+
+.candidate-index-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 22px;
+  padding: 0 7px;
+  border: 1px solid rgba(139, 154, 172, 0.18);
+  border-radius: 999px;
+  background: rgba(28, 38, 51, 0.72);
+  color: #c7d4e2 !important;
+  font-size: 11px !important;
+  font-weight: 760;
+  line-height: 1;
 }
 
 .android-candidate-heading strong {
@@ -2787,15 +3521,55 @@ svg {
   overflow-wrap: anywhere;
 }
 
-.android-candidate-add {
-  justify-self: end;
+.android-candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.android-candidate-add,
+.android-candidate-detail {
   padding: 4px 8px;
   border: 1px solid rgba(88, 166, 255, 0.22);
   border-radius: 999px;
   background: rgba(45, 92, 145, 0.12);
   color: #b9d6f6 !important;
+  cursor: pointer;
   font-size: 12px;
   line-height: 1.2;
+}
+
+.android-candidate-detail {
+  border-color: rgba(139, 154, 172, 0.18);
+  background: rgba(30, 40, 54, 0.72);
+  color: #c6d1dd !important;
+}
+
+.android-candidate-details {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid rgba(139, 154, 172, 0.12);
+  border-radius: 8px;
+  background: rgba(5, 10, 16, 0.34);
+}
+
+.android-candidate-json-preview {
+  max-height: 220px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px;
+  overflow: auto;
+  border: 1px solid rgba(139, 154, 172, 0.14);
+  border-radius: 8px;
+  background: rgba(5, 10, 16, 0.48);
+  color: #bfd2e6;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .android-candidate-risk-list {
@@ -2813,6 +3587,539 @@ svg {
   font-size: 11px;
   font-style: normal;
   line-height: 1.3;
+}
+
+.android-ai-panel {
+  align-content: start;
+}
+
+.android-ai-config,
+.android-ai-candidate-card {
+  display: grid;
+  min-width: 0;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(139, 154, 172, 0.13);
+  border-radius: 11px;
+  background: rgba(10, 15, 21, 0.34);
+}
+
+.android-ai-config-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #f2f6fb;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 760;
+  list-style: none;
+}
+
+.android-ai-config-title::-webkit-details-marker {
+  display: none;
+}
+
+.android-ai-config-title span {
+  color: #8f9cab;
+  font-size: 11px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.android-ai-config label,
+.android-ai-feedback {
+  display: grid;
+  gap: 5px;
+}
+
+.android-ai-config label span {
+  color: #8f9cab;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.android-ai-config input,
+.android-ai-feedback select {
+  min-width: 0;
+  min-height: 38px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(139, 154, 172, 0.16);
+  border-radius: 9px;
+  background: rgba(4, 8, 13, 0.45);
+  color: #e8eef6;
+  font-size: 13px;
+  outline: none;
+}
+
+.android-ai-config input:focus,
+.android-ai-feedback select:focus {
+  border-color: rgba(88, 166, 255, 0.42);
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.1);
+}
+
+.android-ai-key-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.android-ai-config-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.8fr) minmax(0, 0.9fr);
+  gap: 7px;
+}
+
+.android-ai-message,
+.android-ai-warning {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(73, 160, 120, 0.22);
+  border-radius: 9px;
+  background: rgba(32, 92, 68, 0.16);
+  color: #bfe4d1;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.android-ai-busy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid rgba(88, 166, 255, 0.26);
+  border-radius: 9px;
+  background: rgba(45, 92, 145, 0.14);
+  color: #cde5ff;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.android-ai-warning {
+  border-color: rgba(186, 140, 70, 0.24);
+  background: rgba(116, 82, 34, 0.14);
+  color: #d9bf8d;
+}
+
+.android-ai-paste-box {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.android-ai-paste-box .android-button {
+  justify-self: start;
+}
+
+.android-ai-debug {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid rgba(139, 154, 172, 0.13);
+  border-radius: 9px;
+  background: rgba(5, 10, 16, 0.34);
+}
+
+.android-ai-debug-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.android-ai-debug-head strong {
+  color: #dbe7f3;
+  font-size: 12px;
+}
+
+.android-ai-debug-head > div {
+  display: flex;
+  gap: 8px;
+}
+
+.android-ai-debug pre {
+  max-height: 190px;
+  margin: 0;
+  overflow: auto;
+  color: #9fb1c4;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.android-ai-session-trigger {
+  min-width: 38px;
+  min-height: 38px;
+  border-color: rgba(88, 166, 255, 0.28);
+  background: rgba(45, 92, 145, 0.16);
+  color: #cde5ff;
+}
+
+.android-session-page-body {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.android-session-row-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.android-session-create,
+.android-session-row-open {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid rgba(139, 154, 172, 0.14);
+  border-radius: 8px;
+  background: rgba(12, 18, 26, 0.82);
+  color: #dce6f0;
+  text-align: left;
+}
+
+.android-session-row-open {
+  min-height: 64px;
+}
+
+.android-session-create {
+  border-color: rgba(73, 160, 120, 0.28);
+  background: rgba(32, 92, 68, 0.18);
+}
+
+.android-session-row-active .android-session-row-open {
+  border-color: rgba(73, 160, 120, 0.42);
+  background: rgba(32, 92, 68, 0.24);
+}
+
+.android-session-delete {
+  display: inline-grid;
+  width: 42px;
+  min-width: 42px;
+  place-items: center;
+  border: 1px solid rgba(190, 95, 95, 0.2);
+  border-radius: 8px;
+  background: rgba(92, 32, 32, 0.15);
+  color: #f0b6b6;
+}
+
+.android-session-create > svg,
+.android-session-row-thumb {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: rgba(88, 166, 255, 0.13);
+  color: #cde5ff;
+  overflow: hidden;
+}
+
+.android-session-row-thumb {
+  width: 40px;
+  height: 48px;
+}
+
+.android-session-row-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.android-session-create span,
+.android-session-row-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.android-session-create strong,
+.android-session-row-main strong {
+  overflow: hidden;
+  color: #f1f6fb;
+  font-size: 14px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.android-session-create small,
+.android-session-row-main small,
+.android-session-row-main em {
+  overflow: hidden;
+  color: #8f9cab;
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.android-session-list-page {
+  display: grid;
+  gap: 8px;
+}
+
+.android-ai-candidate-list,
+.android-ai-selector-list {
+  display: grid;
+  gap: 9px;
+}
+
+.android-ai-candidate-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.android-ai-candidate-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.android-ai-candidate-head strong {
+  color: #f2f6fb;
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.android-ai-candidate-head span,
+.android-ai-risk {
+  margin: 0;
+  color: #a8b5c4;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.android-ai-candidate-head em {
+  padding: 3px 7px;
+  border: 1px solid rgba(73, 160, 120, 0.25);
+  border-radius: 999px;
+  background: rgba(32, 92, 68, 0.18);
+  color: #bfe4d1;
+  font-size: 11px;
+  font-style: normal;
+  white-space: nowrap;
+}
+
+.android-ai-selector-list code {
+  display: block;
+  padding: 7px 8px;
+  border: 1px solid rgba(139, 154, 172, 0.12);
+  border-radius: 8px;
+  background: rgba(5, 10, 16, 0.34);
+  color: #bfd2e6;
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.android-ai-feedback {
+  padding-top: 8px;
+  border-top: 1px solid rgba(139, 154, 172, 0.11);
+}
+
+.android-ai-feedback-summary {
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid rgba(139, 154, 172, 0.13);
+  border-radius: 11px;
+  background: rgba(10, 15, 21, 0.34);
+}
+
+.android-ai-feedback-list {
+  display: grid;
+  gap: 8px;
+}
+
+.android-ai-feedback-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(110px, 0.6fr);
+  gap: 7px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(139, 154, 172, 0.12);
+  border-radius: 9px;
+  background: rgba(5, 10, 16, 0.24);
+}
+
+.android-ai-feedback-check {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: #dce6f0;
+  font-size: 12px;
+}
+
+.android-ai-feedback-check strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.android-ai-feedback-row select {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid rgba(139, 154, 172, 0.16);
+  border-radius: 8px;
+  background: rgba(4, 8, 13, 0.45);
+  color: #e8eef6;
+  font-size: 12px;
+}
+
+.android-ai-note {
+  grid-column: 1 / -1;
+  min-height: 34px;
+  max-height: 112px;
+  padding: 7px 8px;
+  overflow-y: auto;
+  resize: none;
+}
+
+.android-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 70px) 12px 18px;
+  background: rgba(3, 7, 12, 0.62);
+  backdrop-filter: blur(10px);
+}
+
+.android-dialog {
+  display: grid;
+  width: min(100%, 620px);
+  max-height: calc(100vh - 96px);
+  overflow: auto;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid rgba(139, 154, 172, 0.2);
+  border-radius: 14px;
+  background: rgba(16, 23, 32, 0.98);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.42);
+}
+
+.android-dialog-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.android-dialog-head h2 {
+  margin: 0;
+  color: #f2f6fb;
+  font-size: 15px;
+}
+
+.android-dialog-head span {
+  display: block;
+  margin-top: 3px;
+  color: #8f9cab;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.android-ai-profile-list {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.android-ai-profile-chip {
+  display: grid;
+  min-width: 132px;
+  gap: 3px;
+  padding: 8px 9px;
+  border: 1px solid rgba(139, 154, 172, 0.15);
+  border-radius: 10px;
+  background: rgba(10, 15, 21, 0.36);
+  color: #dce6f0;
+  cursor: pointer;
+  text-align: left;
+}
+
+.android-ai-profile-active {
+  border-color: rgba(73, 160, 120, 0.42);
+  background: rgba(32, 92, 68, 0.22);
+}
+
+.android-ai-profile-chip strong,
+.android-ai-profile-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.android-ai-profile-chip strong {
+  font-size: 12px;
+}
+
+.android-ai-profile-chip span {
+  color: #8f9cab;
+  font-size: 11px;
+}
+
+.android-ai-config-form {
+  display: grid;
+  gap: 9px;
+}
+
+.android-ai-config-form label {
+  display: grid;
+  gap: 5px;
+}
+
+.android-ai-config-form label span {
+  color: #8f9cab;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.android-ai-config-form .android-ai-toggle-row {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  gap: 8px;
+}
+
+.android-ai-config-form .android-ai-toggle-row input {
+  width: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  height: 18px;
+  accent-color: #58a6ff;
+}
+
+.android-ai-config-form .android-ai-toggle-row span {
+  color: #d7dee8;
+  font-size: 12px;
 }
 
 .android-runtime-grid {
@@ -2849,19 +4156,68 @@ svg {
 
 .android-flow-rail {
   min-width: 0;
-  padding: 2px 0;
+  padding: 6px 0;
+}
+
+.android-flow-rail-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
 }
 
 .android-flow-rail-scroll {
   display: flex;
+  min-width: 0;
   gap: 8px;
   overflow-x: auto;
-  padding: 1px 2px 4px;
+  padding: 6px 2px 9px;
   scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
 }
 
 .android-flow-rail-scroll::-webkit-scrollbar {
   display: none;
+}
+
+.android-flow-canvas-nav {
+  display: grid;
+  grid-template-columns: 34px minmax(42px, auto) 34px;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+}
+
+.android-flow-canvas-nav button,
+.android-flow-chip-add {
+  display: inline-grid;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(139, 154, 172, 0.18);
+  border-radius: 9px;
+  background: rgba(18, 25, 34, 0.82);
+  color: #dce6f0;
+  cursor: pointer;
+}
+
+.android-flow-canvas-nav button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.android-flow-canvas-nav span {
+  min-width: 42px;
+  color: #9aa8b8;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
 }
 
 .android-flow-chip {
@@ -2870,8 +4226,8 @@ svg {
   align-items: center;
   gap: 6px;
   min-width: max-content;
-  min-height: 36px;
-  padding: 0 10px;
+  min-height: 42px;
+  padding: 0 12px;
   border: 1px solid rgba(139, 154, 172, 0.16);
   border-radius: 999px;
   background: rgba(18, 25, 34, 0.8);
@@ -2879,6 +4235,11 @@ svg {
   cursor: pointer;
   font-size: 12px;
   font-weight: 700;
+  touch-action: pan-x;
+  user-select: none;
+  will-change: transform;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .android-flow-chip strong,
@@ -2894,14 +4255,43 @@ svg {
   font-style: normal;
 }
 
+.android-flow-chip-handle {
+  cursor: grab;
+  touch-action: none;
+}
+
+.android-flow-chip-handle:active {
+  cursor: grabbing;
+}
+
 .android-flow-chip-active {
   border-color: rgba(88, 166, 255, 0.44);
   background: rgba(45, 92, 145, 0.22);
   color: #e5f1ff;
 }
 
+.android-flow-chip-dragging {
+  border-color: rgba(111, 206, 166, 0.58);
+  background: rgba(32, 92, 68, 0.3);
+  color: #e0ffeb;
+  position: relative;
+  z-index: 2;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+.android-drag-overlay {
+  pointer-events: none;
+}
+
+.dnd-kit-drag-overlay {
+  pointer-events: none !important;
+}
+
+.android-flow-chip-source-dragging {
+  opacity: 0;
+}
+
 .android-flow-chip-add {
-  grid-template-columns: auto auto;
   border-style: dashed;
 }
 

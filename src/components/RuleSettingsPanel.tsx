@@ -1,4 +1,5 @@
-import { ClipboardCopy, Plus } from "lucide-react";
+/** 桌面版规则设置面板：activityIds、matchTime、action 参数等。安卓版同功能集成在 AndroidScenePanel。 */
+import { ClipboardCopy, Plus, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
   DEFAULT_RULE_SETTINGS,
@@ -41,6 +42,7 @@ export function RuleSettingsPanel({
     null,
   );
   const [promptCopied, setPromptCopied] = useState(false);
+  const [paramsEditorOpen, setParamsEditorOpen] = useState(false);
   const previousActivityRef = useRef(snapshot?.activityId ?? "");
 
   const activePreset = RULE_SETTINGS_PRESETS.find(
@@ -163,8 +165,87 @@ export function RuleSettingsPanel({
   }
 
   return (
-    <CollapsiblePanel subtitle="场景推荐值可继续手动调整" title="运行参数">
-      <div className="settings-grid">
+    <CollapsiblePanel subtitle="默认使用场景推荐值，必要时再编辑细节" title="运行参数">
+      <div className="settings-compact">
+        <label>
+          <span>推荐场景</span>
+          <div className="preset-row">
+            <select
+              value={presetId}
+              onChange={(event) => selectPreset(event.target.value)}
+            >
+              <option value="">自定义</option>
+              {RULE_SETTINGS_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.shortLabel}
+                </option>
+              ))}
+              {customScenarios.length > 0 && (
+                <optgroup label="AI 自定义">
+                  {customScenarios.map((scenario) => (
+                    <option key={scenario.id} value={scenario.id}>
+                      {scenario.name}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <button
+              aria-label="查看场景说明"
+              className="icon-help"
+              disabled={!activePreset && !activeCustomScenario}
+              type="button"
+              onClick={() => {
+                setOpenHelpId(openHelpId === presetId ? null : presetId);
+              }}
+            >
+              ?
+            </button>
+            <button type="button" onClick={() => setParamsEditorOpen(true)}>
+              <SlidersHorizontal size={14} />
+              编辑
+            </button>
+          </div>
+          {activeDescription && <small>{activeDescription}</small>}
+          {activeDetail && openHelpId === presetId && (
+            <div className="preset-help">{activeDetail}</div>
+          )}
+        </label>
+        <div className="settings-summary-chips">
+          <span>group: {value.groupName || "-"}</span>
+          <span>activity: {value.activityIds || "留空"}</span>
+          <span>matchTime: {value.matchTime ?? "留空"}</span>
+          <span>max: {value.actionMaximum ?? "留空"}</span>
+          <span>cd: {value.actionCd ?? "留空"}</span>
+          <span>reset: {value.resetMatch || "留空"}</span>
+        </div>
+      </div>
+
+      {paramsEditorOpen && (
+        <div
+          aria-modal="true"
+          className="settings-modal-backdrop"
+          role="dialog"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setParamsEditorOpen(false);
+          }}
+        >
+          <div className="settings-modal">
+            <div className="settings-modal-header">
+              <div>
+                <h3>编辑运行参数</h3>
+                <p>调整场景推荐值、Activity、执行窗口和冷却策略。</p>
+              </div>
+              <button
+                aria-label="关闭参数编辑"
+                className="icon-button"
+                type="button"
+                onClick={() => setParamsEditorOpen(false)}
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="settings-grid">
         <label>
           <span>推荐场景</span>
           <div className="preset-row">
@@ -406,7 +487,10 @@ export function RuleSettingsPanel({
             activity 跟随页面重置；match 适合目标消失后还会再出现的周期性广告。
           </small>
         </label>
-      </div>
+            </div>
+          </div>
+        </div>
+      )}
     </CollapsiblePanel>
   );
 }

@@ -1,3 +1,6 @@
+/** 从本地 .zip 文件解析 gkd 快照（桌面版拖拽导入使用）。
+ * normalizeSnapshot 被 deviceApi.loadSnapshot 也复用。
+ * 输出 ParsedGkdSnapshot（节点树已展开 + 生成 Map + 含截图 URL）。 */
 import JSZip from "jszip";
 import type {
   NormalizedSnapshotNode,

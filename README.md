@@ -52,6 +52,17 @@ cd android
 gradle assembleDebug
 ```
 
+生成本地发布文件：
+
+```powershell
+pnpm run build
+pnpm run build:android-assets
+gradle -p android :app:assembleDebug
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
+```
+
+发布产物在 `release/current`，Windows 便携版模板在 `packaging/windows`。
+
 ## GKD 内存订阅导入
 
 测试区导入 GKD 使用的是 GKD HTTP 服务的 `/api/updateSubscription`，写入目标是 GKD 的内存订阅。它适合临时验证规则，不等同于发布到正式订阅仓库。

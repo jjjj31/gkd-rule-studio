@@ -1,9 +1,15 @@
+/** ADB 辅助工具：通过 adb helper 脚本（scripts/adb-helper.mjs）在 PC 端操作 GKD。仅桌面版可用。 */
 import type {
   DeviceServerInfo,
   DeviceSnapshotSummary,
   ParsedGkdSnapshot,
   RawGkdSnapshot,
 } from "../types/gkdSnapshot";
+import {
+  DEBUG_GKD_PACKAGE,
+  OFFICIAL_GKD_PACKAGE,
+  type GkdTargetPackage,
+} from "./gkdTarget";
 import { normalizeSnapshot } from "./snapshotZip";
 
 const ADB_HELPER_ORIGIN = "http://127.0.0.1:18741";
@@ -71,9 +77,13 @@ export async function getAdbStatus(): Promise<AdbStatusResponse> {
   return getJson<AdbStatusResponse>("/api/adb/status");
 }
 
-export async function createAdbApiClient(serial: string): Promise<AdbApiClient> {
+export async function createAdbApiClient(
+  serial: string,
+  packageId: GkdTargetPackage = OFFICIAL_GKD_PACKAGE,
+): Promise<AdbApiClient> {
+  const packageQuery = `packageId=${encodeURIComponent(packageId)}`;
   const status = await getJson<AdbStatusResponse>(
-    `/api/adb/status?serial=${encodeURIComponent(serial)}`,
+    `/api/adb/status?serial=${encodeURIComponent(serial)}&${packageQuery}`,
   );
   const selectedDevice =
     status.devices.find((device) => device.serial === serial) ?? status.devices[0];
@@ -84,8 +94,8 @@ export async function createAdbApiClient(serial: string): Promise<AdbApiClient> 
       release: "?",
     },
     gkdAppInfo: {
-      id: "li.songe.gkd",
-      name: "GKD",
+      id: packageId,
+      name: packageId === DEBUG_GKD_PACKAGE ? "GKD Debug" : "GKD",
       versionName: "ADB",
     },
   };
@@ -95,12 +105,12 @@ export async function createAdbApiClient(serial: string): Promise<AdbApiClient> 
     serverInfo,
     getSnapshots: async () => {
       return getJson<DeviceSnapshotSummary[]>(
-        `/api/adb/snapshots?serial=${encodeURIComponent(serial)}`,
+        `/api/adb/snapshots?serial=${encodeURIComponent(serial)}&${packageQuery}`,
       );
     },
     loadSnapshot: async (id) => {
       const payload = await getJson<AdbSnapshotPayload>(
-        `/api/adb/snapshot?serial=${encodeURIComponent(serial)}&id=${id}`,
+        `/api/adb/snapshot?serial=${encodeURIComponent(serial)}&id=${id}&${packageQuery}`,
       );
       const screenshot = base64ToArrayBuffer(payload.screenshotBase64);
       const screenshotUrl = URL.createObjectURL(

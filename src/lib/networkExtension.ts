@@ -1,3 +1,5 @@
+/** 网络通道抽象：优先用 GM_xmlhttpRequest（油猴/魔改环境），fallback 到普通 fetch。
+ * deviceApi 和 aiModel 都通过它发 HTTP 请求。 */
 export function hasNetworkExtension(): boolean {
   return typeof getNetworkExtension()?.GM_xmlhttpRequest === "function";
 }

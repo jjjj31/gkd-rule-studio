@@ -1,3 +1,4 @@
+/** 桌面版首页组件：快照拖拽/导入、设备连接、快照选择。对比安卓版首页（AndroidSnapshotChooser），多出 zip 拖拽区和设备诊断。 */
 import {
   Camera,
   ClipboardCopy,
@@ -25,6 +26,14 @@ import {
   probeDeviceOrigin,
   runDeviceDiagnostics,
 } from "../lib/deviceApi";
+import {
+  DEBUG_GKD_PACKAGE,
+  OFFICIAL_GKD_PACKAGE,
+  matchesTargetPackage,
+  storeTargetPackage,
+  targetPackageLabel,
+  type GkdTargetPackage,
+} from "../lib/gkdTarget";
 import type {
   DeviceSnapshotSummary,
   ParsedGkdSnapshot,
@@ -40,6 +49,8 @@ interface HomePageProps {
   onOpenSettings: () => void;
   onOpenSnapshot: (snapshot: ParsedGkdSnapshot) => void;
   onOpenSnapshotsAsFlow: (snapshots: ParsedGkdSnapshot[]) => void;
+  targetPackage: GkdTargetPackage;
+  onTargetPackageChange: (packageId: GkdTargetPackage) => void;
 }
 
 export function HomePage({
@@ -49,6 +60,8 @@ export function HomePage({
   onOpenSettings,
   onOpenSnapshot,
   onOpenSnapshotsAsFlow,
+  targetPackage,
+  onTargetPackageChange,
 }: HomePageProps) {
   const [deviceUrl, setDeviceUrl] = useState(
     () => localStorage.getItem("gkd-rule-builder-device-url") ?? "",
@@ -107,7 +120,22 @@ export function HomePage({
       setSnapshots(nextSnapshots);
       setDeviceUrl(nextClient.origin);
       localStorage.setItem("gkd-rule-builder-device-url", nextClient.origin);
-      appendOperation(`连接成功: ${formatServerTitle(nextClient.serverInfo)}`);
+      const matched = matchesTargetPackage(
+        nextClient.serverInfo.gkdAppInfo?.id,
+        targetPackage,
+      );
+      appendOperation(
+        `连接成功: ${targetPackageLabel(targetPackage)} / ${formatServerTitle(
+          nextClient.serverInfo,
+        )}${matched ? "" : " / 目标版本可能不一致"}`,
+      );
+      if (!matched) {
+        onError(
+          `当前全局目标是 ${targetPackageLabel(
+            targetPackage,
+          )}，但 HTTP 连接到的是 ${nextClient.serverInfo.gkdAppInfo?.id ?? "未知包名"}。`,
+        );
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "连接设备失败";
       appendOperation(`连接失败: ${message}`);
@@ -161,13 +189,15 @@ export function HomePage({
     setLoading(true);
     onError(null);
     try {
-      const nextClient = await createAdbApiClient(serial);
+      const nextClient = await createAdbApiClient(serial, targetPackage);
       const nextSnapshots = await nextClient.getSnapshots();
       setAdbClient(nextClient);
       setClient(null);
       setConnectMode("adb");
       setSnapshots(nextSnapshots);
-      appendOperation(`ADB 读取快照成功: ${nextSnapshots.length} 条`);
+      appendOperation(
+        `ADB 读取快照成功: ${targetPackageLabel(targetPackage)} / ${nextSnapshots.length} 条`,
+      );
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : "ADB 读取快照失败";
       appendOperation(`ADB 读取快照失败: ${message}`);
@@ -380,6 +410,18 @@ export function HomePage({
           </div>
         </div>
         <div className="top-actions">
+          <TargetVersionSwitch
+            targetPackage={targetPackage}
+            onChange={(packageId) => {
+              storeTargetPackage(packageId);
+              onTargetPackageChange(packageId);
+              setClient(null);
+              setAdbClient(null);
+              setSnapshots([]);
+              setSelectedSnapshotIds(new Set());
+              appendOperation(`已切换目标: ${targetPackageLabel(packageId)}`);
+            }}
+          />
           <SnapshotLoader loading={loadingFile} onFileSelected={onFileSelected} />
           <button className="header-button" type="button" onClick={onOpenSettings}>
             <Settings size={16} />
@@ -390,8 +432,8 @@ export function HomePage({
 
       <div className="home-status-strip" aria-label="首页状态概览">
         <div>
-          <span>连接方式</span>
-          <strong>{connectMode === "http" ? "HTTP 服务" : "ADB 数据线"}</strong>
+          <span>目标版本</span>
+          <strong>{targetPackageLabel(targetPackage)}</strong>
         </div>
         <div>
           <span>可用快照</span>
@@ -402,8 +444,8 @@ export function HomePage({
           <strong>{selectedSnapshotIds.size}</strong>
         </div>
         <div>
-          <span>设备状态</span>
-          <strong>{client || adbClient ? "已连接" : "待连接"}</strong>
+          <span>连接方式</span>
+          <strong>{connectMode === "http" ? "HTTP 服务" : "ADB 数据线"}</strong>
         </div>
       </div>
 
@@ -485,6 +527,9 @@ export function HomePage({
             </>
           ) : (
             <div className="device-grid">
+              <div className="device-status">
+                当前目标由顶部全局开关决定：{targetPackageLabel(targetPackage)}
+              </div>
               <div className="home-actions-row">
                 <button
                   className="wide-button"
@@ -521,7 +566,7 @@ export function HomePage({
                 </select>
                 <small>
                   需要先开启 USB 调试并在手机弹窗允许授权；ADB 只读取已保存的
-                  GKD 快照。
+                  {targetPackageLabel(targetPackage)} 快照。
                 </small>
               </label>
               {adbStatus && (
@@ -781,4 +826,31 @@ function formatSnapshotTime(id: number): string {
 
 function shortActivity(activityId: string): string {
   return activityId.split(".").slice(-2).join(".");
+}
+
+function TargetVersionSwitch({
+  targetPackage,
+  onChange,
+}: {
+  targetPackage: GkdTargetPackage;
+  onChange: (packageId: GkdTargetPackage) => void;
+}) {
+  return (
+    <div className="mode-switch target-version-switch" aria-label="GKD 目标版本">
+      <button
+        className={targetPackage === DEBUG_GKD_PACKAGE ? "mode-switch-active" : ""}
+        type="button"
+        onClick={() => onChange(DEBUG_GKD_PACKAGE)}
+      >
+        Debug/Beta
+      </button>
+      <button
+        className={targetPackage === OFFICIAL_GKD_PACKAGE ? "mode-switch-active" : ""}
+        type="button"
+        onClick={() => onChange(OFFICIAL_GKD_PACKAGE)}
+      >
+        正式版
+      </button>
+    </div>
+  );
 }

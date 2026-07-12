@@ -1,3 +1,8 @@
+/**
+ * 单步规则组装。
+ * 输入：快照 + 候选 + 设置 → 输出：AppRuleDraft（JSON5 可序列化的 GKD 格式规则）。
+ * 同时提供兜底候选选择和 stringify 序列化。
+ */
 import JSON5 from "json5";
 import type { ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type {
@@ -7,6 +12,11 @@ import type {
   SelectorCandidate,
 } from "../types/ruleDraft";
 
+/**
+ * 把一条候选组装成完整的 AppRuleDraft（GKD 规则格式）。
+ * fallbackCandidates 是指南针里排名靠后的候选，当 primary 在 GKD 里没命中时它会尝试。
+ * @see testSubscription 用此函数的输出做导入/测试
+ */
 export function createAppRuleDraft(
   snapshot: ParsedGkdSnapshot,
   candidate: SelectorCandidate,

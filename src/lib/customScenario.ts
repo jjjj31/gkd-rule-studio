@@ -1,3 +1,4 @@
+/** 自定义场景管理：parse/import/persist（localStorage）。 */
 import JSON5 from "json5";
 import type { ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type { RuleSettings } from "../types/ruleDraft";

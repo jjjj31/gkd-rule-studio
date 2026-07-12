@@ -4,6 +4,7 @@ import {
   createEmptyTestSubscription,
   exportRawSubscription,
   importJson5ToTestSubscription,
+  markTestSubscriptionImported,
   markImportedAndClearBuffer,
   removeImportedRule,
   clearImportedRules,
@@ -93,7 +94,25 @@ describe("test subscription draft", () => {
     expect(JSON.stringify(raw)).not.toContain("undefined");
   });
 
-  it("clears buffered rules after import and remembers imported selectors", () => {
+  it("keeps buffered rules after memory import so they can still be saved locally", () => {
+    const draft = addAppDraftToTestSubscription(
+      createEmptyTestSubscription(),
+      appDraft("com.demo", "Demo", "开屏广告", "[vid=\"skip\"]"),
+    );
+    const imported = markTestSubscriptionImported(draft, 123);
+
+    expect(imported.apps).toHaveLength(1);
+    expect(imported.dirty).toBe(false);
+    expect(imported.lastImportedAt).toBe(123);
+    expect(imported.lastImportedSummary).toEqual({
+      appCount: 1,
+      groupCount: 1,
+      ruleCount: 1,
+    });
+    expect(wasSelectorImported(imported, ["[vid=\"skip\"]"])).toBe(false);
+  });
+
+  it("clears buffered rules after local save and remembers imported selectors", () => {
     const draft = addAppDraftToTestSubscription(
       createEmptyTestSubscription(),
       appDraft("com.demo", "Demo", "开屏广告", "[vid=\"skip\"]"),

@@ -46,6 +46,27 @@ interface Window {
   showDirectoryPicker?: (options?: {
     mode?: "read" | "readwrite";
   }) => Promise<FileSystemDirectoryHandle>;
+  GkdAndroidBridge?: {
+    copyToClipboard?: (text: string) => void;
+    setBackVisible?: (visible: boolean) => void;
+    postJson?: (
+      requestId: string,
+      url: string,
+      headersJson: string,
+      bodyJson: string,
+      timeoutMs: number,
+    ) => void;
+  };
+  __GkdAndroidBridgeResult?: (
+    requestId: string,
+    result: {
+      ok: boolean;
+      status?: number;
+      body: string;
+      error?: string;
+    },
+  ) => void;
+  __GkdAndroidBack?: () => void;
   __NetworkExtension__?: {
     GM_xmlhttpRequest?: (options: GmXmlHttpRequestOptions) => {
       abort: () => void;

@@ -1,5 +1,12 @@
+/**
+ * 应用入口。URL 带 ?mode=android 或 #android 走 AndroidLiteApp，否则走 DesktopApp。
+ * DesktopApp 是三个栏的经典布局（左截图、中节点树+候选、右设置+规则预览）；
+ * AndroidLiteApp 是单个标签页切换布局（底部五个 tab）。
+ * @see AndroidLiteApp 安卓版主组件（当前主线）
+ */
 import { useEffect, useMemo, useState } from "react";
 import {
+  Bot,
   ChevronLeft,
   ChevronRight,
   Home,
@@ -8,12 +15,16 @@ import {
   TerminalSquare,
   X,
 } from "lucide-react";
+import { AiCandidatesPanel } from "./components/AiCandidatesPanel";
+import { AiConfigPanel } from "./components/AiConfigPanel";
 import { AndroidLiteApp } from "./components/AndroidLiteApp";
 import { CandidateList } from "./components/CandidateList";
 import { CollapsiblePanel } from "./components/CollapsiblePanel";
+import { CustomScenarioPanel } from "./components/CustomScenarioPanel";
 import { FlowPanel } from "./components/FlowPanel";
 import { HelpPromptPanel } from "./components/HelpPromptPanel";
 import { HomePage } from "./components/HomePage";
+import { InlineTestingPanel } from "./components/InlineTestingPanel";
 import { NodeTreePanel } from "./components/NodeTreePanel";
 import { RulePreview } from "./components/RulePreview";
 import { RuleSettingsPanel } from "./components/RuleSettingsPanel";
@@ -22,10 +33,34 @@ import { SnapshotLoader } from "./components/SnapshotLoader";
 import { SubscriptionRepoPanel } from "./components/SubscriptionRepoPanel";
 import { TestSubscriptionPanel } from "./components/TestSubscriptionPanel";
 import { DEFAULT_RULE_SETTINGS } from "./data/ruleSettings";
+import {
+  loadAiConfig,
+  loadAiProfileStore,
+  saveAiProfileStore,
+  getActiveAiProfile,
+  type AiModelConfig,
+  type AiModelProfileStore,
+} from "./lib/aiModel";
+import { buildFlowHelpPrompt } from "./lib/flowDraft";
+import { buildHelpPrompt } from "./lib/helpPrompt";
+import {
+  createEmptyInlineRuleTestingState,
+  prunePersistentInlineRuleTestingState,
+  type InlineAiSession,
+  type InlineRuleTestItem,
+  type InlineRuleTestingState,
+} from "./lib/inlineRuleTesting";
 import { pickExistingNode, pickNodeAtPoint } from "./lib/nodePicker";
 import { getAdjacentFlowSnapshotId } from "./lib/flowSteps";
 import { generateRegionSelectorCandidates } from "./lib/regionCandidates";
 import { createAppRuleDraft, selectFallbackCandidates } from "./lib/ruleDraft";
+import {
+  DEBUG_GKD_PACKAGE,
+  OFFICIAL_GKD_PACKAGE,
+  readStoredTargetPackage,
+  storeTargetPackage,
+  type GkdTargetPackage,
+} from "./lib/gkdTarget";
 import { loadSnapshotZip } from "./lib/snapshotZip";
 import {
   addAppDraftToTestSubscription,
@@ -68,9 +103,20 @@ function DesktopApp() {
   const [ruleSettings, setRuleSettings] = useState<RuleSettings>(
     DEFAULT_RULE_SETTINGS,
   );
+  const [targetPackage, setTargetPackage] = useState<GkdTargetPackage>(
+    readStoredTargetPackage,
+  );
   const [testSubscription, setTestSubscription] = useState<TestSubscriptionDraft>(
     createEmptyTestSubscription,
   );
+  const [aiConfig, setAiConfig] = useState<AiModelConfig>(loadAiConfig);
+  const [aiProfileStore, setAiProfileStore] = useState<AiModelProfileStore>(
+    loadAiProfileStore,
+  );
+  const [inlineTesting, setInlineTesting] = useState<InlineRuleTestingState>(
+    loadInlineTestingState,
+  );
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   const selectedCandidate = useMemo(() => {
     return candidates.find((candidate) => candidate.id === selectedId) ?? null;
@@ -95,6 +141,34 @@ function DesktopApp() {
     snapshot?.id ?? null,
     1,
   );
+  const singleAiPrompt = useMemo(() => {
+    return buildHelpPrompt({
+      snapshot,
+      pickResult,
+      candidates,
+      selectedCandidate,
+      ruleSettings,
+    });
+  }, [snapshot, pickResult, candidates, selectedCandidate, ruleSettings]);
+  const flowAiPrompt = useMemo(() => {
+    return buildFlowHelpPrompt({ flowName, flowDesc, steps: flowSteps });
+  }, [flowName, flowDesc, flowSteps]);
+  const activeAiPrompt = workspaceMode === "flow" ? flowAiPrompt : singleAiPrompt;
+
+  function handleAiConfigChange(nextConfig: AiModelConfig): void {
+    setAiConfig(nextConfig);
+  }
+
+  function handleAiProfileStoreChange(nextStore: AiModelProfileStore): void {
+    setAiProfileStore(nextStore);
+    saveAiProfileStore(nextStore);
+    const active = getActiveAiProfile(nextStore);
+    if (active) setAiConfig(active.config);
+  }
+
+  useEffect(() => {
+    saveInlineTestingState(inlineTesting);
+  }, [inlineTesting]);
 
   async function handleFileSelected(file: File): Promise<void> {
     setLoading(true);
@@ -346,21 +420,10 @@ function DesktopApp() {
     const nextSnapshot = flowSnapshots.find((item) => item.id === nextSnapshotId);
     if (!nextSnapshot) return;
 
-    if (!activeFlowStepId) {
-      setError("请先在右侧选择一个步骤，再给它绑定快照");
-      return;
-    }
-
     setSnapshot(nextSnapshot);
     setPickResult(null);
     setCandidates([]);
     setSelectedId(null);
-    updateFlowStep(activeFlowStepId, {
-      snapshot: nextSnapshot,
-      pickResult: null,
-      candidates: [],
-      selectedCandidate: null,
-    });
     setError(null);
   }
 
@@ -387,6 +450,20 @@ function DesktopApp() {
     }
   }
 
+  function reorderFlowSteps(activeId: string, overId: string): void {
+    if (activeId === overId) return;
+    setFlowSteps((current) => {
+      const sourceIndex = current.findIndex((step) => step.id === activeId);
+      const targetIndex = current.findIndex((step) => step.id === overId);
+      if (sourceIndex < 0 || targetIndex < 0) return current;
+      const next = [...current];
+      const [sourceStep] = next.splice(sourceIndex, 1);
+      if (!sourceStep) return current;
+      next.splice(targetIndex, 0, sourceStep);
+      return next;
+    });
+  }
+
   function syncActiveFlowStep(patch: Partial<FlowRuleStep>): void {
     if (workspaceMode !== "flow" || !activeFlowStepId) return;
     updateFlowStep(activeFlowStepId, patch);
@@ -405,22 +482,28 @@ function DesktopApp() {
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenSnapshot={openSnapshot}
           onOpenSnapshotsAsFlow={openSnapshotsAsFlow}
+          targetPackage={targetPackage}
+          onTargetPackageChange={setTargetPackage}
         />
       </div>
 
       {view === "workspace" && (
         <>
           <WorkspaceHeader
+            aiPanelOpen={aiPanelOpen}
             flowStepCount={flowSteps.length}
             loading={loading}
             pickResult={pickResult}
             selectedCandidate={selectedCandidate}
             snapshot={snapshot}
+            targetPackage={targetPackage}
             workspaceMode={workspaceMode}
+            onAiPanelToggle={() => setAiPanelOpen((current) => !current)}
             onBackHome={() => setView("home")}
             onFileSelected={(file) => void handleFileSelected(file)}
             onModeChange={setWorkspaceMode}
             onOpenSettings={() => setSettingsOpen(true)}
+            onTargetPackageChange={setTargetPackage}
             onToggleTestLog={() => setShowTestLog((current) => !current)}
           />
           <div className="console-grid">
@@ -504,6 +587,10 @@ function DesktopApp() {
                 value={ruleSettings}
                 onChange={handleRuleSettingsChange}
               />
+              <CustomScenarioPanel
+                snapshot={snapshot}
+                onApplySettings={handleRuleSettingsChange}
+              />
               {workspaceMode === "flow" ? (
                 <FlowPanel
                   activeStepId={activeFlowStepId}
@@ -515,6 +602,7 @@ function DesktopApp() {
                   onFlowDescChange={setFlowDesc}
                   onFlowNameChange={setFlowName}
                   onRemoveStep={removeFlowStep}
+                  onReorderSteps={reorderFlowSteps}
                   onSelectStep={selectFlowStep}
                   onUpdateStep={updateFlowStep}
                 />
@@ -540,6 +628,7 @@ function DesktopApp() {
                         : null
                     }
                     draft={testSubscription}
+                    targetPackage={targetPackage}
                     onChange={setTestSubscription}
                   />
                   <HelpPromptPanel
@@ -551,16 +640,39 @@ function DesktopApp() {
                   />
                 </>
               )}
+              {aiPanelOpen && (
+                <>
+                  <AiCandidatesPanel
+                    mode={workspaceMode}
+                    config={aiConfig}
+                    prompt={activeAiPrompt}
+                    snapshot={snapshot}
+                    inlineTesting={inlineTesting}
+                    onInlineTestingChange={setInlineTesting}
+                    onTestSubscriptionChange={setTestSubscription}
+                  />
+                  <InlineTestingPanel
+                    state={inlineTesting}
+                    mode={workspaceMode}
+                    onStateChange={setInlineTesting}
+                    onTestSubscriptionChange={setTestSubscription}
+                  />
+                </>
+              )}
             </section>
           </div>
         </>
       )}
 
       <SettingsDrawer
+        aiConfig={aiConfig}
+        aiProfileStore={aiProfileStore}
         candidate={selectedCandidate}
         candidates={candidates}
         open={settingsOpen}
         snapshot={snapshot}
+        onAiConfigChange={handleAiConfigChange}
+        onAiProfileStoreChange={handleAiProfileStoreChange}
         onClose={() => setSettingsOpen(false)}
       />
 
@@ -621,6 +733,36 @@ function appendUniqueSnapshot(
   return [...snapshots, snapshot];
 }
 
+const INLINE_TESTING_STORAGE_KEY = "gkd-rule-studio-inline-testing";
+
+function loadInlineTestingState(): InlineRuleTestingState {
+  const raw = localStorage.getItem(INLINE_TESTING_STORAGE_KEY);
+  if (!raw) return createEmptyInlineRuleTestingState();
+  try {
+    const parsed = JSON.parse(raw) as Partial<InlineRuleTestingState>;
+    if (parsed.version !== 1 || !Array.isArray(parsed.items)) {
+      return createEmptyInlineRuleTestingState();
+    }
+    return prunePersistentInlineRuleTestingState({
+      version: 1,
+      items: parsed.items as InlineRuleTestItem[],
+      aiSessions: Array.isArray(parsed.aiSessions)
+        ? (parsed.aiSessions as InlineAiSession[])
+        : [],
+      updatedAt: parsed.updatedAt,
+    });
+  } catch {
+    return createEmptyInlineRuleTestingState();
+  }
+}
+
+function saveInlineTestingState(state: InlineRuleTestingState): void {
+  localStorage.setItem(
+    INLINE_TESTING_STORAGE_KEY,
+    JSON.stringify(prunePersistentInlineRuleTestingState(state)),
+  );
+}
+
 function createFlowStepId(): string {
   return crypto.randomUUID?.() ?? `flow-${Date.now()}-${Math.random()}`;
 }
@@ -629,24 +771,32 @@ function WorkspaceHeader({
   snapshot,
   pickResult,
   selectedCandidate,
+  targetPackage,
   workspaceMode,
   flowStepCount,
   loading,
+  aiPanelOpen,
+  onAiPanelToggle,
   onBackHome,
   onModeChange,
   onOpenSettings,
+  onTargetPackageChange,
   onToggleTestLog,
   onFileSelected,
 }: {
   snapshot: ParsedGkdSnapshot | null;
   pickResult: NodePickResult | null;
   selectedCandidate: SelectorCandidate | null;
+  targetPackage: GkdTargetPackage;
   workspaceMode: "single" | "flow";
   flowStepCount: number;
   loading: boolean;
+  aiPanelOpen: boolean;
+  onAiPanelToggle: () => void;
   onBackHome: () => void;
   onModeChange: (mode: "single" | "flow") => void;
   onOpenSettings: () => void;
+  onTargetPackageChange: (packageId: GkdTargetPackage) => void;
   onToggleTestLog: () => void;
   onFileSelected: (file: File) => void;
 }) {
@@ -696,6 +846,13 @@ function WorkspaceHeader({
         </span>
       </div>
       <div className="top-actions">
+        <TargetVersionSwitch
+          targetPackage={targetPackage}
+          onChange={(packageId) => {
+            storeTargetPackage(packageId);
+            onTargetPackageChange(packageId);
+          }}
+        />
         <div className="mode-switch" aria-label="工作区模式">
           <button
             className={workspaceMode === "single" ? "mode-switch-active" : ""}
@@ -716,6 +873,14 @@ function WorkspaceHeader({
           <TerminalSquare size={16} />
           <span>测试日志</span>
         </button>
+        <button
+          className={`header-button ${aiPanelOpen ? "header-button-active" : ""}`}
+          type="button"
+          onClick={onAiPanelToggle}
+        >
+          <Bot size={16} />
+          <span>AI</span>
+        </button>
         <button className="header-button" type="button" onClick={onOpenSettings}>
           <Settings size={16} />
           <span>设置</span>
@@ -729,18 +894,53 @@ function WorkspaceHeader({
   );
 }
 
+function TargetVersionSwitch({
+  targetPackage,
+  onChange,
+}: {
+  targetPackage: GkdTargetPackage;
+  onChange: (packageId: GkdTargetPackage) => void;
+}) {
+  return (
+    <div className="mode-switch target-version-switch" aria-label="GKD 目标版本">
+      <button
+        className={targetPackage === DEBUG_GKD_PACKAGE ? "mode-switch-active" : ""}
+        type="button"
+        onClick={() => onChange(DEBUG_GKD_PACKAGE)}
+      >
+        Debug/Beta
+      </button>
+      <button
+        className={targetPackage === OFFICIAL_GKD_PACKAGE ? "mode-switch-active" : ""}
+        type="button"
+        onClick={() => onChange(OFFICIAL_GKD_PACKAGE)}
+      >
+        正式版
+      </button>
+    </div>
+  );
+}
+
 function SettingsDrawer({
   open,
   snapshot,
   candidate,
   candidates,
+  aiConfig,
+  aiProfileStore,
   onClose,
+  onAiConfigChange,
+  onAiProfileStoreChange,
 }: {
   open: boolean;
   snapshot: ParsedGkdSnapshot | null;
   candidate: SelectorCandidate | null;
   candidates: SelectorCandidate[];
+  aiConfig: AiModelConfig;
+  aiProfileStore: AiModelProfileStore;
   onClose: () => void;
+  onAiConfigChange: (config: AiModelConfig) => void;
+  onAiProfileStoreChange: (store: AiModelProfileStore) => void;
 }) {
   return (
     <>
@@ -757,7 +957,7 @@ function SettingsDrawer({
         <div className="settings-drawer-header">
           <div>
             <h2>设置</h2>
-            <p>订阅仓库连接、历史导入记录和撤回操作。</p>
+            <p>订阅仓库连接、AI 模型配置、历史导入记录和撤回操作。</p>
           </div>
           <button
             aria-label="关闭设置"
@@ -768,6 +968,12 @@ function SettingsDrawer({
             <X size={15} />
           </button>
         </div>
+        <AiConfigPanel
+          config={aiConfig}
+          profileStore={aiProfileStore}
+          onConfigChange={onAiConfigChange}
+          onProfileStoreChange={onAiProfileStoreChange}
+        />
         <SubscriptionRepoPanel
           candidate={candidate}
           candidates={candidates}

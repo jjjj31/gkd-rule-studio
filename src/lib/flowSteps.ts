@@ -1,3 +1,5 @@
+/** 纯函数辅助：相邻步骤/快照 id 查找、流程创建条件判断。被 DesktopApp 和 AndroidLiteApp 共用。 */
+
 export interface FlowStepLike {
   id: string;
 }

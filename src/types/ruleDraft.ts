@@ -1,3 +1,10 @@
+/**
+ * 规则和候选的类型定义。
+ * RuleSettings：用户选择的规则参数（场景/活动/匹配时间等）。
+ * SelectorCandidate：一条候选规则（含 strategyName → selector匹配 → 验证结果 → 评分 → 动作计划）。
+ * AppRuleDraft：针对一个 App 的完整规则组，可 JSON5 序列化后导入 GKD。
+ */
+
 import type { NormalizedSnapshotNode, ParsedGkdSnapshot } from "./gkdSnapshot";
 
 export interface RuleSettings {

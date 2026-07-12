@@ -1,3 +1,8 @@
+/**
+ * 单步"求助 prompt"组装器。
+ * 把当前快照、选点、候选、场景设置打包成文字，复制给外部 AI。
+ * @see aiModel.ts 内置 AI 也引用这里的 prompt 作为 user message
+ */
 import type {
   NodePickResult,
   NormalizedSnapshotNode,
@@ -14,6 +19,7 @@ interface PromptInput {
   ruleSettings: RuleSettings;
 }
 
+/** 单步求助 prompt 入口：快照+选点+候选+设置 → 格式化文字。包装了场景、节点树、现有候选和兜底策略。 */
 export function buildHelpPrompt(input: PromptInput): string {
   const { snapshot, pickResult, candidates, selectedCandidate, ruleSettings } =
     input;

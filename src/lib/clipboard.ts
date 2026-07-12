@@ -1,11 +1,4 @@
-declare global {
-  interface Window {
-    GkdAndroidBridge?: {
-      copyToClipboard?: (text: string) => void;
-    };
-  }
-}
-
+/** 跨平台剪贴板：安卓 WebView 桥 → GkdAndroidBridge.copyToClipboard，桌面 fallback 到 navigator.clipboard。 */
 export async function copyTextToClipboard(text: string): Promise<void> {
   if (window.GkdAndroidBridge?.copyToClipboard) {
     window.GkdAndroidBridge.copyToClipboard(text);

@@ -1,3 +1,4 @@
+/** 规则设置预设：开屏广告、视频内广告、分段滑动、等等。每个预设是一段 RuleSettings，含场景相关的 matchTime/max/cd 等默认值。 */
 import type { ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type { RuleSettings } from "../types/ruleDraft";
 

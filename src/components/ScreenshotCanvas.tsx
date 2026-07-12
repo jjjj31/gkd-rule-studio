@@ -1,4 +1,11 @@
-import { useLayoutEffect, useRef, useState } from "react";
+/**
+ * 截图画布组件。
+ * 显示 gkd 快照的截图，支持两种交互模式：
+ * - click（桌面版）：鼠标点一下 = 选中目标
+ * - dragMagnifier（安卓版）：手指拖动一个 2.6 倍放大镜，松手 = 选中目标
+ * 选中后绘制节点框（picked/hit/support 三种颜色）。
+ */
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import {
   chooseDragStartLocalPoint,
@@ -30,6 +37,7 @@ export function ScreenshotCanvas({
   interactionMode = "click",
   onPointSelected,
 }: ScreenshotCanvasProps) {
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const dragPointerIdRef = useRef<number | null>(null);
   const lastDragPointRef = useRef<NodePoint | null>(null);
@@ -38,6 +46,9 @@ export function ScreenshotCanvas({
   const hideMagnifierTimerRef = useRef<ReturnType<
     typeof window.setTimeout
   > | null>(null);
+  const dragWatchdogTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
+    null,
+  );
   const [imageBox, setImageBox] = useState<ImageBox | null>(null);
   const [magnifier, setMagnifier] = useState<MagnifierState | null>(null);
 
@@ -60,6 +71,25 @@ export function ScreenshotCanvas({
       window.removeEventListener("resize", updateImageBox);
     };
   }, [snapshot.screenshotUrl]);
+
+  useEffect(() => {
+    const release = () => releaseDragCapture(true);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    window.addEventListener("touchend", release);
+    window.addEventListener("touchcancel", release);
+    window.addEventListener("blur", release);
+    document.addEventListener("visibilitychange", release);
+    return () => {
+      releaseDragCapture(true);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("touchend", release);
+      window.removeEventListener("touchcancel", release);
+      window.removeEventListener("blur", release);
+      document.removeEventListener("visibilitychange", release);
+    };
+  }, []);
 
   function handleClick(event: MouseEvent<HTMLDivElement>): void {
     if (interactionMode === "dragMagnifier") return;
@@ -100,6 +130,7 @@ export function ScreenshotCanvas({
     const box = getContainedImageBox(img);
     setImageBox(box);
     clearHideMagnifierTimer();
+    clearDragWatchdogTimer();
     dragPointerIdRef.current = event.pointerId;
     dragStartRef.current = {
       localPoint: getDragStartLocalPoint(
@@ -114,7 +145,14 @@ export function ScreenshotCanvas({
         clientY: event.clientY,
       },
     };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Android WebView may reject capture during interrupted touch sequences.
+    }
+    dragWatchdogTimerRef.current = window.setTimeout(() => {
+      releaseDragCapture(false);
+    }, 8000);
     lastDragPointRef.current = updateMagnifierFromLocalPoint(
       dragStartRef.current.localPoint,
       box,
@@ -179,12 +217,7 @@ export function ScreenshotCanvas({
         )
       : lastDragPointRef.current;
 
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    dragPointerIdRef.current = null;
-    dragStartRef.current = null;
-    lastDragPointRef.current = null;
+    releaseDragCapture(false);
     if (nextPoint) {
       onPointSelected(nextPoint);
       scheduleHideMagnifier();
@@ -198,10 +231,30 @@ export function ScreenshotCanvas({
     ) {
       return;
     }
+    releaseDragCapture(true);
+  }
+
+  function releaseDragCapture(hideMagnifier: boolean): void {
+    const pointerId = dragPointerIdRef.current;
+    const stage = stageRef.current;
+    if (pointerId !== null && stage?.hasPointerCapture(pointerId)) {
+      try {
+        stage.releasePointerCapture(pointerId);
+      } catch {
+        // Capture may already be gone after WebView cancellation.
+      }
+    }
+    clearDragWatchdogTimer();
     dragPointerIdRef.current = null;
     dragStartRef.current = null;
     lastDragPointRef.current = null;
-    setMagnifier(null);
+    if (hideMagnifier) setMagnifier(null);
+  }
+
+  function clearDragWatchdogTimer(): void {
+    if (dragWatchdogTimerRef.current === null) return;
+    window.clearTimeout(dragWatchdogTimerRef.current);
+    dragWatchdogTimerRef.current = null;
   }
 
   function clearHideMagnifierTimer(): void {
@@ -281,6 +334,7 @@ export function ScreenshotCanvas({
   return (
     <div className="screenshot-shell">
       <div
+        ref={stageRef}
         className={`screenshot-stage ${
           interactionMode === "dragMagnifier" ? "screenshot-stage-drag" : ""
         } ${magnifier ? "screenshot-stage-magnifying" : ""}`}

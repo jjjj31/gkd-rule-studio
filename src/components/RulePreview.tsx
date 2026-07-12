@@ -1,5 +1,6 @@
-import { Check, Copy, Download } from "lucide-react";
+/** 桌面版规则预览：显示选中候选的 JSON5 格式。 */
 import { useState } from "react";
+import { Check, Copy, Download } from "lucide-react";
 import type { ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type { SelectorCandidate } from "../types/ruleDraft";
 import {

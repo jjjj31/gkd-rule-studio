@@ -1,3 +1,10 @@
+/**
+ * 14 种 selector 策略的具体实现。
+ * 每个策略接收 GenerationContext 产出一个或多个 SelectorCandidate 种子。
+ * 核心策略包括：稳定资源、id/vid/text/desc 精准定位、上下文保护、广告容器兜底等。
+ * @see regionCandidates.ts 调用本模块的入口
+ * @see candidateGuidance.ts 为每个候选生成可读标签
+ */
 import {
   CONTEXT_HINT_WORDS,
   GENERIC_ACTION_TEXT,

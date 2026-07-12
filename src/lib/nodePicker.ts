@@ -1,3 +1,9 @@
+/**
+ * 根据屏幕坐标找到命中节点及其上下文（祖先/兄弟/邻近文本/可点祖先）。
+ * 这是"放大镜松手后选中目标"的核心函数。
+ * 返回值（NodePickResult）是后续候选生成（regionCandidates）的输入。
+ */
+
 import type {
   NodePickResult,
   NodePoint,
@@ -6,6 +12,12 @@ import type {
 } from "../types/gkdSnapshot";
 import { nodeArea } from "../types/gkdSnapshot";
 
+/**
+ * 从截图的屏幕坐标 → 找到命中的节点。
+ * 内部调用 findNodesByPoint 做三层过滤（子节点覆盖父节点、同级去重、面积排序）。
+ * 返回 null 表示该坐标没有可见节点。
+ * @see regionCandidates 后续用它生成候选
+ */
 export function pickNodeAtPoint(
   snapshot: ParsedGkdSnapshot,
   point: NodePoint,
@@ -31,6 +43,10 @@ export function pickNodeAtPoint(
   };
 }
 
+/**
+ * 从节点树的直接选中（不靠坐标），用在桌面版左侧节点树点选场景。
+ * 取节点的中心点作为坐标，其余逻辑同 pickNodeAtPoint。
+ */
 export function pickExistingNode(
   snapshot: ParsedGkdSnapshot,
   pickedNode: NormalizedSnapshotNode,
@@ -52,6 +68,7 @@ export function pickExistingNode(
   };
 }
 
+/** 沿 pid 向上找所有祖先节点，用于策略分析和选区框绘制。 */
 export function getAncestors(
   snapshot: ParsedGkdSnapshot,
   node: NormalizedSnapshotNode,
@@ -69,6 +86,7 @@ export function getAncestors(
   return ancestors;
 }
 
+/** 取同一父节点下的其他子节点（去掉自己），按 index 排序。 */
 export function getSiblings(
   snapshot: ParsedGkdSnapshot,
   node: NormalizedSnapshotNode,
@@ -85,6 +103,7 @@ export function getSiblings(
     .sort((a, b) => a.attr.index - b.attr.index);
 }
 
+/** 判断坐标是否在节点矩形范围内。 */
 export function containsPoint(
   node: NormalizedSnapshotNode,
   point: NodePoint,

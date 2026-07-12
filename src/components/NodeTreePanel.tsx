@@ -1,3 +1,4 @@
+/** 左侧节点树面板（桌面版）。以树形结构展示快照的所有节点，用户可点击节点直接选中（不靠坐标）。安卓版没有此面板。 */
 import { ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type {

@@ -1,3 +1,4 @@
+/** 评分用词表：高风险触发词（"升级"/"立即开通"/"抽奖"）、通用跳过词、正向 CTA 词、上下文提示词。被 riskScoring.ts 引用。 */
 export const GENERIC_ACTION_TEXT = [
   "关闭",
   "取消",

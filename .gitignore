@@ -15,3 +15,7 @@ android/app/src/main/assets
 tools/android-sdk
 tools/gradle
 tools/downloads
+tools/jdk21
+tools/jdk21.zip
+
+packaging/windows/runtime/node.exe

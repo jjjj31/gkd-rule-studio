@@ -6,7 +6,10 @@ import { normalizeSnapshot } from "./snapshotZip";
 import {
   createAndroidFlowSteps,
   createAndroidSingleRulePreview,
+  reassignAndroidFlowStepSnapshot,
+  resolveAndroidFlowCanvasSnapshots,
   resolveAndroidSnapshotOpenMode,
+  shouldShowSnapshotOpeningState,
 } from "./androidLiteFlow";
 import type {
   RawGkdSnapshot,
@@ -39,9 +42,77 @@ describe("android lite flow helpers", () => {
     const steps = createAndroidFlowSteps(snapshots);
 
     expect(steps).toHaveLength(2);
-    expect(steps.map((step) => step.title)).toEqual(["步骤 1", "步骤 2"]);
+    expect(steps.map((step) => step.title)).toEqual(["", ""]);
     expect(steps.map((step) => step.snapshot.id)).toEqual([10, 11]);
     expect(steps.every((step) => step.pickResult === null)).toBe(true);
+  });
+
+  it("reassigns a flow step to another snapshot and clears stale target data", () => {
+    const sourceSnapshot = buildSnapshot(10, "com.demo.MainActivity", "展开");
+    const targetSnapshot = buildSnapshot(11, "com.demo.PanelActivity", "关闭");
+    const pickResult = pickNodeAtPoint(sourceSnapshot, { x: 150, y: 340 });
+    expect(pickResult).not.toBeNull();
+    const candidates = generateSelectorCandidates({
+      snapshot: sourceSnapshot,
+      ruleSettings: {
+        ...DEFAULT_RULE_SETTINGS,
+        activityIds: sourceSnapshot.activityId,
+      },
+      pickedNode: pickResult!.pickedNode,
+      ancestors: pickResult!.ancestors,
+      siblings: pickResult!.siblings,
+      clickableAncestor: pickResult!.clickableAncestor,
+      nearbyTextNodes: pickResult!.nearbyTextNodes,
+    });
+    const steps = createAndroidFlowSteps([sourceSnapshot]);
+    const step = {
+      ...steps[0]!,
+      title: "关闭弹窗",
+      note: "第二步",
+      pickResult,
+      candidates,
+      selectedCandidate: candidates[0] ?? null,
+    };
+
+    const nextStep = reassignAndroidFlowStepSnapshot(step, targetSnapshot);
+
+    expect(nextStep).toMatchObject({
+      id: step.id,
+      title: "关闭弹窗",
+      note: "第二步",
+      snapshot: targetSnapshot,
+      pickResult: null,
+      candidates: [],
+      selectedCandidate: null,
+    });
+  });
+
+  it("uses selected snapshots for flow arrows and falls back to all available snapshots", () => {
+    const first = buildSnapshot(10, "com.demo.MainActivity", "展开");
+    const second = buildSnapshot(11, "com.demo.PanelActivity", "关闭");
+    const third = buildSnapshot(12, "com.demo.OtherActivity", "跳过");
+    const steps = createAndroidFlowSteps([first]);
+
+    expect(
+      resolveAndroidFlowCanvasSnapshots({
+        selectedSnapshots: [second, third],
+        availableSnapshots: [first, second, third],
+        steps,
+      }).map((item) => item.id),
+    ).toEqual([11, 12]);
+
+    expect(
+      resolveAndroidFlowCanvasSnapshots({
+        selectedSnapshots: [],
+        availableSnapshots: [first, second, third],
+        steps,
+      }).map((item) => item.id),
+    ).toEqual([10, 11, 12]);
+  });
+
+  it("keeps flow canvas navigation out of the global opening state", () => {
+    expect(shouldShowSnapshotOpeningState("snapshot-list")).toBe(true);
+    expect(shouldShowSnapshotOpeningState("flow-canvas")).toBe(false);
   });
 
   it("creates a copyable JSON5 rule preview from the selected Android candidate", () => {

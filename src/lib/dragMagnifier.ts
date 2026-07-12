@@ -1,3 +1,7 @@
+/** 放大镜拖动时的坐标换算纯函数。
+ * ScreenshotCanvas 使用它做：屏幕坐标 ↔ 图片坐标 ↔ 快照坐标的转换
+ * 以及放大镜内节点框的定位（computeMagnifiedNodeRect）。 */
+
 export interface DragLocalPoint {
   localX: number;
   localY: number;

@@ -1,3 +1,9 @@
+/**
+ * GKD 订阅导入模块。
+ * 管理"测试用的内存订阅"和"已导入 selector 的跟踪"。
+ * 与 deviceApi.updateSubscription / appendLocalRules 配合完成规则导入。
+ * 与 inlineRuleTesting 配合：后者构建活跃测试集，本模块输出 payload。
+ */
 import JSON5 from "json5";
 import type { AppRuleDraft, RuleDraft } from "../types/ruleDraft";
 
@@ -40,6 +46,7 @@ export interface AppIdentity {
   name: string;
 }
 
+/** 初始空测试订阅。每次新建状态时调用。 */
 export function createEmptyTestSubscription(): TestSubscriptionDraft {
   return {
     apps: [],
@@ -49,6 +56,10 @@ export function createEmptyTestSubscription(): TestSubscriptionDraft {
   };
 }
 
+/**
+ * 把一条 AppRuleDraft（单候选或 AI 候选产生的）添加到测试订阅里。
+ * 同一个 appId 会合并 group，同名 selector 不会重复追加。
+ */
 export function addAppDraftToTestSubscription(
   draft: TestSubscriptionDraft,
   appDraft: AppRuleDraft,
@@ -66,6 +77,7 @@ export function addAppDraftToTestSubscription(
   return next;
 }
 
+/** 把用户粘贴的 JSON5 字符串解析后导入测试订阅。外部 AI 返回的规则文本走这里。 */
 export function importJson5ToTestSubscription(
   draft: TestSubscriptionDraft,
   source: string,
@@ -80,6 +92,7 @@ export function importJson5ToTestSubscription(
   );
 }
 
+/** 输出完整的 GKD 兼容 HTTP 订阅 payload，用于 deviceApi.updateSubscription。 */
 export function exportRawSubscription(
   draft: TestSubscriptionDraft,
 ): RawSubscriptionDraft {
@@ -100,6 +113,7 @@ export function markTestSubscriptionImported(
     ...draft,
     dirty: false,
     lastImportedAt: importedAt,
+    lastImportedSummary: summarizeTestSubscription(draft),
   };
 }
 

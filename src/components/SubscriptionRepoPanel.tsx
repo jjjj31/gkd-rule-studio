@@ -1,3 +1,4 @@
+/** 桌面版订阅仓库面板：把规则写入本地 GKD 订阅仓库的文件系统。安卓版无此功能。 */
 import { Check, GitBranch, RotateCcw, UploadCloud } from "lucide-react";
 import { useState } from "react";
 import { CollapsiblePanel } from "./CollapsiblePanel";

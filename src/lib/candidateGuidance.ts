@@ -1,3 +1,4 @@
+/** 候选卡片的"小白话"引导标签：给排序和打分结果加一行可读建议（推荐/安全/谨慎/危险）。 */
 import type { SelectorCandidate } from "../types/ruleDraft";
 
 export type CandidateGuidanceTone = "recommend" | "safe" | "caution" | "danger";

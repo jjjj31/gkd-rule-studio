@@ -1,3 +1,9 @@
+/**
+ * 多步流程规则组装。
+ * 把多个 FlowRuleStep（每步有自己的快照、选点、候选）合成为一条大的 AppRuleDraft。
+ * 同时提供流程级别的 help prompt 构建。
+ * @see ruleDraft.ts 单步规则组装，本模块是多步版
+ */
 import type { NormalizedSnapshotNode } from "../types/gkdSnapshot";
 import JSON5 from "json5";
 import type { AppRuleDraft, RuleDraft } from "../types/ruleDraft";
@@ -7,6 +13,9 @@ interface BuildableFlowStep extends FlowRuleStep {
   selectedCandidate: NonNullable<FlowRuleStep["selectedCandidate"]>;
 }
 
+const MAX_STEP_TREE_LINES = 120;
+
+/** 多步 → 组装成大 AppRuleDraft，lint 后返回（可能部分步骤跳过）。无可用步骤时返回 null。 */
 export function createFlowAppRuleDraft(
   input: FlowDraftInput,
 ): AppRuleDraft | null {
@@ -35,6 +44,7 @@ export function createFlowAppRuleDraft(
   };
 }
 
+/** JSON5 序列化（用于复制和预览）。 */
 export function stringifyFlowRuleDraft(draft: AppRuleDraft): string {
   return JSON5.stringify(draft, null, 2);
 }
@@ -50,6 +60,8 @@ export function buildFlowHelpPrompt(input: FlowDraftInput): string {
     "重要限制：",
     "- 下面的本地 JSON5 草稿仅作为参考，可以直接修正，也可以在保留步骤意图的前提下重组 selector 和 action 参数。",
     "- 多步骤关系优先用 rules[].preKeys 表达，不要编造 workflow/state machine。",
+    "- 如果步骤之间的先后依赖、触发条件或场景不明确，先向用户追问；本地草稿默认按步骤顺序串联 preKeys，不代表唯一正确关系。",
+    "- 运行场景默认按整个流程统一处理；除非快照或用户备注明确说明不同步骤需要不同场景，否则不要为每步强行拆分场景。",
     "- 步骤备注和延迟说明只作为判断上下文，不要生成 GKD 不支持的字段。",
     "- 避免点击下载、安装、打开、查看详情、广告热区等危险 CTA。",
     "- 特别注意流氓广告/广告 SDK：资源名含 shade/mask/hotArea/click_area/ad_click/splash_click 的节点通常是遮罩或广告热区，即使同时含 skip/close 也不要当成首选点击目标；优先找真实跳过按钮/布局，例如 *_skip_ll、*_skip_btn、tv_ad_skip。",
@@ -105,7 +117,7 @@ function createFlowRule(
   return removeUndefined({
     ...step.selectedCandidate.rule,
     key,
-    name: stepRuleName(step),
+    name: stepRuleName(step, index),
     preKeys,
   });
 }
@@ -115,16 +127,17 @@ function flowGroupName(flowName: string): string {
   return name || "未命名流程";
 }
 
-function stepRuleName(step: FlowRuleStep): string {
-  const title = step.title.trim() || step.selectedCandidate?.rule.name || "未命名步骤";
+function stepRuleName(step: FlowRuleStep, index: number): string {
+  const title = step.title.trim() || `步骤 ${index + 1}`;
   return title;
 }
 
 function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
   const selectedCandidate = step.selectedCandidate;
   const pickResult = step.pickResult;
+  const stepTitle = step.title.trim() || `步骤 ${index + 1}`;
   const lines = [
-    `步骤 ${index + 1}：${step.title.trim() || "未命名步骤"}`,
+    `步骤 ${index + 1}：${stepTitle}`,
     `- note: ${step.note.trim() || "-"}`,
     `- delayNote: ${step.delayNote.trim() || "-"}`,
     `- appId: ${step.snapshot.appId}`,
@@ -161,7 +174,51 @@ function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
     );
   }
 
+  lines.push(
+    "- 当前步骤节点树摘要：",
+    ...formatStepTreeExcerpt(step).map((line) => `  ${line}`),
+  );
+
   return lines;
+}
+
+function formatStepTreeExcerpt(step: FlowRuleStep): string[] {
+  const pickedNode = step.pickResult?.pickedNode ?? null;
+  const nodes = step.snapshot.nodes;
+  const excerpt =
+    pickedNode === null
+      ? nodes.slice(0, MAX_STEP_TREE_LINES)
+      : selectTargetRelatedNodes(step, pickedNode).slice(0, MAX_STEP_TREE_LINES);
+  const lines = excerpt.map((node) => formatNodeLine(node));
+  if (excerpt.length < nodes.length) {
+    lines.push(`... 已省略 ${nodes.length - excerpt.length} 个节点`);
+  }
+  return lines;
+}
+
+function selectTargetRelatedNodes(
+  step: FlowRuleStep,
+  pickedNode: NormalizedSnapshotNode,
+): NormalizedSnapshotNode[] {
+  const keep = new Set<number>();
+  const add = (node: NormalizedSnapshotNode | undefined) => {
+    if (node) keep.add(node.id);
+  };
+
+  add(pickedNode);
+  let current: NormalizedSnapshotNode | undefined = pickedNode;
+  while (current && current.pid >= 0) {
+    current = step.snapshot.nodeById.get(current.pid);
+    add(current);
+  }
+
+  for (const node of step.snapshot.nodes) {
+    if (node.pid === pickedNode.pid || keep.has(node.pid)) {
+      keep.add(node.id);
+    }
+  }
+
+  return step.snapshot.nodes.filter((node) => keep.has(node.id));
 }
 
 function formatActionPlan(candidate: BuildableFlowStep["selectedCandidate"]): string {
@@ -192,6 +249,25 @@ function formatNodeDetail(node: NormalizedSnapshotNode): string {
     visibleToUser: node.attr.visibleToUser,
     bounds: [node.attr.left, node.attr.top, node.attr.right, node.attr.bottom],
   });
+}
+
+function formatNodeLine(node: NormalizedSnapshotNode): string {
+  const parts = [
+    `#${node.id}`,
+    shortName(node.attr.name),
+    node.attr.clickable ? "clickable" : "",
+    node.attr.visibleToUser ? "" : "hidden",
+    node.attr.text ? `text=${JSON.stringify(node.attr.text)}` : "",
+    node.attr.desc ? `desc=${JSON.stringify(node.attr.desc)}` : "",
+    node.attr.vid ? `vid=${JSON.stringify(node.attr.vid)}` : "",
+    node.attr.id ? `id=${JSON.stringify(node.attr.id)}` : "",
+    `bounds=[${node.attr.left},${node.attr.top},${node.attr.right},${node.attr.bottom}]`,
+  ].filter(Boolean);
+  return `${"  ".repeat(Math.min(node.attr.depth, 12))}${parts.join(" ")}`;
+}
+
+function shortName(name: string): string {
+  return name.split(".").pop() ?? name;
 }
 
 function removeUndefined<T extends Record<string, unknown>>(value: T): T {

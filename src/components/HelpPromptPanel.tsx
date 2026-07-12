@@ -1,5 +1,6 @@
-import { Check, ClipboardCopy } from "lucide-react";
+/** 桌面版"外部 AI Prompt"面板：复制求助 prompt、粘贴 AI 回复提取。安卓版同功能在 AndroidLiteApp 的 AndroidPromptPanel。 */
 import { useMemo, useState } from "react";
+import { Check, ClipboardCopy } from "lucide-react";
 import { buildHelpPrompt } from "../lib/helpPrompt";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import type { NodePickResult, ParsedGkdSnapshot } from "../types/gkdSnapshot";
