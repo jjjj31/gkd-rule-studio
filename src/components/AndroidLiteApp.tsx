@@ -302,11 +302,9 @@ export function AndroidLiteApp() {
     return buildHelpPrompt({
       snapshot,
       pickResult,
-      candidates,
-      selectedCandidate,
       ruleSettings,
     });
-  }, [snapshot, pickResult, candidates, selectedCandidate, ruleSettings]);
+  }, [snapshot, pickResult, ruleSettings]);
   const activeFlowStep =
     flowSteps.find((step) => step.id === activeFlowStepId) ?? null;
   const selectedSnapshotList = useMemo(
@@ -619,15 +617,15 @@ export function AndroidLiteApp() {
     if (!snapshot) return;
     const nextPick = pickNodeAtPoint(snapshot, point);
     setPickResult(nextPick);
-    setSelectedCandidateId(null);
-    setSnapshotMemory((current) => ({
-      ...current,
-      [String(snapshot.id)]: {
-        point,
-        selectedCandidateId: null,
-      },
-    }));
     if (!nextPick) {
+      setSelectedCandidateId(null);
+      setSnapshotMemory((current) => ({
+        ...current,
+        [String(snapshot.id)]: {
+          point,
+          selectedCandidateId: null,
+        },
+      }));
       setMessage("点击位置没有可见节点");
       debugLog("pick", "tap:miss", `point=(${point.x},${point.y}) snapshot=${snapshot.id}`, {
         point,
@@ -648,7 +646,19 @@ export function AndroidLiteApp() {
       clickableAncestor: nextPick.clickableAncestor?.id,
     });
     const nextCandidates = buildCandidates(snapshot, ruleSettings, nextPick);
-    const nextSelectedCandidate = nextCandidates[0] ?? null;
+    // 保留用户之前手动选的卡：在同一组候选中按 matches 匹配，不过度覆盖用户的意图
+    const previousSelected = candidates.find(
+      (c) => c.id === selectedCandidateId,
+    );
+    const previousMatchesKey =
+      previousSelected?.rule.matches.join(" && ") ?? null;
+    let nextSelectedCandidate = nextCandidates[0] ?? null;
+    if (previousMatchesKey) {
+      const kept = nextCandidates.find(
+        (c) => c.rule.matches.join(" && ") === previousMatchesKey,
+      );
+      if (kept) nextSelectedCandidate = kept;
+    }
     setSelectedCandidateId(nextSelectedCandidate?.id ?? null);
     setSnapshotMemory((current) => ({
       ...current,
@@ -687,7 +697,18 @@ export function AndroidLiteApp() {
     if (nextSettings) setRuleSettings(nextSettings);
     if (nextSettings && snapshot && pickResult) {
       const nextCandidates = buildCandidates(snapshot, nextSettings, pickResult);
-      const nextSelectedCandidate = nextCandidates[0] ?? null;
+      const previousSelected = candidates.find(
+        (c) => c.id === selectedCandidateId,
+      );
+      const previousMatchesKey =
+        previousSelected?.rule.matches.join(" && ") ?? null;
+      let nextSelectedCandidate = nextCandidates[0] ?? null;
+      if (previousMatchesKey) {
+        const kept = nextCandidates.find(
+          (c) => c.rule.matches.join(" && ") === previousMatchesKey,
+        );
+        if (kept) nextSelectedCandidate = kept;
+      }
       setSelectedCandidateId(nextSelectedCandidate?.id ?? null);
       syncActiveFlowStep({
         candidates: nextCandidates,
@@ -705,8 +726,6 @@ export function AndroidLiteApp() {
     const prompt = buildHelpPrompt({
       snapshot,
       pickResult,
-      candidates,
-      selectedCandidate,
       ruleSettings,
     });
     await copyTextToClipboard(prompt);

@@ -28,8 +28,10 @@ export function scoreCandidate(input: {
   rule: RuleDraft;
   validation: SelectorValidation;
   allowNoActivityIds?: boolean;
+  pickedNode: NormalizedSnapshotNode;
 }): RiskBreakdown {
-  const { baseScore, snapshot, plan, rule, validation, allowNoActivityIds } = input;
+  const { baseScore, snapshot, plan, rule, validation, allowNoActivityIds, pickedNode } =
+    input;
   const items: RiskItem[] = [
     {
       label: "基础策略",
@@ -40,6 +42,7 @@ export function scoreCandidate(input: {
 
   const target = validation.clickNodes[0] ?? null;
   addHitCountScore(items, validation.hitCount);
+  addProximityScore(items, snapshot, pickedNode, validation);
   addActivityScore(items, rule.activityIds, Boolean(allowNoActivityIds));
   addBoundsScore(items, snapshot, target);
   addClickableScore(items, target);
@@ -96,6 +99,95 @@ function addHitCountScore(items: RiskItem[], hitCount: number): void {
     value: -12 * (hitCount - 1),
     reason: `当前快照命中 ${hitCount} 个点击目标`,
   });
+}
+
+/**
+ * 空间邻近性打分：让规则命中的绿框（validation.clickNodes）落在用户选点蓝框附近。
+ * - 任意 clickNode 与 pickedNode 的 bbox 重叠/包含 → +6（命中靠近选点）
+ * - 最近 clickNode 中心到 pickedNode 中心距离 > 0.25 屏幕对角线 → −40（命中远离选点）
+ *   远处命中若 pickedNode 与最近 clickNode 共享广告祖先，降为 −10（点容器而真按钮在内部属合法）
+ *
+ * Why: 之前的打分只看属性唯一性（唯一命中 +18），不看命中节点位置，导致「命中屏幕另一角落的唯一按钮」
+ * 压过「命中用户点选的按钮」排到第一，绿框跑到远处。
+ */
+function addProximityScore(
+  items: RiskItem[],
+  snapshot: ParsedGkdSnapshot,
+  pickedNode: NormalizedSnapshotNode,
+  validation: SelectorValidation,
+): void {
+  if (validation.clickNodes.length === 0) return;
+
+  const near = validation.clickNodes.some(
+    (node) =>
+      boundsOverlap(node, pickedNode) ||
+      containsRect(node, pickedNode) ||
+      containsRect(pickedNode, node),
+  );
+  if (near) {
+    items.push({
+      label: "命中靠近选点",
+      value: 6,
+      reason: "规则命中节点与用户点击区域位置重合或相邻",
+    });
+    return;
+  }
+
+  const diag = screenDiagonal(snapshot);
+  if (diag <= 0) return;
+
+  let bestDist = Infinity;
+  let bestNode: NormalizedSnapshotNode | null = null;
+  const pickedCenter = rectCenter(pickedNode);
+  for (const node of validation.clickNodes) {
+    const c = rectCenter(node);
+    const d = Math.hypot(c.x - pickedCenter.x, c.y - pickedCenter.y) / diag;
+    if (d < bestDist) {
+      bestDist = d;
+      bestNode = node;
+    }
+  }
+
+  if (bestNode && bestDist > 0.25) {
+    const sharedAd = hasAdAncestor(snapshot, pickedNode) &&
+      (hasAdAncestor(snapshot, bestNode) || isAdLikeNode(bestNode));
+    items.push({
+      label: sharedAd ? "命中偏离选点(广告)" : "命中远离选点",
+      value: sharedAd ? -10 : -40,
+      reason: sharedAd
+        ? "命中节点偏离选点，但与选点同属广告容器，保留为低优先候补"
+        : "规则命中节点远离用户点击区域，可能在屏幕其它位置误触",
+    });
+  }
+}
+
+function boundsOverlap(a: NormalizedSnapshotNode, b: NormalizedSnapshotNode): boolean {
+  return (
+    a.attr.left < b.attr.right &&
+    a.attr.right > b.attr.left &&
+    a.attr.top < b.attr.bottom &&
+    a.attr.bottom > b.attr.top
+  );
+}
+
+function containsRect(outer: NormalizedSnapshotNode, inner: NormalizedSnapshotNode): boolean {
+  return (
+    outer.attr.left <= inner.attr.left &&
+    outer.attr.right >= inner.attr.right &&
+    outer.attr.top <= inner.attr.top &&
+    outer.attr.bottom >= inner.attr.bottom
+  );
+}
+
+function rectCenter(node: NormalizedSnapshotNode): { x: number; y: number } {
+  return {
+    x: (node.attr.left + node.attr.right) / 2,
+    y: (node.attr.top + node.attr.bottom) / 2,
+  };
+}
+
+function screenDiagonal(snapshot: ParsedGkdSnapshot): number {
+  return Math.hypot(snapshot.screenWidth, snapshot.screenHeight);
 }
 
 function addActivityScore(

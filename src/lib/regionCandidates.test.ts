@@ -133,6 +133,79 @@ describe("same-region selector candidates", () => {
       ),
     ).toBe(true);
   });
+
+  it("scores a candidate near the user's tap above a far-away stable-vid button", () => {
+    // 屏幕左上角有个稳定 vid 跳过按钮，屏幕中部右侧是用户真正点中的普通按钮。
+    // 修复前：到处扫 stableResourceSemantic 会把远处跳过按钮产成高 baseScore 候选，
+    // 又因「唯一命中 +18」而压过真正命中的候选 → 绿框跑到左上角。
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 3 })),
+      node(
+        1,
+        0,
+        attr({
+          id: "com.demo:id/splash_skip_ll",
+          vid: "splash_skip_ll",
+          name: "android.widget.ImageView",
+          text: "跳过",
+          clickable: true,
+          left: 40,
+          top: 40,
+          right: 140,
+          bottom: 100,
+          width: 100,
+          height: 60,
+          index: 0,
+        }),
+      ),
+      node(
+        2,
+        0,
+        attr({
+          id: "com.demo:id/apply",
+          vid: "apply",
+          name: "android.widget.Button",
+          text: "应用",
+          clickable: true,
+          left: 800,
+          top: 800,
+          right: 980,
+          bottom: 880,
+          width: 180,
+          height: 80,
+          index: 1,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 890, y: 840 });
+    expect(pick?.pickedNode.id).toBe(2);
+
+    const candidates = generateRegionSelectorCandidates({
+      snapshot,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickResult: pick!,
+    });
+
+    // 第一条候选（最高分）的命中节点必须落在用户点选的「应用」按钮上/附近，
+    // 不能是屏幕左上角那个远离选点的 splash_skip_ll。
+    const top = candidates[0];
+    expect(top.validation.clickNodes.length).toBeGreaterThan(0);
+    const topHit = top.validation.clickNodes[0];
+    // 命中节点中心必须在右半屏（用户点的区域），不在左上角（x<200,y<150）
+    const centerX = (topHit.attr.left + topHit.attr.right) / 2;
+    const centerY = (topHit.attr.top + topHit.attr.bottom) / 2;
+    expect(centerX).toBeGreaterThan(400);
+    expect(centerY).toBeGreaterThan(400);
+
+    // 而且远处那个 splash_skip_ll 候选即使存在，分数也应明显低于近处候选：
+    // proximity −40 把它压到排序底部，再也排不到第一。
+    if (candidates.length > 1) {
+      expect(top.risk.finalScore).toBeGreaterThanOrEqual(
+        candidates[candidates.length - 1].risk.finalScore,
+      );
+    }
+  });
 });
 
 function buildSnapshot(nodes: SnapshotNode[]) {

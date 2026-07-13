@@ -50,27 +50,24 @@ export function stringifyFlowRuleDraft(draft: AppRuleDraft): string {
 }
 
 export function buildFlowHelpPrompt(input: FlowDraftInput): string {
-  const draft = createFlowAppRuleDraft(input);
   const flowName = input.flowName.trim() || "未命名流程";
   const appIds = Array.from(new Set(input.steps.map((step) => step.snapshot.appId)));
   const lines = [
     "你是 GKD 规则专家。请根据下面的多快照流程信息生成完整的多步骤 GKD 规则。",
-    "这是一份求助 prompt：用户已经在本地选好了多个快照、步骤顺序、目标节点和候选 selector，你需要把这些信息合成为可用规则。",
+    "这是一份求助 prompt：用户已经在本地选好了多个快照、步骤顺序和目标节点，你需要把这些信息合成为可用规则。",
     "",
     "重要限制：",
-    "- 下面的本地 JSON5 草稿仅作为参考，可以直接修正，也可以在保留步骤意图的前提下重组 selector 和 action 参数。",
     "- 多步骤关系优先用 rules[].preKeys 表达，不要编造 workflow/state machine。",
-    "- 如果步骤之间的先后依赖、触发条件或场景不明确，先向用户追问；本地草稿默认按步骤顺序串联 preKeys，不代表唯一正确关系。",
+    "- 如果步骤之间的先后依赖、触发条件或场景不明确，先向用户追问；默认按步骤顺序串联 preKeys，不代表唯一正确关系。",
     "- 运行场景默认按整个流程统一处理；除非快照或用户备注明确说明不同步骤需要不同场景，否则不要为每步强行拆分场景。",
     "- 步骤备注和延迟说明只作为判断上下文，不要生成 GKD 不支持的字段。",
     "- 避免点击下载、安装、打开、查看详情、广告热区等危险 CTA。",
     "- 特别注意流氓广告/广告 SDK：资源名含 shade/mask/hotArea/click_area/ad_click/splash_click 的节点通常是遮罩或广告热区，即使同时含 skip/close 也不要当成首选点击目标；优先找真实跳过按钮/布局，例如 *_skip_ll、*_skip_btn、tv_ad_skip。",
-    "- 用户点击只是手指常点的大概区域，不是精确指定某一个无障碍节点；同一可视区域可能有多个节点、父子层、遮罩层和真实按钮层。不要把当前 pickedNode 当成唯一正确目标，必须结合每一步的候选 selector、同框节点提示、bounds、clickable、id/vid/text、父子关系判断哪个节点最像真实点击目标。",
+    "- 用户点击只是手指常点的大概区域，不是精确指定某一个无障碍节点；同一可视区域可能有多个节点、父子层、遮罩层和真实按钮层。不要把当前 pickedNode 当成唯一正确目标，必须结合每一步的节点树、bounds、clickable、id/vid/text、父子关系判断哪个节点最像真实点击目标。",
     "",
     "输出格式：",
     "1. 第一部分一次性给出 2-4 个测试版规则方案，按“测试版 A / 测试版 B / 测试版 C”命名，每个测试版各自放在独立 JSON5 代码块中。",
-    "2. 测试版应覆盖不同思路：本地草稿保守版、selector 兜底版、action 参数加强版、preKeys/步骤依赖调整版。不要只给一个看似最终的答案。",
-    "   如果某一步候选列表里有“同框节点”或相近 bounds 的候选，请至少给一个测试版验证同框候选，避免用户箭头落到垃圾节点而错过真实按钮。",
+    "2. 测试版应覆盖不同思路：稳定 id/vid、真实跳过布局、WebView/广告容器兜底、不同 actionDelay/actionMaximum/actionCd 与 preKeys 组合。不要只给一个看似最终的答案。",
     "3. 每个测试版后用 1-2 句说明它要验证什么、可能失败在哪里、是否有误触风险。",
     "4. 最后输出“测试反馈格式”，要求用户逐个反馈：测试版编号、每一步是否有触发记录、是否进入下一步/关闭目标、是否误触打开广告、失败停在哪个 Activity、是否需要延迟/重试。",
     "5. 用户试成功后会自己保留成功版本；没成功会带测试结果继续反馈。",
@@ -86,13 +83,6 @@ export function buildFlowHelpPrompt(input: FlowDraftInput): string {
   input.steps.forEach((step, index) => {
     lines.push(...formatStepForPrompt(step, index), "");
   });
-
-  lines.push(
-    "本地生成的 JSON5 草稿仅作为参考：",
-    "```json5",
-    draft ? stringifyFlowRuleDraft(draft) : "null",
-    "```",
-  );
 
   return lines.join("\n");
 }
@@ -133,7 +123,6 @@ function stepRuleName(step: FlowRuleStep, index: number): string {
 }
 
 function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
-  const selectedCandidate = step.selectedCandidate;
   const pickResult = step.pickResult;
   const stepTitle = step.title.trim() || `步骤 ${index + 1}`;
   const lines = [
@@ -150,28 +139,6 @@ function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
     lines.push("- 用户点击目标节点：", formatNodeDetail(pickResult.pickedNode));
   } else {
     lines.push("- 用户点击目标节点：未选择");
-  }
-
-  if (selectedCandidate) {
-    lines.push(
-      "- 当前步骤推荐候选：",
-      `  - strategy: ${selectedCandidate.strategyName}`,
-      `  - score: ${selectedCandidate.risk.finalScore}`,
-      `  - hitCount: ${selectedCandidate.validation.hitCount}`,
-      `  - matches: ${selectedCandidate.rule.matches.join(" && ")}`,
-      `  - actionPlan: ${formatActionPlan(selectedCandidate)}`,
-    );
-  } else {
-    lines.push("- 当前步骤推荐候选：未选择");
-  }
-
-  if (step.candidates.length) {
-    lines.push(
-      "- 当前步骤候选 selector：",
-      ...step.candidates.slice(0, 5).map((candidate) => {
-        return `  - ${candidate.strategyName} / score ${candidate.risk.finalScore} / hit ${candidate.validation.hitCount}: ${candidate.rule.matches.join(" && ")}`;
-      }),
-    );
   }
 
   lines.push(
@@ -219,21 +186,6 @@ function selectTargetRelatedNodes(
   }
 
   return step.snapshot.nodes.filter((node) => keep.has(node.id));
-}
-
-function formatActionPlan(candidate: BuildableFlowStep["selectedCandidate"]): string {
-  const plan = candidate.actionPlan;
-  return JSON.stringify({
-    activityIds: plan.activityIds,
-    action: plan.action,
-    actionDelay: plan.actionDelay,
-    matchTime: plan.matchTime,
-    actionMaximum: plan.actionMaximum,
-    actionCd: plan.actionCd,
-    forcedTime: plan.forcedTime,
-    matchRoot: plan.matchRoot,
-    resetMatch: plan.resetMatch,
-  });
 }
 
 function formatNodeDetail(node: NormalizedSnapshotNode): string {

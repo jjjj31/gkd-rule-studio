@@ -4,21 +4,17 @@ import { Check, ClipboardCopy } from "lucide-react";
 import { buildHelpPrompt } from "../lib/helpPrompt";
 import { CollapsiblePanel } from "./CollapsiblePanel";
 import type { NodePickResult, ParsedGkdSnapshot } from "../types/gkdSnapshot";
-import type { RuleSettings, SelectorCandidate } from "../types/ruleDraft";
+import type { RuleSettings } from "../types/ruleDraft";
 
 interface HelpPromptPanelProps {
   snapshot: ParsedGkdSnapshot | null;
   pickResult: NodePickResult | null;
-  candidates: SelectorCandidate[];
-  selectedCandidate: SelectorCandidate | null;
   ruleSettings: RuleSettings;
 }
 
 export function HelpPromptPanel({
   snapshot,
   pickResult,
-  candidates,
-  selectedCandidate,
   ruleSettings,
 }: HelpPromptPanelProps) {
   const [copied, setCopied] = useState(false);
@@ -26,11 +22,9 @@ export function HelpPromptPanel({
     return buildHelpPrompt({
       snapshot,
       pickResult,
-      candidates,
-      selectedCandidate,
       ruleSettings,
     });
-  }, [snapshot, pickResult, candidates, selectedCandidate, ruleSettings]);
+  }, [snapshot, pickResult, ruleSettings]);
 
   async function copyPrompt(): Promise<void> {
     await navigator.clipboard.writeText(prompt);
@@ -55,7 +49,7 @@ export function HelpPromptPanel({
       title="AI 求助"
     >
       <p className="preview-note">
-        复制后可发给 AI，让它基于当前快照、目标节点、候选 selector 和运行参数生成规则。
+        复制后可发给 AI，让它基于当前快照、目标节点和运行参数生成规则。
       </p>
     </CollapsiblePanel>
   );

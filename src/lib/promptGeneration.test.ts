@@ -5,7 +5,6 @@ import {
 } from "./customScenario";
 import { buildHelpPrompt } from "./helpPrompt";
 import { pickNodeAtPoint } from "./nodePicker";
-import { generateSelectorCandidates } from "./selectorStrategies";
 import { normalizeSnapshot } from "./snapshotZip";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import type {
@@ -52,35 +51,23 @@ describe("prompt generation", () => {
     });
   });
 
-  it("includes the current JSON5 draft and strict output contract in the final help prompt", () => {
+  it("keeps node context and strict output contract in the final help prompt, without leaking tool candidates", () => {
     const snapshot = buildSnapshot("com.demo.MainActivity");
     const pick = pickNodeAtPoint(snapshot, { x: 150, y: 340 });
     expect(pick).not.toBeNull();
 
-    const candidates = generateSelectorCandidates({
-      snapshot,
-      ruleSettings: DEFAULT_RULE_SETTINGS,
-      pickedNode: pick!.pickedNode,
-      ancestors: pick!.ancestors,
-      siblings: pick!.siblings,
-      clickableAncestor: pick!.clickableAncestor,
-      nearbyTextNodes: pick!.nearbyTextNodes,
-    });
-
     const prompt = buildHelpPrompt({
       snapshot,
       pickResult: pick,
-      candidates,
-      selectedCandidate: candidates[0],
       ruleSettings: DEFAULT_RULE_SETTINGS,
     });
 
-    expect(prompt).toContain("当前 JSON5 草稿");
-    expect(prompt).toContain("不要从零重写");
+    // 不应再注入工具自己的候选 selector / JSON5 草稿——AI 要独立判断
+    expect(prompt).not.toContain("当前 JSON5 草稿");
+    expect(prompt).not.toContain("当前工具推荐候选");
+    expect(prompt).not.toContain("候选 selector 列表");
+
     expect(prompt).toContain("输出格式");
-    expect(prompt).toContain("```json5");
-    expect(prompt).toContain("groups:");
-    expect(prompt).toContain("rules:");
     expect(prompt).toContain("流氓广告");
     expect(prompt).toContain("shade/mask/hotArea/click_area");
     expect(prompt).toContain("一次性给出 2-4 个测试版");

@@ -8,21 +8,17 @@ import type {
   NormalizedSnapshotNode,
   ParsedGkdSnapshot,
 } from "../types/gkdSnapshot";
-import type { RuleSettings, SelectorCandidate } from "../types/ruleDraft";
-import { createAppRuleDraft, stringifyRuleDraft } from "./ruleDraft";
+import type { RuleSettings } from "../types/ruleDraft";
 
 interface PromptInput {
   snapshot: ParsedGkdSnapshot | null;
   pickResult: NodePickResult | null;
-  candidates: SelectorCandidate[];
-  selectedCandidate: SelectorCandidate | null;
   ruleSettings: RuleSettings;
 }
 
 /** 单步求助 prompt 入口：快照+选点+候选+设置 → 格式化文字。包装了场景、节点树、现有候选和兜底策略。 */
 export function buildHelpPrompt(input: PromptInput): string {
-  const { snapshot, pickResult, candidates, selectedCandidate, ruleSettings } =
-    input;
+  const { snapshot, pickResult, ruleSettings } = input;
 
   if (!snapshot) {
     return "请先导入或连接设备加载一个 GKD 快照。";
@@ -32,10 +28,8 @@ export function buildHelpPrompt(input: PromptInput): string {
     "你是 GKD 规则专家。请根据下面的快照信息，为我生成稳定、低误触、尽量省电的 GKD 应用规则 JSON5。",
     "",
     "重要原则：",
-    "- 下面如果提供了“当前 JSON5 草稿”，请优先审查并修正该草稿，不要从零重写。",
-    "- 只有当草稿 selector、activityIds 或 action plan 明显错误时，才替换对应字段，并说明原因。",
+    "- 不要把当前 pickedNode 当成唯一正确目标。用户点击只是手指常点的大概区域，同一可视区域可能有多个节点、父子层、遮罩层和真实按钮层，必须结合节点树、bounds、clickable、id/vid/text、父子关系判断哪个节点最像真实点击目标。",
     "- 不要因为单次 exact text 命中就忽略倒计时、WebView 遮挡、广告热区和 action 执行策略。",
-    "- 用户点击只是手指常点的大概区域，不是精确指定某一个无障碍节点；同一可视区域可能有多个节点、父子层、遮罩层和真实按钮层。不要把当前 pickedNode 当成唯一正确目标，必须结合候选 selector 列表、同框节点提示、bounds、clickable、id/vid/text、父子关系判断哪个节点最像真实点击目标。",
     "",
     "要求：",
     "- 优先使用短、准、唯一命中的 selector。",
@@ -93,61 +87,12 @@ export function buildHelpPrompt(input: PromptInput): string {
     lines.push("用户尚未选择目标节点。请先提示用户点击截图上的目标按钮。", "");
   }
 
-  if (selectedCandidate) {
-    lines.push(
-      "当前工具推荐候选：",
-      `- strategy: ${selectedCandidate.strategyName}`,
-      `- score: ${selectedCandidate.risk.finalScore}`,
-      `- matches: ${selectedCandidate.rule.matches.join(" && ")}`,
-      `- hitCount: ${selectedCandidate.validation.hitCount}`,
-      `- actionPlan: ${formatActionPlan(selectedCandidate)}`,
-      `- riskNotes: ${selectedCandidate.riskNotes.join("；") || "-"}`,
-      `- debugAdvice: ${selectedCandidate.debugAdvice.join("；") || "-"}`,
-      "",
-    );
-  }
-
-  if (candidates.length) {
-    lines.push(
-      "候选 selector 列表：",
-      ...candidates.slice(0, 6).map((candidate) => {
-        return `- ${candidate.strategyName} / score ${candidate.risk.finalScore} / hit ${candidate.validation.hitCount}: ${candidate.rule.matches.join(" && ")}`;
-      }),
-      "",
-    );
-  }
-
-  if (selectedCandidate) {
-    lines.push(
-      "当前 JSON5 草稿（优先在此基础上修正，不要从零重写）：",
-      "```json5",
-      stringifyRuleDraft(createAppRuleDraft(snapshot, selectedCandidate, candidates)),
-      "```",
-      "",
-    );
-  }
-
   lines.push(
     "节点树摘要：",
     ...formatTreeExcerpt(snapshot, pickResult?.pickedNode ?? null),
   );
 
   return lines.join("\n");
-}
-
-function formatActionPlan(candidate: SelectorCandidate): string {
-  const plan = candidate.actionPlan;
-  return JSON.stringify({
-    activityIds: plan.activityIds,
-    action: plan.action,
-    actionDelay: plan.actionDelay,
-    matchTime: plan.matchTime,
-    actionMaximum: plan.actionMaximum,
-    actionCd: plan.actionCd,
-    forcedTime: plan.forcedTime,
-    matchRoot: plan.matchRoot,
-    resetMatch: plan.resetMatch,
-  });
 }
 
 function formatTreeExcerpt(

@@ -145,11 +145,9 @@ function DesktopApp() {
     return buildHelpPrompt({
       snapshot,
       pickResult,
-      candidates,
-      selectedCandidate,
       ruleSettings,
     });
-  }, [snapshot, pickResult, candidates, selectedCandidate, ruleSettings]);
+  }, [snapshot, pickResult, ruleSettings]);
   const flowAiPrompt = useMemo(() => {
     return buildFlowHelpPrompt({ flowName, flowDesc, steps: flowSteps });
   }, [flowName, flowDesc, flowSteps]);
@@ -632,10 +630,8 @@ function DesktopApp() {
                     onChange={setTestSubscription}
                   />
                   <HelpPromptPanel
-                    candidates={candidates}
                     pickResult={pickResult}
                     ruleSettings={ruleSettings}
-                    selectedCandidate={selectedCandidate}
                     snapshot={snapshot}
                   />
                 </>

@@ -82,7 +82,9 @@ describe("flow draft generation", () => {
     expect(prompt).toContain("步骤 1：点展开");
     expect(prompt).toContain("步骤 2：点关闭");
     expect(prompt).toContain("com.demo.PanelActivity");
-    expect(prompt).toContain("本地生成的 JSON5 草稿仅作为参考");
+    expect(prompt).not.toContain("本地生成的 JSON5 草稿仅作为参考");
+    expect(prompt).not.toContain("当前步骤推荐候选");
+    expect(prompt).not.toContain("当前步骤候选 selector");
     expect(prompt).toContain("流氓广告");
     expect(prompt).toContain("shade/mask/hotArea/click_area");
     expect(prompt).toContain("一次性给出 2-4 个测试版");
