@@ -901,7 +901,7 @@ svg {
 
 .screenshot-stage-drag {
   cursor: grab;
-  touch-action: pan-x;
+  touch-action: none;
 }
 
 .screenshot-stage-drag:active {
@@ -3470,6 +3470,18 @@ svg {
 .android-candidate-active {
   border-color: rgba(73, 160, 120, 0.52);
   background: rgba(32, 92, 68, 0.22);
+}
+
+.android-candidate-compact {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.android-candidate-compact .android-candidate-strategy {
+  color: #f2f6fb;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .android-candidate-heading {

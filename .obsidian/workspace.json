@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "架构说明.md",
+                "file": "CLAUDE.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "架构说明"
+              "title": "CLAUDE"
             }
           }
         ]
@@ -182,17 +182,18 @@
   },
   "active": "b298ef9cc9cbdef6",
   "lastOpenFiles": [
-    "src/components/RulePreview.tsx.tmp.28616.ee8a2de94d59",
-    "src/components/HelpPromptPanel.tsx.tmp.28616.910709dbbae6",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.47ec4c63a1b8",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.7f51b1f5d4a1",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.68930126ff04",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.5cec1eb3f936",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.6c4b91fdc7df",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.e4988e4b3f3a",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.925e8c8edb70",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.7aa80d6f31a5",
-    "src/components/AndroidLiteApp.tsx.tmp.28616.a7662961a67d",
+    "src/styles.css.tmp.28616.3cffa2f098a2",
+    "src/components/AndroidLiteApp.tsx.tmp.28616.471472467a9f",
+    "src/components/AndroidLiteApp.tsx.tmp.28616.bf13fd4ad5aa",
+    "src/styles.css.tmp.28616.ab10b3acb010",
+    "src/components/AndroidLiteApp.tsx.tmp.28616.a1071d1121df",
+    "src/components/AndroidLiteApp.tsx.tmp.28616.09b40b76fa9c",
+    "src/components/AndroidLiteApp.tsx.tmp.28616.623dbebcab03",
+    "src/components/AndroidLiteApp.tsx.tmp.28616.d489d3f9df20",
+    "src/App.tsx.tmp.28616.e9f2548f1083",
+    "src/components/AndroidLiteApp.tsx.tmp.28616.a45f916d88ca",
+    "架构说明.md",
+    "release/current/GKD-Rule-Studio-Portable-0.1.0.zip",
     "CLAUDE.md"
   ]
 }

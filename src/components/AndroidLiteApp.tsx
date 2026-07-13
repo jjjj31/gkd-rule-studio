@@ -2180,7 +2180,11 @@ function loadInlineTestingState(): InlineRuleTestingState {
       version: 1,
       items: parsed.items as InlineRuleTestItem[],
       aiSessions: Array.isArray(parsed.aiSessions)
-        ? (parsed.aiSessions as InlineAiSession[])
+        ? (parsed.aiSessions as InlineAiSession[]).map((session) =>
+            session.source === undefined && session.title?.startsWith("外部 AI /")
+              ? { ...session, source: "external" as const }
+              : session,
+          )
         : [],
       updatedAt: parsed.updatedAt,
     });
@@ -2599,7 +2603,14 @@ const FlowStepChipContent = forwardRef<
         {index + 1}
       </strong>
       <span>{flowStepDisplayTitle(step, index)}</span>
-      {step.selectedCandidate && <em>{step.selectedCandidate.risk.finalScore}</em>}
+      {step.selectedCandidate ? (
+        <>
+          <span className="status-badge success">已选</span>
+          <em>{step.selectedCandidate.risk.finalScore}</em>
+        </>
+      ) : (
+        <span className="status-badge muted">待选</span>
+      )}
     </button>
   );
 });
@@ -3999,56 +4010,63 @@ function CandidateSummary({
               onSelect(candidate);
             }}
           >
-            <span className={`candidate-guidance ${guidance.tone}`}>
-              <strong>{guidance.label}</strong>
-              <span>{guidance.reason}</span>
-            </span>
-            {imported && <span className="candidate-imported-badge">导入过</span>}
-            <span className="android-candidate-heading">
-              <span className="candidate-index-badge">#{displayIndex}</span>
-              <span className={`status-badge ${candidate.risk.level}`}>
-                {riskLabel(candidate.risk.level)}
+            <div className="android-candidate-compact">
+              <span className="android-candidate-strategy">
+                {humanStrategyTitle(candidate.strategyName)}
               </span>
-              <span>{humanStrategyTitle(candidate.strategyName)}</span>
-              <strong>{candidate.risk.finalScore}</strong>
-            </span>
-            <code>{candidate.rule.matches.join(" && ")}</code>
-            <div className="android-candidate-actions">
-              <span className={`inline-test-status status-${testItem?.status ?? "idle"}`}>
-                {inlineStatusLabel(testItem?.status ?? "idle")}
-              </span>
-              <button
-                className="android-candidate-detail"
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  setDetailCandidateId((current) =>
-                    current === candidate.id ? null : candidate.id,
-                  );
-                }}
-              >
-                {showDetails ? "收起详情" : "查看详情"}
-              </button>
-              <button
-                className="android-candidate-detail"
-                disabled={!candidateJson5}
-                type="button"
-                onClick={(event) => void copyCandidateJson5(event)}
-              >
-                {copiedCandidateId === candidate.id ? "已复制 JSON5" : "复制 JSON5"}
-              </button>
-              {renderInlineCandidateActions({
-                item: testItem,
-                feedbackActions: false,
-                targetLabel: "测试",
-                onStart: () => onStartTest(candidate),
-                onEnd: onEndTest,
-                onImport,
-                onMark: onMarkTest,
-              })}
+              <code>{candidate.rule.matches.join(" && ")}</code>
+              <div className="android-candidate-actions">
+                <button
+                  className="android-candidate-detail"
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setDetailCandidateId((current) =>
+                      current === candidate.id ? null : candidate.id,
+                    );
+                  }}
+                >
+                  {showDetails ? "收起详情" : "查看详情"}
+                </button>
+                {renderInlineCandidateActions({
+                  item: testItem,
+                  feedbackActions: false,
+                  targetLabel: "测试",
+                  onStart: () => onStartTest(candidate),
+                  onEnd: onEndTest,
+                  onImport,
+                  onMark: onMarkTest,
+                })}
+              </div>
             </div>
             {showDetails && (
               <div className="android-candidate-details">
+                <span className={`candidate-guidance ${guidance.tone}`}>
+                  <strong>{guidance.label}</strong>
+                  <span>{guidance.reason}</span>
+                </span>
+                {imported && <span className="candidate-imported-badge">导入过</span>}
+                <span className="android-candidate-heading">
+                  <span className="candidate-index-badge">#{displayIndex}</span>
+                  <span className={`status-badge ${candidate.risk.level}`}>
+                    {riskLabel(candidate.risk.level)}
+                  </span>
+                  <span>{humanStrategyTitle(candidate.strategyName)}</span>
+                  <strong>{candidate.risk.finalScore}</strong>
+                </span>
+                <div className="android-candidate-actions">
+                  <span className={`inline-test-status status-${testItem?.status ?? "idle"}`}>
+                    {inlineStatusLabel(testItem?.status ?? "idle")}
+                  </span>
+                  <button
+                    className="android-candidate-detail"
+                    disabled={!candidateJson5}
+                    type="button"
+                    onClick={(event) => void copyCandidateJson5(event)}
+                  >
+                    {copiedCandidateId === candidate.id ? "已复制 JSON5" : "复制 JSON5"}
+                  </button>
+                </div>
                 {sameRegionLabel(candidate) && <span>{sameRegionLabel(candidate)}</span>}
                 <span>{humanStrategyDesc(candidate)}</span>
                 <small>{formatScoreNote(candidate)}</small>

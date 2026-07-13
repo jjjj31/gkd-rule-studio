@@ -747,7 +747,11 @@ function loadInlineTestingState(): InlineRuleTestingState {
       version: 1,
       items: parsed.items as InlineRuleTestItem[],
       aiSessions: Array.isArray(parsed.aiSessions)
-        ? (parsed.aiSessions as InlineAiSession[])
+        ? (parsed.aiSessions as InlineAiSession[]).map((session) =>
+            session.source === undefined && session.title?.startsWith("外部 AI /")
+              ? { ...session, source: "external" as const }
+              : session,
+          )
         : [],
       updatedAt: parsed.updatedAt,
     });
