@@ -70,10 +70,10 @@ describe("prompt generation", () => {
     expect(prompt).toContain("输出格式");
     expect(prompt).toContain("流氓广告");
     expect(prompt).toContain("shade/mask/hotArea/click_area");
-    expect(prompt).toContain("一次性给出 2-4 个测试版");
+    expect(prompt).toContain("candidates 数量 2-4 个");
     expect(prompt).toContain("测试版 A");
     expect(prompt).toContain("测试反馈格式");
-    expect(prompt).toContain("是否误触打开广告");
+    expect(prompt).toContain("是否误触");
     expect(prompt).toContain("用户点击只是手指常点的大概区域");
     expect(prompt).toContain("同一可视区域可能有多个节点");
     expect(prompt).toContain("不要把当前 pickedNode 当成唯一正确目标");

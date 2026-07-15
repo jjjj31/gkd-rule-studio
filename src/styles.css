@@ -68,6 +68,13 @@ summary:focus:not(:focus-visible) {
   outline: none;
 }
 
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+summary:focus-visible {
+  outline: none;
+}
+
 button:disabled,
 input:disabled,
 select:disabled {
@@ -3614,6 +3621,13 @@ svg {
   border: 1px solid rgba(139, 154, 172, 0.13);
   border-radius: 11px;
   background: rgba(10, 15, 21, 0.34);
+  cursor: pointer;
+  outline: none;
+}
+
+.android-ai-candidate-card.selected {
+  border-color: rgba(0, 200, 120, 0.55);
+  background: rgba(0, 200, 120, 0.08);
 }
 
 .android-ai-config-title {

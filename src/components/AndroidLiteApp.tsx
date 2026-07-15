@@ -131,6 +131,7 @@ import {
 } from "../lib/aiModel";
 import { pickNodeAtPoint } from "../lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../lib/regionCandidates";
+import { validateAiCandidateAgainstSnapshot } from "../lib/selectorMatcher";
 import {
   createAppRuleDraft,
   selectFallbackCandidates,
@@ -222,6 +223,9 @@ export function AndroidLiteApp() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(
     null,
   );
+  const [selectedAiCandidateId, setSelectedAiCandidateId] = useState<
+    string | null
+  >(null);
   const [activeTab, setActiveTab] = useState<AndroidWorkspaceTab>("scene");
   const [workspaceMode, setWorkspaceMode] = useState<"single" | "flow">("single");
   const [flowName, setFlowName] = useState("多步骤规则");
@@ -290,6 +294,15 @@ export function AndroidLiteApp() {
     candidates.find((candidate) => candidate.id === selectedCandidateId) ??
     candidates[0] ??
     null;
+  const selectedAiCandidate = selectedAiCandidateId
+    ? (aiCandidates.find((c) => c.id === selectedAiCandidateId) ??
+      externalAiCandidates.find((c) => c.id === selectedAiCandidateId) ??
+      null)
+    : null;
+  const aiValidation = useMemo(() => {
+    if (!selectedAiCandidate || !snapshot) return null;
+    return validateAiCandidateAgainstSnapshot(selectedAiCandidate, snapshot);
+  }, [selectedAiCandidate, snapshot]);
   const customScenarioEditorOpen = scenarioId === CUSTOM_SCENARIO_OPTION_ID;
   const flowDraft = useMemo(() => {
     return createFlowAppRuleDraft({ flowName, flowDesc, steps: flowSteps });
@@ -619,6 +632,7 @@ export function AndroidLiteApp() {
     setPickResult(nextPick);
     if (!nextPick) {
       setSelectedCandidateId(null);
+      setSelectedAiCandidateId(null);
       setSnapshotMemory((current) => ({
         ...current,
         [String(snapshot.id)]: {
@@ -990,6 +1004,7 @@ export function AndroidLiteApp() {
 
   function handleCandidateSelect(candidate: SelectorCandidate): void {
     setSelectedCandidateId(candidate.id);
+    setSelectedAiCandidateId(null);
     if (snapshot) {
       setSnapshotMemory((current) => ({
         ...current,
@@ -1003,6 +1018,11 @@ export function AndroidLiteApp() {
       candidates,
       selectedCandidate: candidate,
     });
+  }
+
+  function handleAiCandidateSelect(candidateId: string): void {
+    setSelectedAiCandidateId(candidateId);
+    setSelectedCandidateId(null);
   }
 
   function commitInlineTestingState(nextState: InlineRuleTestingState): void {
@@ -1922,6 +1942,7 @@ export function AndroidLiteApp() {
               interactionMode="dragMagnifier"
               pickResult={pickResult}
               selectedCandidate={selectedCandidate}
+              aiValidation={aiValidation}
               snapshot={snapshot}
               onPointSelected={handlePointSelected}
             />
@@ -1998,6 +2019,7 @@ export function AndroidLiteApp() {
             message={externalAiMessage}
             snapshot={snapshot}
             pickResult={pickResult}
+            selectedAiCandidateId={selectedAiCandidateId}
             testSubscription={testSubscription}
             workspaceMode={workspaceMode}
             onAddExternalCandidate={addExternalAiCandidateToTestZone}
@@ -2011,6 +2033,7 @@ export function AndroidLiteApp() {
             onImportPastedAiResult={importPastedAiResult}
             onMarkCandidate={markInlineTestResult}
             onPasteAiTextChange={setAiPasteText}
+            onSelectAiCandidate={handleAiCandidateSelect}
           />
         )}
         {activeTab === "steps" && workspaceMode === "flow" && (
@@ -2044,6 +2067,7 @@ export function AndroidLiteApp() {
             loading={aiLoading}
             message={aiMessage}
             operation={aiOperation}
+            selectedAiCandidateId={selectedAiCandidateId}
             session={activeAiSession}
             testSubscription={testSubscription}
             workspaceMode={workspaceMode}
@@ -2056,6 +2080,7 @@ export function AndroidLiteApp() {
             onImportCandidate={(item) => void importInlineItem(item)}
             onMarkCandidate={markInlineTestResult}
             onEndCandidateTest={endInlineTest}
+            onSelectAiCandidate={handleAiCandidateSelect}
             onSendFeedback={(feedbacks) => void sendAiFeedback(feedbacks)}
           />
         )}
@@ -2959,6 +2984,7 @@ function AndroidAiPanel({
   workspaceMode,
   generatedMode,
   inlineTesting,
+  selectedAiCandidateId,
   session,
   debugLogs,
   elapsedSeconds,
@@ -2975,6 +3001,7 @@ function AndroidAiPanel({
   onEndCandidateTest,
   onMarkCandidate,
   onImportCandidate,
+  onSelectAiCandidate,
   onSendFeedback,
 }: {
   config: AiModelConfig;
@@ -2984,6 +3011,7 @@ function AndroidAiPanel({
   workspaceMode: "single" | "flow";
   generatedMode: "single" | "flow" | null;
   inlineTesting: InlineRuleTestingState;
+  selectedAiCandidateId: string | null;
   session: InlineAiSession | null;
   debugLogs: string[];
   elapsedSeconds: number;
@@ -3003,6 +3031,7 @@ function AndroidAiPanel({
     status: Exclude<InlineTestStatus, "idle" | "testing">,
   ) => void;
   onImportCandidate: (item: InlineRuleTestItem) => void;
+  onSelectAiCandidate: (candidateId: string) => void;
   onSendFeedback: (feedbacks: AiCandidateFeedback[]) => void;
 }) {
   const hasConfig = Boolean(
@@ -3096,11 +3125,13 @@ function AndroidAiPanel({
               candidate={candidate}
               inlineTesting={inlineTesting}
               imported={isAiCandidateImported(testSubscription, candidate)}
+              isSelected={candidate.id === selectedAiCandidateId}
               session={session}
-              onEndTest={onEndCandidateTest}
               onAddCandidate={onAddCandidate}
+              onEndTest={onEndCandidateTest}
               onImport={onImportCandidate}
               onMarkTest={onMarkCandidate}
+              onSelect={onSelectAiCandidate}
             />
           ))}
           <AndroidAiBatchFeedbackPanel
@@ -3120,15 +3151,18 @@ function AndroidAiCandidateCard({
   candidate,
   imported,
   inlineTesting,
+  isSelected,
   session,
   onAddCandidate,
   onEndTest,
   onMarkTest,
   onImport,
+  onSelect,
 }: {
   candidate: AiRuleCandidate;
   imported: boolean;
   inlineTesting: InlineRuleTestingState;
+  isSelected: boolean;
   session: InlineAiSession | null;
   onAddCandidate: (candidate: AiRuleCandidate) => void;
   onEndTest: (itemId: string) => void;
@@ -3137,6 +3171,7 @@ function AndroidAiCandidateCard({
     status: Exclude<InlineTestStatus, "idle" | "testing">,
   ) => void;
   onImport: (item: InlineRuleTestItem) => void;
+  onSelect: (candidateId: string) => void;
 }) {
   const selectors = collectAiCandidateSelectors(candidate);
   const [copiedJson5, setCopiedJson5] = useState(false);
@@ -3158,7 +3193,15 @@ function AndroidAiCandidateCard({
   }
 
   return (
-    <article className="android-ai-candidate-card">
+    <article
+      className={`android-ai-candidate-card${isSelected ? " selected" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={() => onSelect(candidate.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") onSelect(candidate.id);
+      }}
+    >
       <div className="android-ai-candidate-head">
         <div>
           <strong>{candidate.title}</strong>
@@ -3606,6 +3649,7 @@ function AndroidPromptPanel({
   copied,
   loading,
   message,
+  selectedAiCandidateId,
   testSubscription,
   onAddExternalCandidate,
   onCopyRulePrompt,
@@ -3616,6 +3660,7 @@ function AndroidPromptPanel({
   onEndCandidateTest,
   onMarkCandidate,
   onImportCandidate,
+  onSelectAiCandidate,
 }: {
   workspaceMode: "single" | "flow";
   aiPasteText: string;
@@ -3628,6 +3673,7 @@ function AndroidPromptPanel({
   copied: "scene" | "rule" | "draft" | "flowDraft" | "flowPrompt" | null;
   loading: boolean;
   message: string | null;
+  selectedAiCandidateId: string | null;
   testSubscription: TestSubscriptionDraft;
   onAddExternalCandidate: (candidate: AiRuleCandidate) => void;
   onCopyRulePrompt: () => void;
@@ -3641,6 +3687,7 @@ function AndroidPromptPanel({
     status: Exclude<InlineTestStatus, "idle" | "testing">,
   ) => void;
   onImportCandidate: (item: InlineRuleTestItem) => void;
+  onSelectAiCandidate: (candidateId: string) => void;
 }) {
   const canImportPaste =
     workspaceMode === "flow" ? true : Boolean(snapshot && pickResult);
@@ -3675,11 +3722,13 @@ function AndroidPromptPanel({
               candidate={candidate}
               imported={isAiCandidateImported(testSubscription, candidate)}
               inlineTesting={inlineTesting}
+              isSelected={candidate.id === selectedAiCandidateId}
               session={externalAiSession}
               onAddCandidate={onAddExternalCandidate}
               onEndTest={onEndCandidateTest}
               onImport={onImportCandidate}
               onMarkTest={onMarkCandidate}
+              onSelect={onSelectAiCandidate}
             />
           ))}
           <AndroidAiBatchFeedbackPanel

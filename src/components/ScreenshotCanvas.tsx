@@ -20,12 +20,13 @@ import type {
   NormalizedSnapshotNode,
   ParsedGkdSnapshot,
 } from "../types/gkdSnapshot";
-import type { SelectorCandidate } from "../types/ruleDraft";
+import type { SelectorCandidate, SelectorValidation } from "../types/ruleDraft";
 
 interface ScreenshotCanvasProps {
   snapshot: ParsedGkdSnapshot;
   pickResult: NodePickResult | null;
   selectedCandidate: SelectorCandidate | null;
+  aiValidation?: SelectorValidation | null;
   interactionMode?: "click" | "dragMagnifier";
   onPointSelected: (point: NodePoint) => void;
 }
@@ -34,6 +35,7 @@ export function ScreenshotCanvas({
   snapshot,
   pickResult,
   selectedCandidate,
+  aiValidation,
   interactionMode = "click",
   onPointSelected,
 }: ScreenshotCanvasProps) {
@@ -359,7 +361,7 @@ export function ScreenshotCanvas({
           }}
         />
         {imageBox &&
-          selectedCandidate?.validation.supportNodes.map((node) => (
+          effectiveValidation(selectedCandidate, aiValidation).supportNodes.map((node) => (
             <NodeRect
               key={`support-${node.id}`}
               box={imageBox}
@@ -369,7 +371,7 @@ export function ScreenshotCanvas({
             />
           ))}
         {imageBox &&
-          selectedCandidate?.validation.clickNodes.map((node) => (
+          effectiveValidation(selectedCandidate, aiValidation).clickNodes.map((node) => (
             <NodeRect
               key={`hit-${node.id}`}
               box={imageBox}
@@ -390,7 +392,7 @@ export function ScreenshotCanvas({
           <Magnifier
             box={imageBox}
             magnifier={magnifier}
-            overlayNodes={buildMagnifierOverlayNodes(pickResult, selectedCandidate)}
+            overlayNodes={buildMagnifierOverlayNodes(pickResult, selectedCandidate, aiValidation)}
             screenshotUrl={snapshot.screenshotUrl}
             snapshot={snapshot}
           />
@@ -479,13 +481,15 @@ interface MagnifierOverlayNode {
 function buildMagnifierOverlayNodes(
   pickResult: NodePickResult | null,
   selectedCandidate: SelectorCandidate | null,
+  aiValidation?: SelectorValidation | null,
 ): MagnifierOverlayNode[] {
   const nodes: MagnifierOverlayNode[] = [];
+  const validation = effectiveValidation(selectedCandidate, aiValidation);
 
-  selectedCandidate?.validation.supportNodes.forEach((node) => {
+  validation.supportNodes.forEach((node) => {
     nodes.push({ node, kind: "support" });
   });
-  selectedCandidate?.validation.clickNodes.forEach((node) => {
+  validation.clickNodes.forEach((node) => {
     nodes.push({ node, kind: "hit" });
   });
   if (pickResult) {
@@ -493,6 +497,17 @@ function buildMagnifierOverlayNodes(
   }
 
   return nodes;
+}
+
+function effectiveValidation(
+  selectedCandidate: SelectorCandidate | null,
+  aiValidation?: SelectorValidation | null,
+): SelectorValidation {
+  return (
+    selectedCandidate?.validation ??
+    aiValidation ??
+    { hitCount: 0, clickNodes: [], supportNodes: [] }
+  );
 }
 
 function MagnifierNodeRect({

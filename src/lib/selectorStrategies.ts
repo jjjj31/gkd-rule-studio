@@ -160,20 +160,10 @@ function textSkipGuarded(context: GenerationContext): CandidateSeed[] {
 
 function stableResourceSemantic(context: GenerationContext): CandidateSeed[] {
   const seeds: CandidateSeed[] = [];
-  // 只在用户点的区域附近或本身就是广告/跳过节点时，才扫整树找稳定资源种子；
-  // 否则会从屏幕另一角落捞出 skip 资源，绿框跑到远处。
-  const pickedIsAdOrSkip = isAdContainerNode(context.pickedNode) ||
-    isSkipOrCloseResource(context.pickedNode);
-  const nearPicked = (node: NormalizedSnapshotNode): boolean =>
-    boundsOverlap(node, context.pickedNode) ||
-    containsRect(node, context.pickedNode) ||
-    containsRect(context.pickedNode, node);
-
   context.snapshot.nodes
     .filter((node) => node.attr.visibleToUser)
     .filter((node) => hasStableActionResource(node))
     .filter((node) => !isDangerousActionNode(node))
-    .filter((node) => pickedIsAdOrSkip || nearPicked(node))
     .forEach((node) => {
       if (isGenericSkipContainer(node) && hasPreferredSkipControlDescendant(context, node)) {
         return;
@@ -200,14 +190,6 @@ function stableResourceSemantic(context: GenerationContext): CandidateSeed[] {
 }
 
 function adContainerSkipFallback(context: GenerationContext): CandidateSeed[] {
-  // 只在用户点中的节点本身在广告容器内（或自身是广告/跳过语义）时才走这条兜底；
-  // 普通按钮点选不应从无关 WebView 广告角落捞跳过候选。
-  const pickedInAdContext =
-    isAdContainerNode(context.pickedNode) ||
-    isSkipOrCloseResource(context.pickedNode) ||
-    context.ancestors.some((ancestor) => isAdContainerNode(ancestor));
-  if (!pickedInAdContext) return [];
-
   const seeds: CandidateSeed[] = [];
   const skipNodes = context.snapshot.nodes.filter((node) => {
     const text = node.attr.text ?? node.attr.desc ?? "";
@@ -451,7 +433,6 @@ function buildCandidate(
     rule,
     validation,
     allowNoActivityIds: hasShortOneShotWindow(context.ruleSettings),
-    pickedNode: context.pickedNode,
   });
 
   return {
@@ -748,38 +729,6 @@ function isAdContainerNode(node: NormalizedSnapshotNode): boolean {
     value.includes("nativead") ||
     value.includes("ptgadvertlayout") ||
     /\bad\b/.test(value)
-  );
-}
-
-function isSkipOrCloseResource(node: NormalizedSnapshotNode): boolean {
-  const value = [node.attr.text, node.attr.desc, node.attr.id, node.attr.vid]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return (
-    value.includes("跳过") ||
-    value.includes("关闭") ||
-    value.includes("skip") ||
-    value.includes("close") ||
-    value.includes("cancel")
-  );
-}
-
-function boundsOverlap(a: NormalizedSnapshotNode, b: NormalizedSnapshotNode): boolean {
-  return (
-    a.attr.left < b.attr.right &&
-    a.attr.right > b.attr.left &&
-    a.attr.top < b.attr.bottom &&
-    a.attr.bottom > b.attr.top
-  );
-}
-
-function containsRect(outer: NormalizedSnapshotNode, inner: NormalizedSnapshotNode): boolean {
-  return (
-    outer.attr.left <= inner.attr.left &&
-    outer.attr.right >= inner.attr.right &&
-    outer.attr.top <= inner.attr.top &&
-    outer.attr.bottom >= inner.attr.bottom
   );
 }
 

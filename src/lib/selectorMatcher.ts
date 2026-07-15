@@ -5,6 +5,7 @@ import type {
   SelectorValidation,
   SimpleSelector,
 } from "../types/ruleDraft";
+import type { AiRuleCandidate } from "./aiModel";
 
 export function validateSelectorPlan(
   snapshot: ParsedGkdSnapshot,
@@ -179,4 +180,114 @@ function uniqueNodes(nodes: NormalizedSnapshotNode[]): NormalizedSnapshotNode[] 
     seen.add(node.id);
     return true;
   });
+}
+
+// 把 AI 候选的 GKD selector 表达式（如 [vid="close"]、TextView[text="跳过"]）
+// 解析成 SimpleSelector，方便用 matchSimpleSelector 在当前快照里找命中节点来画绿框。
+export function validateAiCandidateAgainstSnapshot(
+  candidate: AiRuleCandidate,
+  snapshot: ParsedGkdSnapshot,
+): SelectorValidation {
+  const allClickNodes: NormalizedSnapshotNode[] = [];
+
+  for (const group of candidate.app.groups) {
+    for (const rule of group.rules) {
+      for (const match of rule.matches) {
+        const simple = parseGkdSelectorExpression(match);
+        if (simple) {
+          allClickNodes.push(...matchSimpleSelector(snapshot, simple));
+        }
+      }
+    }
+  }
+
+  return {
+    hitCount: allClickNodes.length,
+    clickNodes: uniqueNodes(allClickNodes),
+    supportNodes: [],
+  };
+}
+
+// 解析工具自己 serialize 出去的简单 selector 字符串。
+// 只处理 SimpleSelector（[@]TypeName[attr=val]...）和 parent > child（取右侧）。
+// 复合的 sibling / ancestor-descendant / matchesChain 暂不处理，返回 null。
+export function parseGkdSelectorExpression(
+  expr: string,
+): SimpleSelector | null {
+  let target = expr.trim();
+  if (!target) return null;
+
+  // parent > child → 取 child（右侧就是点击目标）
+  const gtIdx = target.lastIndexOf(">");
+  if (gtIdx >= 0) {
+    target = target.slice(gtIdx + 1).trim();
+  }
+
+  return parseSimpleSelector(target);
+}
+
+const RE_COND = /\[([a-zA-Z_.]+)([*^]?)=(?:"((?:[^"\\]|\\.)*)"|(true|false)|(\d+))\]|\[([a-zA-Z_.]+)(<=?)(\d+)\]/g;
+
+function parseSimpleSelector(expr: string): SimpleSelector | null {
+  let remaining = expr.trim();
+  if (!remaining) return null;
+
+  let at = false;
+  if (remaining.startsWith("@")) {
+    at = true;
+    remaining = remaining.slice(1);
+  }
+
+  let typeName: string | undefined;
+  const bracketIdx = remaining.indexOf("[");
+  if (bracketIdx > 0) {
+    typeName = remaining.slice(0, bracketIdx);
+    remaining = remaining.slice(bracketIdx);
+  } else if (bracketIdx === -1) {
+    if (remaining.length > 0) {
+      return { typeName: remaining, at: at || undefined, conditions: [] };
+    }
+    return null;
+  }
+
+  const conditions: SelectorCondition[] = [];
+  RE_COND.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = RE_COND.exec(remaining)) !== null) {
+    if (m[1] !== undefined) {
+      // = 形式: [attr="val"] / [attr=true] / [attr*="val"] / [attr^="val"] / [attr=123]
+      const attr = m[1] as SelectorCondition["attr"];
+      const opChar = m[2] || "";
+      const quoted = m[3];
+      const boolVal = m[4];
+      const numVal = m[5];
+
+      let op: SelectorCondition["op"];
+      let value: string | number | boolean;
+
+      if (opChar === "^") op = "startsWith";
+      else if (opChar === "*") op = "contains";
+      else op = "eq";
+
+      if (boolVal !== undefined) {
+        value = boolVal === "true";
+      } else if (numVal !== undefined) {
+        value = Number(numVal);
+      } else if (quoted !== undefined) {
+        value = quoted.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+      } else {
+        continue;
+      }
+
+      conditions.push({ attr, op, value });
+    } else if (m[6] !== undefined) {
+      // < / <= 形式: [attr<123] / [attr<=123]
+      const attr = m[6] as SelectorCondition["attr"];
+      const op = m[7] === "<=" ? "lte" : "lt";
+      const value = Number(m[8]);
+      conditions.push({ attr, op, value });
+    }
+  }
+
+  return { typeName: typeName || undefined, at: at || undefined, conditions };
 }
