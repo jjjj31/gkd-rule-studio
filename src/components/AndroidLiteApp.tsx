@@ -123,11 +123,15 @@ import {
   withAiGenerationTimeout,
   type AiCandidateFeedback,
   type AiChatMessage,
+  type AiConnectionStatus,
   type AiFeedbackResult,
   type AiModelConfig,
   type AiModelProfile,
   type AiModelProfileStore,
   type AiRuleCandidate,
+  saveConnectionStatus,
+  loadConnectionStatus,
+  categorizeAiError,
 } from "../lib/aiModel";
 import { pickNodeAtPoint } from "../lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../lib/regionCandidates";
@@ -246,6 +250,8 @@ export function AndroidLiteApp() {
     useState<AiModelProfileStore>(loadAiProfileStore);
   const [aiConfig, setAiConfig] = useState<AiModelConfig>(loadAiConfig);
   const [aiConfigOpen, setAiConfigOpen] = useState(false);
+  const [aiConnectionStatus, setAiConnectionStatus] =
+    useState<AiConnectionStatus>(loadConnectionStatus);
   const [aiCandidates, setAiCandidates] = useState<AiRuleCandidate[]>([]);
   const [activeAiSessionId, setActiveAiSessionId] = useState<string | null>(
     () => loadInlineTestingState().aiSessions[0]?.id ?? null,
@@ -1274,14 +1280,27 @@ export function AndroidLiteApp() {
   async function testAiConfigLocal(): Promise<void> {
     startAiOperation("test");
     setAiMessage(null);
+    setAiConnectionStatus({ status: "testing" });
     try {
       appendAiDebugLog("test:start");
       const result = await testAiConnection(aiConfig, appendAiDebugLog);
       setAiMessage(result);
       appendAiDebugLog(`test:done ${result}`);
+      saveConnectionStatus({ status: "connected", lastTested: Date.now() });
+      setAiConnectionStatus({ status: "connected", lastTested: Date.now() });
     } catch (cause) {
-      setAiMessage(formatAiError(cause, aiConfig.apiKey));
-      appendAiDebugLog(`test:error ${formatAiError(cause, aiConfig.apiKey)}`);
+      const errMsg = formatAiError(cause, aiConfig.apiKey);
+      setAiMessage(errMsg);
+      appendAiDebugLog(`test:error ${errMsg}`);
+      const diagnosis = categorizeAiError(cause);
+      const failedStatus: AiConnectionStatus = {
+        status: "failed",
+        error: diagnosis.message,
+        category: diagnosis.category,
+        lastTested: Date.now(),
+      };
+      saveConnectionStatus(failedStatus);
+      setAiConnectionStatus(failedStatus);
     } finally {
       finishAiOperation();
     }
@@ -1824,6 +1843,18 @@ export function AndroidLiteApp() {
             >
               <Plug size={16} />
             </button>
+            <span
+              className={`ai-status-dot ai-status-${aiConnectionStatus.status}`}
+              title={
+                aiConnectionStatus.status === "connected"
+                  ? "模型连接正常"
+                  : aiConnectionStatus.status === "failed"
+                    ? `${aiConnectionStatus.category}：${aiConnectionStatus.error}`
+                    : aiConnectionStatus.status === "testing"
+                      ? "测试连接中..."
+                      : "模型未测试连接"
+              }
+            />
             <span className={client ? "status-badge success" : "status-badge muted"}>
               {client ? "已连接" : "未连接"}
             </span>
@@ -2376,7 +2407,12 @@ function isAiCandidateImported(
 function formatAiError(cause: unknown, apiKey: string): string {
   const message = cause instanceof Error ? cause.message : "模型请求失败";
   const key = apiKey.trim();
-  return key ? message.replaceAll(key, maskApiKey(key)) : message;
+  const cleaned = key ? message.replaceAll(key, maskApiKey(key)) : message;
+  const diagnosis = categorizeAiError(cause);
+  if (diagnosis.category !== "unknown") {
+    return `${cleaned}\n${diagnosis.hint}`;
+  }
+  return cleaned;
 }
 
 function AndroidWorkspaceTabs({
@@ -4445,3 +4481,4 @@ function resolveConnectOrigin(input: string): string {
   const origins = extractDeviceOrigins(input);
   return origins[0] ?? input;
 }
+

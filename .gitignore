@@ -1,6 +1,9 @@
 node_modules
 dist
 *.local
+.claude
+.obsidian
+.python-version
 .vite
 coverage
 

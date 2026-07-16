@@ -67,6 +67,27 @@ export interface AiRuleCandidate {
   app: AppRuleDraft;
 }
 
+/** AI 供应商连接状态 */
+export type AiConnectionStatus =
+  | { status: "unknown" }
+  | { status: "testing" }
+  | { status: "connected"; lastTested: number }
+  | { status: "failed"; error: string; category: AiErrorCategory; lastTested: number };
+
+export type AiErrorCategory =
+  | "network"
+  | "http"
+  | "auth"
+  | "parse"
+  | "server"
+  | "unknown";
+
+export interface AiConnectionDiagnosis {
+  category: AiErrorCategory;
+  message: string;
+  hint: string;
+}
+
 export interface BuildAiGenerateMessagesInput {
   mode: AiMode;
   prompt: string;
@@ -314,6 +335,102 @@ export function maskApiKey(apiKey: string): string {
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
+const CONNECTION_STATUS_KEY = "gkd-rule-studio-ai-connection-status";
+
+export function categorizeAiError(cause: unknown): AiConnectionDiagnosis {
+  const message = cause instanceof Error ? cause.message : String(cause);
+  const lower = message.toLowerCase();
+
+  // API Key 问题
+  if (
+    lower.includes("api key") ||
+    lower.includes("apikey") ||
+    lower.includes("invalid key") ||
+    lower.includes("unauthorized") ||
+    lower.includes("403") ||
+    lower.includes("401")
+  ) {
+    return { category: "auth", message, hint: "API Key 无效或被拒绝，请检查是否填写正确。某些服务商需要添加 sk- 前缀。" };
+  }
+
+  // HTTP 错误（除 auth 外的 4xx/5xx）
+  if (
+    lower.includes("404") ||
+    lower.includes("not found") ||
+    lower.includes("500") ||
+    lower.includes("502") ||
+    lower.includes("503") ||
+    lower.includes("service unavailable")
+  ) {
+    if (lower.includes("404") || lower.includes("not found")) {
+      return { category: "http", message, hint: "接口地址不存在（HTTP 404），检查 Base URL 路径。常见问题：缺少 /v1/ 路径段。" };
+    }
+    return { category: "server", message, hint: "服务端返回了错误响应，请稍后重试或检查模型是否可用。" };
+  }
+
+  // 超时
+  if (
+    lower.includes("timeout") ||
+    lower.includes("timed out") ||
+    lower.includes("请求超时")
+  ) {
+    return { category: "network", message, hint: "请求超时，模型响应过慢或网络不稳定。可增大超时时间，或换用响应更快的模型。" };
+  }
+
+  // 网络错误
+  if (
+    lower.includes("network") ||
+    lower.includes("econnrefused") ||
+    lower.includes("econnreset") ||
+    lower.includes("enotfound") ||
+    lower.includes("fetch failed") ||
+    lower.includes("abort") ||
+    lower.includes("socket")
+  ) {
+    return { category: "network", message, hint: "网络连接失败，请检查设备网络和 Base URL 是否正确。若在手机上使用，确认手机能访问该地址。" };
+  }
+
+  // 解析错误
+  if (
+    lower.includes("parse") ||
+    lower.includes("json") ||
+    lower.includes("json5")
+  ) {
+    return { category: "parse", message, hint: "AI 返回内容格式异常，不是有效的 JSON5 规则。可在调试日志中查看原始响应，或重试生成。" };
+  }
+
+  // 多模态/图片不支持
+  if (
+    lower.includes("image_url") ||
+    lower.includes("multimodal") ||
+    lower.includes("vision") ||
+    lower.includes("not support") ||
+    lower.includes("unsupported")
+  ) {
+    return { category: "server", message, hint: "当前模型不支持图片识别（多模态），已自动降级为纯文本重试。可换用支持多模态的模型。" };
+  }
+
+  return { category: "unknown", message, hint: "未知错误，请查看调试日志获取详细信息。" };
+}
+
+export function saveConnectionStatus(status: AiConnectionStatus): void {
+  try {
+    localStorage.setItem(CONNECTION_STATUS_KEY, JSON.stringify(status));
+  } catch {
+    // 静默失败
+  }
+}
+
+export function loadConnectionStatus(): AiConnectionStatus {
+  try {
+    const raw = localStorage.getItem(CONNECTION_STATUS_KEY);
+    if (!raw) return { status: "unknown" };
+    return JSON.parse(raw) as AiConnectionStatus;
+  } catch {
+    return { status: "unknown" };
+  }
+}
+
 export function buildAiGenerateMessages({
   mode,
   prompt,
@@ -368,6 +485,8 @@ export function buildAiFeedbackMessages({
     "",
     "用户补充说明：",
     note.trim() || "-",
+    "",
+    "重要：修正后的所有候选必须放在同一个 JSON5 代码块中，作为一个 candidates 数组统一输出。格式：{ candidates: [...] }。",
   ]
     .filter((line) => line !== "")
     .join("\n");
@@ -397,6 +516,8 @@ export function buildAiBatchFeedbackMessages({
     "",
     "原始上下文：",
     compactPromptForAi(originalPrompt),
+    "",
+    "重要：修正后的所有候选必须放在同一个 JSON5 代码块中，作为一个 candidates 数组统一输出。格式：{ candidates: [...] }。",
     "",
     "批量测试反馈：",
     JSON5.stringify(
@@ -698,7 +819,7 @@ export function buildExternalFeedbackPrompt(
       : "以上各测试版的测试结果如下：",
     ...lines,
     "",
-    "请基于本对话上面已经给出的测试版规则修正，只返回修正后的 JSON5 代码块（每个测试版单独一个块），不要复述节点树或原始 prompt。",
+    "请基于本对话上面已经给出的测试版规则修正，只返回修正后的 JSON5 代码块，所有修正版必须放在唯一一个 ```json5 代码块中，作为一个 candidates 数组统一输出。格式：{ candidates: [...] }。不要复述节点树或原始 prompt。",
   ].join("\n");
 }
 
@@ -712,7 +833,9 @@ export function parseAiCandidates(source: string): AiRuleCandidate[] {
   });
 
   if (candidates.length === 0) {
-    const parsed = JSON5.parse(extractJsonLikeText(source)) as unknown;
+    const raw = extractJsonLikeText(source);
+    const repaired = tryRepairJson5(raw);
+    const parsed = JSON5.parse(repaired) as unknown;
     return normalizeAiCandidatePayload(parsed, true);
   }
 
@@ -729,6 +852,43 @@ export function parseAiCandidates(source: string): AiRuleCandidate[] {
         : candidate.title,
     };
   });
+}
+
+/**
+ * 轻量级 JSON5 修复：尝试常见的 AI 输出问题后重新解析。
+ * 1. 直接解析
+ * 2. 若源是数组但缺少外层 candidates 包裹 → 包成 { candidates: [...] }
+ * 3. 若失败则恢复原始内容（让上游抛出更准确的错误）
+ */
+export function tryRepairJson5(source: string): string {
+  // 先试直接解析且结构符合 candidates 格式
+  try {
+    const parsed = JSON5.parse(source);
+    if (
+      isRecord(parsed) &&
+      (Array.isArray(parsed.candidates) || isAppDraftLike(parsed))
+    ) {
+      return source;
+    }
+  } catch {
+    // fall through to repair
+  }
+
+  const trimmed = source.trim();
+
+  // 首字符是 [ → 可能是裸 candidates 数组，尝试包裹
+  if (trimmed.startsWith("[")) {
+    const wrapped = `{ candidates: ${trimmed} }`;
+    try {
+      JSON5.parse(wrapped);
+      return wrapped;
+    } catch {
+      // 包裹失败，继续
+    }
+  }
+
+  // 原样返回，让 parseAiCandidates 的 fallback 抛出具体错误
+  return source;
 }
 
 function buildSystemPrompt(mode: AiMode): string {
@@ -1003,7 +1163,8 @@ const AI_RETRY_BASE_DELAY_MS = 1500;
 function isTransientNetworkError(cause: unknown): boolean {
   const message = cause instanceof Error ? cause.message : String(cause);
   const lower = message.toLowerCase();
-  return (
+  // 网络层临时错误
+  if (
     lower.includes("software caused connection abort") ||
     lower.includes("connection reset") ||
     lower.includes("broken pipe") ||
@@ -1016,7 +1177,11 @@ function isTransientNetworkError(cause: unknown): boolean {
     lower.includes("etimedout") ||
     lower.includes("network io error") ||
     lower.includes("socket closed")
-  );
+  ) {
+    return true;
+  }
+  // HTTP 5xx 服务器临时错误也重试
+  return /^HTTP\s+5\d\d/.test(message) || /(^|\D)(500|502|503|504)(\D|$)/.test(lower);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -1124,7 +1289,13 @@ function postJsonWithAndroidBridge(
         `bridge:result requestId=${requestId} ok=${result.ok} status=${result.status ?? "-"} ms=${Date.now() - startedAt} responseChars=${result.body.length} error=${result.error ?? "-"}`,
       );
       if (!result.ok) {
-        reject(new Error(result.error || "Android 网络请求失败"));
+        const errorMsg = result.error || "Android 网络请求失败";
+        // HTTP 5xx 时带上响应体内容（服务器可能返回了具体错误信息）
+        if (result.status && result.status >= 500 && result.status < 600 && result.body?.trim()) {
+          reject(new Error(formatHttpError(result.status, result.body)));
+        } else {
+          reject(new Error(errorMsg));
+        }
         return;
       }
       try {

@@ -15,9 +15,11 @@ import {
   maskApiKey,
   normalizeAiConfig,
   parseAiCandidates,
+  tryRepairJson5,
   shouldRetryTextOnlyAfterMultimodalError,
   stripAiMessageImages,
   extractAiResponseContent,
+  categorizeAiError,
   upsertAiProfile,
 } from "./aiModel";
 import type { AppRuleDraft } from "../types/ruleDraft";
@@ -423,6 +425,127 @@ describe("ai model helpers", () => {
     });
 
     expect(withAiGenerationTimeout(config).timeoutMs).toBe(120000);
+  });
+});
+
+describe("feedback prompt format consistency", () => {
+  it("builds external feedback prompt without multi-block instruction", () => {
+    const result = buildExternalFeedbackPrompt(
+      [
+        {
+          candidate: { id: "a", title: "测试版 A", summary: "", risk: "", app: appDraft() },
+          result: "not-triggered",
+          note: "没触发",
+        },
+      ],
+      false,
+    );
+    expect(result).not.toContain("每个测试版单独一个块");
+    expect(result).toContain("唯一一个");
+    expect(result).toContain("candidates 数组");
+  });
+
+  it("buildAiFeedbackMessages user text includes format emphasis", () => {
+    const messages = buildAiFeedbackMessages({
+      mode: "single",
+      originalPrompt: "test prompt",
+      candidate: { id: "c1", title: "测试版 A", summary: "", risk: "", app: appDraft() },
+      result: "not-triggered",
+      note: "没触发",
+    });
+    const userMsg = messages.find((m) => m.role === "user");
+    expect(userMsg).toBeDefined();
+    if (userMsg && typeof userMsg.content === "string") {
+      expect(userMsg.content).toContain("candidates 数组");
+    }
+  });
+
+  it("buildAiBatchFeedbackMessages user text includes format emphasis", () => {
+    const messages = buildAiBatchFeedbackMessages({
+      mode: "single",
+      originalPrompt: "test prompt",
+      feedbacks: [
+        {
+          candidate: { id: "c1", title: "测试版 A", summary: "", risk: "", app: appDraft() },
+          result: "not-triggered",
+          note: "没触发",
+        },
+      ],
+    });
+    const userMsg = messages.find((m) => m.role === "user");
+    expect(userMsg).toBeDefined();
+    if (userMsg && typeof userMsg.content === "string") {
+      expect(userMsg.content).toContain("candidates 数组");
+    }
+  });
+});
+
+describe("tryRepairJson5", () => {
+  it("passes valid JSON through unchanged", () => {
+    const input = '{ "candidates": [{ "id": "a", "title": "测试版 A" }] }';
+    expect(tryRepairJson5(input)).toBe(input);
+  });
+
+  it("wraps bare array in candidates object", () => {
+    const input = '[{ "id": "a", "title": "测试版 A" }]';
+    const repaired = tryRepairJson5(input);
+    expect(repaired).toBe('{ candidates: [{ "id": "a", "title": "测试版 A" }] }');
+  });
+
+  it("returns original string when repair fails", () => {
+    const input = "not even close to json";
+    expect(tryRepairJson5(input)).toBe(input);
+  });
+
+  it("parseAiCandidates can handle bare array with repair", () => {
+    const input = "```json5\n[{ id: \"a\", title: \"测试版 A\", summary: \"test\", risk: \"low\", app: { id: \"com.app\", name: \"App\", groups: [{ key: 0, name: \"g\", rules: [{ matches: [\"@View\"] }] }] } }]```";
+    const candidates = parseAiCandidates(input);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].id).toBe("a");
+    expect(candidates[0].app.id).toBe("com.app");
+  });
+});
+
+describe("categorizeAiError", () => {
+  it("categorizes API key errors", () => {
+    const result = categorizeAiError(new Error("API key is invalid: 401"));
+    expect(result.category).toBe("auth");
+    expect(result.hint).toContain("API Key");
+  });
+
+  it("categorizes 404 errors", () => {
+    const result = categorizeAiError(new Error("HTTP 404 Not Found"));
+    expect(result.category).toBe("http");
+    expect(result.hint).toContain("404");
+  });
+
+  it("categorizes timeout errors", () => {
+    const result = categorizeAiError(new Error("请求超时：已等待 120 秒"));
+    expect(result.category).toBe("network");
+    expect(result.hint).toContain("超时");
+  });
+
+  it("categorizes network errors", () => {
+    const result = categorizeAiError(new TypeError("fetch failed"));
+    expect(result.category).toBe("network");
+    expect(result.hint).toContain("网络");
+  });
+
+  it("categorizes parse errors", () => {
+    const result = categorizeAiError(new SyntaxError("JSON5 parse error"));
+    expect(result.category).toBe("parse");
+    expect(result.hint).toContain("JSON5");
+  });
+
+  it("returns unknown for unrecognized errors", () => {
+    const result = categorizeAiError(new Error("something weird happened"));
+    expect(result.category).toBe("unknown");
+    expect(result.hint).toContain("未知错误");
+  });
+
+  it("handles non-Error input", () => {
+    const result = categorizeAiError("some random string");
+    expect(result.category).toBe("unknown");
   });
 });
 

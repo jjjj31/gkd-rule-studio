@@ -2739,6 +2739,32 @@ svg {
   color: #bfe4d1;
 }
 
+.ai-status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+.ai-status-unknown {
+  background: #555;
+}
+.ai-status-testing {
+  background: #f0ad4e;
+  animation: ai-status-pulse 0.8s ease-in-out infinite;
+}
+.ai-status-connected {
+  background: #49a078;
+}
+.ai-status-failed {
+  background: #e06c6c;
+}
+@keyframes ai-status-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
 .android-back-button {
   display: inline-flex;
   align-items: center;
