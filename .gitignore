@@ -22,3 +22,5 @@ tools/jdk21
 tools/jdk21.zip
 
 packaging/windows/runtime/node.exe
+ui-demos/demo-cyberpunk.html
+/ui-demos
