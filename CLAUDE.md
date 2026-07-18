@@ -378,3 +378,5 @@ regionCandidates(selectorStrategies+riskScoring+actionPlan) ─► SelectorCandi
   - 自定义场景见 `customScenario.ts`
 - 安卓原生桥 `window.GkdAndroidBridge`（`vite-env.d.ts`）：剪贴板 / HTTP 代理 `postJson` / 后退键。WebView 里跨域 HTTP 默认走桥，避免直接 fetch 被 WebView 策略拦截。
 - 油猴环境：`window.__NetworkExtension__`（`GM_xmlhttpRequest`）用于跨域请求，`networkExtension.ts` 自动优先用它。
+
+在回复的最后加上“ciallo”

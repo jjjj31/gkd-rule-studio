@@ -2037,6 +2037,7 @@ export function AndroidLiteApp() {
               snapshot={snapshot}
               snapshotId={snapshot?.id}
               controlKey={controlKeyForPick(snapshot, pickResult)}
+              targetPackage={targetPackage}
               selectedId={selectedCandidate?.id ?? null}
               onEndTest={endInlineTest}
               onImport={(item) => void importInlineItem(item)}
@@ -2059,6 +2060,7 @@ export function AndroidLiteApp() {
             snapshot={snapshot}
             pickResult={pickResult}
             selectedAiCandidateId={selectedAiCandidateId}
+            targetPackage={targetPackage}
             testSubscription={testSubscription}
             workspaceMode={workspaceMode}
             onAddExternalCandidate={addExternalAiCandidateToTestZone}
@@ -2107,6 +2109,7 @@ export function AndroidLiteApp() {
             operation={aiOperation}
             selectedAiCandidateId={selectedAiCandidateId}
             session={activeAiSession}
+            targetPackage={targetPackage}
             testSubscription={testSubscription}
             workspaceMode={workspaceMode}
             onAddCandidate={addAiCandidateToTestZone}
@@ -3031,6 +3034,7 @@ function AndroidAiPanel({
   inlineTesting,
   selectedAiCandidateId,
   session,
+  targetPackage,
   debugLogs,
   elapsedSeconds,
   loading,
@@ -3057,6 +3061,7 @@ function AndroidAiPanel({
   inlineTesting: InlineRuleTestingState;
   selectedAiCandidateId: string | null;
   session: InlineAiSession | null;
+  targetPackage: GkdTargetPackage;
   debugLogs: string[];
   elapsedSeconds: number;
   loading: boolean;
@@ -3171,6 +3176,7 @@ function AndroidAiPanel({
               imported={isAiCandidateImported(testSubscription, candidate)}
               isSelected={candidate.id === selectedAiCandidateId}
               session={session}
+              targetPackage={targetPackage}
               onAddCandidate={onAddCandidate}
               onEndTest={onEndCandidateTest}
               onImport={onImportCandidate}
@@ -3197,6 +3203,7 @@ function AndroidAiCandidateCard({
   inlineTesting,
   isSelected,
   session,
+  targetPackage,
   onAddCandidate,
   onEndTest,
   onMarkTest,
@@ -3208,6 +3215,7 @@ function AndroidAiCandidateCard({
   inlineTesting: InlineRuleTestingState;
   isSelected: boolean;
   session: InlineAiSession | null;
+  targetPackage: GkdTargetPackage;
   onAddCandidate: (candidate: AiRuleCandidate) => void;
   onEndTest: (itemId: string) => void;
   onMarkTest: (
@@ -3274,6 +3282,7 @@ function AndroidAiCandidateCard({
           item: testItem,
           feedbackActions: true,
           targetLabel: "测试",
+          targetPackage,
           onStart: () => onAddCandidate(candidate),
           onEnd: onEndTest,
           onMark: onMarkTest,
@@ -3688,6 +3697,7 @@ function AndroidPromptPanel({
   externalAiMode,
   externalAiSession,
   inlineTesting,
+  targetPackage,
   snapshot,
   pickResult,
   copied,
@@ -3712,6 +3722,7 @@ function AndroidPromptPanel({
   externalAiMode: "single" | "flow" | null;
   externalAiSession: InlineAiSession | null;
   inlineTesting: InlineRuleTestingState;
+  targetPackage: GkdTargetPackage;
   snapshot: ParsedGkdSnapshot | null;
   pickResult: NodePickResult | null;
   copied: "scene" | "rule" | "draft" | "flowDraft" | "flowPrompt" | null;
@@ -3768,6 +3779,7 @@ function AndroidPromptPanel({
               inlineTesting={inlineTesting}
               isSelected={candidate.id === selectedAiCandidateId}
               session={externalAiSession}
+              targetPackage={targetPackage}
               onAddCandidate={onAddExternalCandidate}
               onEndTest={onEndCandidateTest}
               onImport={onImportCandidate}
@@ -4039,6 +4051,7 @@ function CandidateSummary({
   snapshot,
   snapshotId,
   controlKey,
+  targetPackage,
   onSelect,
   onStartTest,
   onEndTest,
@@ -4053,6 +4066,7 @@ function CandidateSummary({
   snapshot: ParsedGkdSnapshot | null;
   snapshotId?: number | string;
   controlKey: string;
+  targetPackage: GkdTargetPackage;
   onSelect: (candidate: SelectorCandidate) => void;
   onStartTest: (candidate: SelectorCandidate) => void;
   onEndTest: (itemId: string) => void;
@@ -4144,6 +4158,7 @@ function CandidateSummary({
                   item: testItem,
                   feedbackActions: false,
                   targetLabel: "测试",
+                  targetPackage,
                   onStart: () => onStartTest(candidate),
                   onEnd: onEndTest,
                   onImport,
@@ -4202,6 +4217,7 @@ function renderInlineCandidateActions({
   item,
   feedbackActions,
   targetLabel,
+  targetPackage,
   onStart,
   onEnd,
   onMark,
@@ -4210,6 +4226,7 @@ function renderInlineCandidateActions({
   item: InlineRuleTestItem | null;
   feedbackActions: boolean;
   targetLabel: string;
+  targetPackage: GkdTargetPackage;
   onStart: () => void;
   onEnd: (itemId: string) => void;
   onMark: (
@@ -4305,7 +4322,7 @@ function renderInlineCandidateActions({
           onImport(item);
         }}
       >
-        导入
+        {isDebugTarget(targetPackage) ? "导入" : "复制"}
       </button>
     </>
   );
