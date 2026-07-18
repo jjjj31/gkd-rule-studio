@@ -60,6 +60,8 @@ export interface InlineAiSession {
   nodeId?: number | string;
   selectorIndex?: number | string;
   thumbnailUrl?: string;
+  /** 候选生成轮次。每次 setAiSessionCandidates 时 +1，用于区分同名 ID 的不同轮次候选。 */
+  generation: number;
   candidateIds: string[];
   candidates: AiRuleCandidate[];
   feedbackHistory: Array<{
@@ -159,7 +161,7 @@ export function startAiCandidateTest(
   const session = state.aiSessions.find((item) => item.id === aiSessionId);
   if (!session) return state;
 
-  const sourceKey = aiCandidateSourceKey(aiSessionId, candidate.id);
+  const sourceKey = aiCandidateSourceKey(aiSessionId, candidate.id, session.generation);
   const id = inlineItemId(
     "ai-candidate",
     session.mode,
@@ -267,6 +269,7 @@ export function addAiSession(
     appName: input.appName,
     nodeId: input.nodeId,
     thumbnailUrl: input.thumbnailUrl,
+    generation: 0,
     candidateIds: [],
     candidates: [],
     feedbackHistory: [],
@@ -294,6 +297,7 @@ export function setAiSessionCandidates(
         ? {
             ...session,
             candidates,
+            generation: session.generation + 1,
             updatedAt: now,
           }
         : session,
@@ -361,8 +365,9 @@ export function findInlineTestItem(
 export function aiCandidateSourceKey(
   aiSessionId: string,
   candidateId: string,
+  generation = 0,
 ): string {
-  return `${aiSessionId}:${candidateId}`;
+  return `${aiSessionId}:${candidateId}:${generation}`;
 }
 
 function upsertInlineTestItem(

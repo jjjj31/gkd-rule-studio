@@ -12,6 +12,7 @@ import {
   markInlineTestItemResult,
   prunePersistentInlineRuleTestingState,
   removeInlineTestItem,
+  setAiSessionCandidates,
   startAiCandidateTest,
   startOfflineCandidateTest,
 } from "./inlineRuleTesting";
@@ -220,13 +221,56 @@ describe("inline rule testing state", () => {
 
     expect(withSecondCandidate.items).toHaveLength(2);
     expect(withSecondCandidate.items.map((item) => item.sourceKey)).toEqual([
-      aiCandidateSourceKey(firstSessionId, "candidate-a"),
-      aiCandidateSourceKey(secondSessionId, "candidate-a"),
+      aiCandidateSourceKey(firstSessionId, "candidate-a", 0),
+      aiCandidateSourceKey(secondSessionId, "candidate-a", 0),
     ]);
     expect(withSecondCandidate.items.map((item) => item.status)).toEqual([
       "invalid",
       "testing",
     ]);
+  });
+
+  it("resets AI candidate test status after a feedback generation round", () => {
+    const state = addAiSession(
+      createEmptyInlineRuleTestingState(),
+      {
+        mode: "single",
+        snapshotId: 1,
+        controlKey: "snapshot-1-node-20",
+        title: "AI session",
+        originalPrompt: "prompt",
+        contextSummary: "node 20",
+      },
+      100,
+    );
+    const sessionId = state.aiSessions[0].id;
+
+    // 第一轮候选
+    const firstRound = setAiSessionCandidates(
+      state,
+      sessionId,
+      [aiCandidate("candidate-a", "[vid=\"skip_a\"]")],
+      200,
+    );
+    const firstTest = startAiCandidateTest(firstRound, sessionId, firstRound.aiSessions[0].candidates[0], 300);
+    const firstItemId = firstTest.items[0].id;
+    const firstInvalid = markInlineTestItemResult(firstTest, firstItemId, "invalid", 400);
+
+    // 反馈后第二轮候选，同名 ID 但不同 generation
+    const secondRound = setAiSessionCandidates(
+      firstInvalid,
+      sessionId,
+      [aiCandidate("candidate-a", "[vid=\"skip_b\"]")],
+      500,
+    );
+    const secondTest = startAiCandidateTest(secondRound, sessionId, secondRound.aiSessions[0].candidates[0], 600);
+
+    expect(secondRound.aiSessions[0].generation).toBe(2);
+    expect(secondTest.items).toHaveLength(2);
+    expect(secondTest.items.map((item) => item.status)).toEqual(["invalid", "testing"]);
+    expect(secondTest.items[1].sourceKey).toBe(
+      aiCandidateSourceKey(sessionId, "candidate-a", 2),
+    );
   });
 
   it("filters AI sessions by current workspace mode", () => {
@@ -367,7 +411,7 @@ describe("inline rule testing state", () => {
     expect(persisted.aiSessions[0].thumbnailUrl).toBe("blob://snapshot-1");
     expect(persisted.items.map((item) => [item.source, item.sourceKey])).toEqual([
       ["offline-selector", "selector-a"],
-      ["ai-candidate", aiCandidateSourceKey(withSession.aiSessions[0].id, "ai-a")],
+      ["ai-candidate", aiCandidateSourceKey(withSession.aiSessions[0].id, "ai-a", 0)],
     ]);
   });
 

@@ -296,10 +296,18 @@ export function AndroidLiteApp() {
       pickResult,
     });
   }, [snapshot, pickResult, ruleSettings]);
-  const selectedCandidate =
-    candidates.find((candidate) => candidate.id === selectedCandidateId) ??
-    candidates[0] ??
-    null;
+  const selectedCandidate = useMemo(() => {
+    // 当 AI 候选被选中时，不要让普通候选回退到 candidates[0]，
+    // 否则画布会同时显示普通候选的命中框而不是 AI 候选的。
+    if (selectedCandidateId === null && selectedAiCandidateId !== null) {
+      return null;
+    }
+    return (
+      candidates.find((candidate) => candidate.id === selectedCandidateId) ??
+      candidates[0] ??
+      null
+    );
+  }, [candidates, selectedCandidateId, selectedAiCandidateId]);
   const selectedAiCandidate = selectedAiCandidateId
     ? (aiCandidates.find((c) => c.id === selectedAiCandidateId) ??
       externalAiCandidates.find((c) => c.id === selectedAiCandidateId) ??
@@ -620,7 +628,7 @@ export function AndroidLiteApp() {
     setSelectedCandidateId(remembered?.selectedCandidateId ?? null);
     setWorkspaceMode("single");
     setView("workspace");
-    setActiveTab(rememberedPick ? "candidates" : "scene");
+    setActiveTab("scene");
     setRuleSettings((current) => {
       const nextPreset = RULE_SETTINGS_PRESETS.find((item) => item.id === scenarioId);
       if (nextPreset) return nextPreset.build(nextSnapshot);
@@ -2089,7 +2097,6 @@ export function AndroidLiteApp() {
             <AndroidAiPanel
               candidates={aiCandidates}
             config={aiConfig}
-            activeProfile={activeAiProfile}
             generatedMode={aiGeneratedMode}
             debugLogs={aiDebugLogs}
             elapsedSeconds={aiElapsedSeconds}
@@ -2255,11 +2262,14 @@ function loadInlineTestingState(): InlineRuleTestingState {
       version: 1,
       items: parsed.items as InlineRuleTestItem[],
       aiSessions: Array.isArray(parsed.aiSessions)
-        ? (parsed.aiSessions as InlineAiSession[]).map((session) =>
-            session.source === undefined && session.title?.startsWith("外部 AI /")
-              ? { ...session, source: "external" as const }
-              : session,
-          )
+        ? (parsed.aiSessions as InlineAiSession[]).map((session) => ({
+            ...session,
+            source:
+              session.source === undefined && session.title?.startsWith("外部 AI /")
+                ? ("external" as const)
+                : session.source,
+            generation: session.generation ?? 0,
+          }))
         : [],
       updatedAt: parsed.updatedAt,
     });
@@ -3014,7 +3024,6 @@ function AndroidAiSessionManagerPage({
 
 function AndroidAiPanel({
   config,
-  activeProfile,
   canGenerate,
   candidates,
   workspaceMode,
@@ -3041,7 +3050,6 @@ function AndroidAiPanel({
   onSendFeedback,
 }: {
   config: AiModelConfig;
-  activeProfile: AiModelProfile | null;
   canGenerate: boolean;
   candidates: AiRuleCandidate[];
   workspaceMode: "single" | "flow";
@@ -3079,7 +3087,7 @@ function AndroidAiPanel({
     <div className="android-tab-content android-ai-panel">
       <div className="android-section-title">
         <h2>AI 规则候选</h2>
-        <span>当前模型：{activeProfile?.name ?? config.model}</span>
+        <span>当前模型：{config.model}</span>
       </div>
 
       <div className="android-action-row">
@@ -3218,7 +3226,7 @@ function AndroidAiCandidateCard({
         session.mode,
         session.snapshotId,
         session.controlKey,
-        aiCandidateSourceKey(session.id, candidate.id),
+        aiCandidateSourceKey(session.id, candidate.id, session.generation),
       )
     : null;
 
