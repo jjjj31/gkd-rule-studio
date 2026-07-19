@@ -1,68 +1,37 @@
 # GKD Rule Studio
 
-GKD Rule Studio 是一个本地运行的 GKD 规则辅助生成工具，用于从 GKD 快照中选择控件、生成 JSON5 规则草稿，并把测试规则导入 GKD 内存订阅。
+在手机上帮 GKD 生成跳过规则的辅助工具。选一个广告按钮，自动出候选规则、测试、导入，一条龙。
 
-## 功能
+> 桌面版（Windows/Web）仍在但不主动维护。以下内容以 Android 版为准。
 
-- 读取 GKD HTTP 服务快照，或在 Windows 版通过 ADB 辅助服务读取快照。
-- 根据用户点击区域生成候选 selector，并给出适合新手选择的提示。
-- 生成单步规则、多步骤规则、AI 求助 prompt 和可导入的 JSON5 片段。
-- 提供测试区，把候选 selector 或 AI 返回规则合并成 GKD 内存订阅进行临时测试。
-- Windows/Web 版可连接本地订阅仓库，把规则写入 `src/apps` 并保留撤回记录。
-- Android APK 内置轻量界面，适合直接在手机上连接 GKD HTTP 服务做快照规则测试。
+## 快速开始
+
+1. 下载 APK、安装
+2. 打开 GKD → 侧边栏 → HTTP 服务 → 启动
+3. 打开 Rule Studio，填入地址（手机本机 `127.0.0.1:8888`），点连接
+4. 连接后勾选一张快照，点「进入工作区」
+5. 在截图画布上**拖动**（不是点击）到目标按钮上松手
+6. 底部「候选」标签页会出现自动生成的规则，选一条点「测试」
+7. 测试有效后 Beta 版直接「导入」，正式版「复制」再手动粘到 GKD
+
+多步骤操作：勾选多张快照进入工作区，在「步骤」标签页编排顺序，适合点红包→返回这种连续操作。
 
 ## 下载
 
-请在 GitHub Releases 下载：
+GitHub Releases → 下载最新 APK：[前往发布页](https://github.com/phonon1/gkd-rule-builder/releases)
 
-- `GKD-Rule-Studio-Portable-0.1.0.zip`：Windows 便携版。
-- `GKD-Rule-Studio-Android-0.1.0-debug.apk`：Android 调试 APK。
-
-## Windows 便携版
-
-1. 解压 zip。
-2. 双击 `START.cmd`。
-3. 浏览器会打开 `http://127.0.0.1:5174/`。
-4. 需要关闭后台服务时双击 `STOP.cmd`。
-
-## Android APK
-
-安装 APK 后打开应用，按界面提示填写 GKD HTTP 服务地址。手机本机访问通常使用 `127.0.0.1:8888`。
-
-## 本地开发
+## 开发
 
 ```bash
 pnpm install
 pnpm test
 pnpm run typecheck
-pnpm run build
-pnpm run dev
+pnpm run dev              # 浏览器开发
+pnpm run build:android-assets  # 构建安卓 WebView 资源
+pnpm run package:full     # 构建 + 打包 APK
 ```
 
-构建 Android WebView 资源：
+## 相关
 
-```bash
-pnpm run build:android-assets
-```
-
-构建 APK：
-
-```bash
-cd android
-gradle assembleDebug
-```
-
-生成本地发布文件：
-
-```powershell
-pnpm run build
-pnpm run build:android-assets
-gradle -p android :app:assembleDebug
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1
-```
-
-发布产物在 `release/current`，Windows 便携版模板在 `packaging/windows`。
-
-## GKD 内存订阅导入
-
-测试区导入 GKD 使用的是 GKD HTTP 服务的 `/api/updateSubscription`，写入目标是 GKD 的内存订阅。它适合临时验证规则，不等同于发布到正式订阅仓库。
+- [GKD 搞快点](https://github.com/gkd-kit/gkd) — 广告跳过工具
+- [GKD 订阅模板](https://github.com/gkd-kit/subscription) — 官方规则订阅

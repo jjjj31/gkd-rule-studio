@@ -96,11 +96,25 @@ function matchSiblingPairs(
   snapshot: ParsedGkdSnapshot,
   firstSelector: SimpleSelector,
   secondSelector: SimpleSelector,
-  relation: { relation: "next" | "previous"; distance: number },
+  relation: { relation: "next" | "previous"; distance: number | number[] | "n" },
 ): Array<{ target: NormalizedSnapshotNode; neighbor: NormalizedSnapshotNode }> {
   const firstNodes = matchSimpleSelector(snapshot, firstSelector);
   const secondIds = new Set(matchSimpleSelector(snapshot, secondSelector).map((node) => node.id));
   const pairs: Array<{ target: NormalizedSnapshotNode; neighbor: NormalizedSnapshotNode }> = [];
+
+  // 计算要尝试的偏移量集合。
+  // 数字 → 单个偏移；数组 → 每个元素都尝试；"n" → 所有合法正整数偏移。
+  const sign = relation.relation === "next" ? 1 : -1;
+  const offsets: number[] = [];
+  if (relation.distance === "n") {
+    // +(n) 等价于 +(1n+0)，从 1 起递增到父节点子节点数量上限。
+    // 实际上限由 parent.children.length 决定，下面逐个尝试。
+    offsets.push(-1); // 标记：稍后用动态范围处理
+  } else if (Array.isArray(relation.distance)) {
+    offsets.push(...relation.distance.map((d) => d * sign));
+  } else {
+    offsets.push(relation.distance * sign);
+  }
 
   for (const firstNode of firstNodes) {
     if (firstNode.pid < 0) continue;
@@ -110,12 +124,26 @@ function matchSiblingPairs(
     const siblingIndex = parent.children.indexOf(firstNode.id);
     if (siblingIndex < 0) continue;
 
-    const offset = relation.relation === "next" ? relation.distance : -relation.distance;
-    const neighborId = parent.children[siblingIndex + offset];
-    const neighbor = neighborId === undefined ? undefined : snapshot.nodeById.get(neighborId);
+    const tryOffsets =
+      relation.distance === "n"
+        ? // +(n)：尝试所有正方向（直到数组越界）的偏移，教程 §5.3.2.3.2。
+          Array.from(
+            { length: parent.children.length },
+            (_, i) => (i + 1) * sign,
+          )
+        : offsets;
 
-    if (neighbor && secondIds.has(neighbor.id)) {
-      pairs.push({ target: firstNode, neighbor });
+    for (const offset of tryOffsets) {
+      const neighborId = parent.children[siblingIndex + offset];
+      const neighbor =
+        neighborId === undefined ? undefined : snapshot.nodeById.get(neighborId);
+
+      if (neighbor && secondIds.has(neighbor.id)) {
+        // 同一个 firstNode 可能匹配多个 neighbor（元组/多项式场景），都保留。
+        if (!pairs.some((p) => p.target.id === firstNode.id && p.neighbor.id === neighbor.id)) {
+          pairs.push({ target: firstNode, neighbor });
+        }
+      }
     }
   }
 
@@ -145,6 +173,13 @@ function matchesCondition(
       return typeof value === "number" && value < Number(condition.value);
     case "lte":
       return typeof value === "number" && value <= Number(condition.value);
+    case "orEq":
+      // 任一字符串命中即可，用于同义否定词/简繁变体合并。
+      return (
+        typeof value === "string" &&
+        Array.isArray(condition.value) &&
+        condition.value.includes(value)
+      );
   }
 }
 

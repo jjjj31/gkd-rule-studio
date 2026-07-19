@@ -4,6 +4,7 @@ import { normalizeSnapshot } from "./snapshotZip";
 import { generateSelectorCandidates } from "./selectorStrategies";
 import { diagnoseRuleRun } from "./actionPlan";
 import { createAppRuleDraft, stringifyRuleDraft } from "./ruleDraft";
+import { serializePlan } from "./selectorSerialize";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import type {
   RawGkdSnapshot,
@@ -263,7 +264,7 @@ describe("selector MVP flow", () => {
       candidates.some(
         (candidate) =>
           candidate.rule.matches[0] ===
-          'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][visibleToUser=true]',
+          'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][width<=500][height<=300][visibleToUser=true]',
       ),
     ).toBe(true);
 
@@ -292,7 +293,7 @@ describe("selector MVP flow", () => {
     });
 
     expect(candidates[0].rule.matches[0]).toBe(
-      'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][visibleToUser=true]',
+      'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][width<=500][height<=300][visibleToUser=true]',
     );
     expect(candidates[0].strategyName).toBe("adContainerSkipFallback");
     expect(candidates[0].actionPlan).toMatchObject({
@@ -336,18 +337,18 @@ describe("selector MVP flow", () => {
     expect(draft.groups[0].activityIds).toBeUndefined();
     expect(draft.groups[0].rules[0]).toMatchObject({
       matches: [
-        'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][visibleToUser=true]',
+        'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][width<=500][height<=300][visibleToUser=true]',
       ],
       activityIds: "com.jideos.module_start.pad.SplashActivity",
       action: "clickCenter",
       actionDelay: 2500,
     });
     expect(draft.groups[0].rules.map((rule) => rule.matches[0])).toEqual([
-      'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][visibleToUser=true]',
+      'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][width<=500][height<=300][visibleToUser=true]',
     ]);
     const preview = stringifyRuleDraft(draft);
     expect(preview).toContain(
-      'matches: \'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][visibleToUser=true]\'',
+      'matches: \'FrameLayout[id="com.jideos.jnotes:id/ptgAdvertLayout"] TextView[text^="跳过"][text.length<10][width<=500][height<=300][visibleToUser=true]\'',
     );
     expect(preview).not.toContain("tv_ad_skip");
   });
@@ -460,6 +461,276 @@ describe("selector MVP flow", () => {
     expect(draft.groups[0].rules[0].activityIds).toEqual([
       "com.windmill.sdk.widget.InterstitialView_4012003",
     ]);
+  });
+
+  it("excludes oversized skip nodes from textSkipGuarded via width/height guard", () => {
+    // 搜索框或超大 CTA 也可能含"跳过"二字，但 width>500 或 height>300 不应匹配。
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 2 })),
+      node(
+        1,
+        0,
+        attr({
+          name: "android.widget.EditText",
+          text: "跳过广告",
+          left: 0,
+          top: 800,
+          right: 1080,
+          bottom: 900,
+          width: 1080,
+          height: 100,
+          index: 0,
+        }),
+      ),
+      node(
+        2,
+        0,
+        attr({
+          name: "android.widget.TextView",
+          text: "跳过",
+          left: 0,
+          top: 100,
+          right: 1080,
+          bottom: 500,
+          width: 1080,
+          height: 400,
+          index: 1,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 200, y: 300 });
+    expect(pick?.pickedNode.id).toBe(2);
+    // 这个节点 text="跳过" 但 height=400 > 300，应该被尺寸保护排除。
+
+    const candidates = generateSelectorCandidates({
+      snapshot,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickedNode: pick!.pickedNode,
+      ancestors: pick!.ancestors,
+      siblings: pick!.siblings,
+      clickableAncestor: pick!.clickableAncestor,
+      nearbyTextNodes: pick!.nearbyTextNodes,
+    });
+
+    const textSkip = candidates.find(
+      (candidate) => candidate.strategyName === "textSkipGuarded",
+    );
+    // textSkipGuarded 应该生成，但它的 validation.hitCount 应该是 0，
+    // 因为 width/height 保护条件把这个超大节点排除了。
+    expect(textSkip).toBeDefined();
+    expect(textSkip?.validation.hitCount).toBe(0);
+  });
+
+  it("generates sibling candidate when cancel and CTA are separated by 5 nodes", () => {
+    // 教程 §5.3.2.2 提到兄弟之间可以有多跳关系（+n）。
+    // 之前 distance>3 就 return []，现在放宽到 5，覆盖更多传统弹窗布局。
+    // 注意：取消和 CTA 之间的占位节点不能含其它 CTA/上下文词，
+    // 否则 find 会先匹配到更近的那个。
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 7 })),
+      node(
+        1,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "取消",
+          clickable: true,
+          left: 100,
+          top: 600,
+          right: 260,
+          bottom: 680,
+          index: 0,
+        }),
+      ),
+      node(2, 0, attr({ name: "android.view.View", index: 1 })),
+      node(3, 0, attr({ name: "android.view.View", index: 2 })),
+      node(4, 0, attr({ name: "android.view.View", index: 3 })),
+      node(5, 0, attr({ name: "android.view.View", index: 4 })),
+      node(
+        6,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "立即升级",
+          clickable: true,
+          left: 300,
+          top: 600,
+          right: 520,
+          bottom: 680,
+          index: 5,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 160, y: 640 });
+    expect(pick?.pickedNode.id).toBe(1);
+
+    const candidates = generateSelectorCandidates({
+      snapshot,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickedNode: pick!.pickedNode,
+      ancestors: pick!.ancestors,
+      siblings: pick!.siblings,
+      clickableAncestor: pick!.clickableAncestor,
+      nearbyTextNodes: pick!.nearbyTextNodes,
+    });
+
+    // 取消在 index=0，CTA 在 index=5，distance=5，应该生成 sibling 候选。
+    const sibling = candidates.find(
+      (candidate) => candidate.strategyName === "simpleSiblingCancelVsCTA",
+    );
+    expect(sibling).toBeDefined();
+    expect(sibling?.validation.hitCount).toBeGreaterThanOrEqual(1);
+    // 序列化结果应是 +5（distance>1 时格式 +数字）。
+    expect(sibling?.rule.matches[0]).toContain("+5");
+  });
+
+  it("emits a +(n) polynomial sibling candidate when context is 2+ nodes away", () => {
+    // 教程 §5.3.2.3.2：上下文和目标之间隔 ≥2 个节点时，
+    // 不同快照里距离可能漂移，额外产出 +(n) 多项式候选兼容变体。
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 3 })),
+      node(
+        1,
+        0,
+        attr({
+          name: "android.widget.TextView",
+          text: "通知服务未开启",
+          left: 100,
+          top: 100,
+          right: 400,
+          bottom: 160,
+          index: 0,
+        }),
+      ),
+      node(2, 0, attr({ name: "android.view.View", index: 1 })),
+      node(
+        3,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "取消",
+          clickable: true,
+          left: 100,
+          top: 300,
+          right: 260,
+          bottom: 360,
+          index: 2,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 160, y: 330 });
+    expect(pick?.pickedNode.id).toBe(3);
+
+    const candidates = generateSelectorCandidates({
+      snapshot,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickedNode: pick!.pickedNode,
+      ancestors: pick!.ancestors,
+      siblings: pick!.siblings,
+      clickableAncestor: pick!.clickableAncestor,
+      nearbyTextNodes: pick!.nearbyTextNodes,
+    });
+
+    // 应同时有一条固定 +2 候选和一条 +(n) 多项式候选。
+    const contextRelations = candidates.filter(
+      (candidate) => candidate.strategyName === "simpleContextRelation",
+    );
+    expect(contextRelations.length).toBeGreaterThanOrEqual(2);
+
+    const fixed = contextRelations.find((c) => c.rule.matches[0].includes("+2"));
+    const polynomial = contextRelations.find((c) => c.rule.matches[0].includes("+n"));
+    expect(fixed).toBeDefined();
+    expect(polynomial).toBeDefined();
+    // 多项式 baseScore 应低于固定（体现不确定性）。
+    expect(polynomial!.baseScore).toBeLessThan(fixed!.baseScore);
+  });
+
+  it("serializes tuple +(1,2) and polynomial +n relations correctly", () => {
+    // 教程 §5.3.2.3：元组 +(1,2) / 多项式 +n 是合法 selector 语法。
+    // 这里直接验证 serializePlan 对三种 distance 形态的输出格式。
+    const target = { conditions: [{ attr: "text" as const, op: "eq" as const, value: "取消" }] };
+    const neighbor = { conditions: [{ attr: "text" as const, op: "eq" as const, value: "更新" }] };
+
+    // distance=1 → "+"
+    const single = serializePlan({
+      kind: "sibling",
+      target,
+      neighbor,
+      relation: "next",
+      distance: 1,
+    });
+    expect(single[0]).toContain('+ [text="更新"]');
+    expect(single[0]).not.toContain("+1");
+
+    // distance=[1,2] → "+(1,2)"
+    const tuple = serializePlan({
+      kind: "sibling",
+      target,
+      neighbor,
+      relation: "next",
+      distance: [1, 2],
+    });
+    expect(tuple[0]).toContain("+(1,2)");
+
+    // distance="n" → "+n"
+    const poly = serializePlan({
+      kind: "sibling",
+      target,
+      neighbor,
+      relation: "next",
+      distance: "n",
+    });
+    expect(poly[0]).toContain("+n");
+  });
+
+  it("emits orEq variant union candidate for negation action text", () => {
+    // 研究报告 logicalOrVariantUnion："否"/"暂不"/"不了" 是同义否定动作，
+    // 不同 App 用不同文案，合并成 [text="否" || text="暂不" || text="不了"] 可跨 App 复用。
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 1 })),
+      node(
+        1,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "否",
+          clickable: true,
+          left: 100,
+          top: 600,
+          right: 260,
+          bottom: 680,
+          index: 0,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 160, y: 640 });
+    expect(pick?.pickedNode.id).toBe(1);
+
+    const candidates = generateSelectorCandidates({
+      snapshot,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickedNode: pick!.pickedNode,
+      ancestors: pick!.ancestors,
+      siblings: pick!.siblings,
+      clickableAncestor: pick!.clickableAncestor,
+      nearbyTextNodes: pick!.nearbyTextNodes,
+    });
+
+    const variant = candidates.find(
+      (candidate) => candidate.strategyName === "negativeActionVariantUnion",
+    );
+    expect(variant).toBeDefined();
+    // 序列化结果应包含 orEq 合并格式。
+    expect(variant?.rule.matches[0]).toContain("||");
+    expect(variant?.rule.matches[0]).toContain("text=\"否\"");
+    expect(variant?.rule.matches[0]).toContain("text=\"暂不\"");
+    expect(variant?.rule.matches[0]).toContain("text=\"不了\"");
+    // 该候选应能命中当前快照中 text="否" 的节点。
+    expect(variant?.validation.hitCount).toBeGreaterThanOrEqual(1);
   });
 });
 

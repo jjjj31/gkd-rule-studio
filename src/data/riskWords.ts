@@ -76,3 +76,15 @@ export const CONTEXT_HINT_WORDS = [
   "评分",
   "评价",
 ];
+
+/**
+ * 同义否定动作的变体组。
+ * 不同 App 对同一个"拒绝"动作会用不同文案，把它们合并成一条 [text="否" || text="暂不"] selector，
+ * 可以跨 App/跨版本复用同一条规则。研究报告 logicalOrVariantUnion 策略。
+ * key 是任意一个组内词，查找时遍历所有组找 pickedNode.text 属于哪个组。
+ */
+export const NEGATIVE_ACTION_VARIANT_GROUPS: string[][] = [
+  ["否", "暂不", "不了", "拒绝"],
+  ["以后再说", "下次再说", "稍后", "以后"],
+  ["暂不开启", "暂不开启通知", "暂不允许"],
+];

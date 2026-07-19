@@ -9,6 +9,7 @@ import {
   CONTEXT_HINT_WORDS,
   GENERIC_ACTION_TEXT,
   NEGATIVE_ACTION_TEXT,
+  NEGATIVE_ACTION_VARIANT_GROUPS,
   POSITIVE_CTA_TEXT,
 } from "../data/riskWords";
 import type { NormalizedSnapshotNode } from "../types/gkdSnapshot";
@@ -56,6 +57,7 @@ export function generateSelectorCandidates(
     ...adContainerSkipFallback(context),
     ...clickableAncestorFallback(context),
     ...visibleNodeFallback(context),
+    ...negativeActionVariantUnion(context),
   ];
 
   const candidates = seeds.map((seed, index) => buildCandidate(context, seed, index));
@@ -317,6 +319,55 @@ function visibleNodeFallback(context: GenerationContext): CandidateSeed[] {
   ];
 }
 
+function negativeActionVariantUnion(context: GenerationContext): CandidateSeed[] {
+  const node = context.pickedNode;
+  const text = node.attr.text;
+  if (!text) return [];
+
+  // 在同义否定词变体组里找 pickedNode.text 属于哪个组。
+  const variantGroup = NEGATIVE_ACTION_VARIANT_GROUPS.find((group) =>
+    group.some((word) => word === text),
+  );
+  if (!variantGroup || variantGroup.length <= 1) return [];
+
+  // 组内只有 1 个词等于 text 时才需要合并，否则 text 本身就是唯一的词。
+  const allVariants = variantGroup;
+  const typeName = shortTypeName(node);
+
+  return [
+    {
+      strategyName: "negativeActionVariantUnion",
+      title: "否定动作变体合并",
+      baseScore: 65,
+      plan: {
+        kind: "simple",
+        selector: {
+          typeName,
+          conditions: [
+            { attr: "text", op: "orEq", value: allVariants },
+            { attr: "visibleToUser", op: "eq", value: true },
+          ],
+        },
+      },
+      groupName: groupNameForContextByText(text, "功能类-自动生成"),
+      debugReasons: [
+        `"${text}" 属于同义否定词组 (${allVariants.join(" / ")})，合并为 orEq 变体`,
+      ],
+    },
+  ];
+}
+
+function groupNameForContextByText(text: string, fallback: string): string {
+  if (text.includes("权限")) return "权限提示";
+  if (text.includes("通知")) return "通知提示";
+  if (text.includes("更新") || text.includes("升级")) return "更新提示";
+  if (text.includes("评价") || text.includes("评分") || text.includes("好评")) {
+    return "评价提示";
+  }
+  if (text.includes("青少年")) return "青少年模式";
+  return fallback;
+}
+
 function simpleSiblingCancelVsCTA(context: GenerationContext): CandidateSeed[] {
   const text = context.pickedNode.attr.text;
   if (!text || !NEGATIVE_ACTION_TEXT.includes(text)) return [];
@@ -331,7 +382,7 @@ function simpleSiblingCancelVsCTA(context: GenerationContext): CandidateSeed[] {
   const relation = ctaSibling.attr.index > context.pickedNode.attr.index ? "next" : "previous";
   const distance = Math.abs(ctaSibling.attr.index - context.pickedNode.attr.index);
 
-  if (distance < 1 || distance > 3) return [];
+  if (distance < 1 || distance > 5) return [];
 
   return [
     {
@@ -366,24 +417,54 @@ function simpleContextRelation(context: GenerationContext): CandidateSeed[] {
     context.pickedNode.attr.index > contextSibling.attr.index ? "next" : "previous";
   const distance = Math.abs(context.pickedNode.attr.index - contextSibling.attr.index);
 
-  if (distance < 1 || distance > 3) return [];
+  if (distance < 1 || distance > 5) return [];
 
-  return [
+  const contextSel = selectorForTextNode(contextSibling);
+  const targetSel = selectorForTextNode(context.pickedNode);
+  const groupName = groupNameForContext(contextSibling, "功能类-自动生成");
+  const baseReason = `目标与上下文 ${nodeText(contextSibling)} 在同一父节点下`;
+
+  const seeds: CandidateSeed[] = [
     {
       strategyName: "simpleContextRelation",
       title: "一跳上下文关系",
       baseScore: 72,
       plan: {
         kind: "contextSibling",
-        context: selectorForTextNode(contextSibling),
-        target: selectorForTextNode(context.pickedNode),
+        context: contextSel,
+        target: targetSel,
         relation,
         distance,
       },
-      groupName: groupNameForContext(contextSibling, "功能类-自动生成"),
-      debugReasons: [`目标与上下文 ${nodeText(contextSibling)} 在同一父节点下`],
+      groupName,
+      debugReasons: [baseReason],
     },
   ];
+
+  // 教程 §5.3.2.3.2：当上下文与目标之间间隔 ≥2 个节点时，
+  // 同 App 不同快照里这个距离可能漂移（如 keep 广告 +1 / +2 两个变体）。
+  // 额外产出一条 +(n) 多项式候选作为兼容变体，baseScore 降 4 分体现不确定性。
+  // n 从 1 起递增，但父节点子节点有限，不会死循环。
+  if (distance >= 2) {
+    seeds.push({
+      strategyName: "simpleContextRelation",
+      title: "上下文 + 多项式距离",
+      baseScore: 68,
+      plan: {
+        kind: "contextSibling",
+        context: contextSel,
+        target: targetSel,
+        relation,
+        distance: "n",
+      },
+      groupName,
+      debugReasons: [
+        `${baseReason}，且距离为 ${distance}，额外用 +(n) 兼容间距漂移`,
+      ],
+    });
+  }
+
+  return seeds;
 }
 
 function singleSeed(
@@ -560,6 +641,10 @@ function skipTextSelector(typeName?: string): SimpleSelector {
     conditions: [
       { attr: "text", op: "startsWith", value: "跳过" },
       { attr: "text.length", op: "lt", value: 10 },
+      // 尺寸保护：教程 §5.3.2 + 研究报告建议，排除超大 CTA、列表项、搜索框。
+      // 跳过按钮通常是小尺寸角落控件，宽 >500 或高 >300 的基本不是真跳过。
+      { attr: "width", op: "lte", value: 500 },
+      { attr: "height", op: "lte", value: 300 },
       { attr: "visibleToUser", op: "eq", value: true },
     ],
   };
