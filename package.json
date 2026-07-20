@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 5174",
     "build": "tsc -b && vite build",
     "build:android-assets": "tsc -b && vite build --base ./ --outDir android/app/src/main/assets --emptyOutDir",
+    "package:full": "tsc -b && vite build --base ./ --outDir android/app/src/main/assets --emptyOutDir && cd android && gradlew assembleDebug",
     "start": "vite preview --host 127.0.0.1 --port 5174",
     "preview": "vite preview --host 127.0.0.1 --port 5174",
     "test": "vitest run",
