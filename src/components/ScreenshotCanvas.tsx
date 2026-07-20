@@ -53,6 +53,8 @@ export function ScreenshotCanvas({
   );
   const [imageBox, setImageBox] = useState<ImageBox | null>(null);
   const [magnifier, setMagnifier] = useState<MagnifierState | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const nextTouchIsScrollRef = useRef(false);
 
   useLayoutEffect(() => {
     const img = imgRef.current;
@@ -83,6 +85,7 @@ export function ScreenshotCanvas({
     window.addEventListener("blur", release);
     document.addEventListener("visibilitychange", release);
     return () => {
+      clearIdleTimer();
       releaseDragCapture(true);
       window.removeEventListener("pointerup", release);
       window.removeEventListener("pointercancel", release);
@@ -124,7 +127,17 @@ export function ScreenshotCanvas({
 
   function handlePointerDown(event: PointerEvent<HTMLDivElement>): void {
     if (interactionMode !== "dragMagnifier") return;
+
+    clearIdleTimer();
+
+    if (nextTouchIsScrollRef.current) {
+      nextTouchIsScrollRef.current = false;
+      event.currentTarget.style.touchAction = "pan-y";
+      return;
+    }
+
     event.preventDefault();
+    event.currentTarget.style.touchAction = "none";
 
     const img = imgRef.current;
     if (!img) return;
@@ -191,12 +204,15 @@ export function ScreenshotCanvas({
   }
 
   function handlePointerUp(event: PointerEvent<HTMLDivElement>): void {
-    if (
-      interactionMode !== "dragMagnifier" ||
-      dragPointerIdRef.current !== event.pointerId
-    ) {
+    if (interactionMode !== "dragMagnifier") return;
+
+    // Cooldown scroll touch ended — reset touch-action
+    if (dragPointerIdRef.current === null) {
+      event.currentTarget.style.touchAction = "";
       return;
     }
+
+    if (dragPointerIdRef.current !== event.pointerId) return;
     event.preventDefault();
 
     const img = imgRef.current;
@@ -223,16 +239,19 @@ export function ScreenshotCanvas({
     if (nextPoint) {
       onPointSelected(nextPoint);
       scheduleHideMagnifier();
+      startIdleCooldown();
     }
   }
 
   function handlePointerCancel(event: PointerEvent<HTMLDivElement>): void {
-    if (
-      interactionMode !== "dragMagnifier" ||
-      dragPointerIdRef.current !== event.pointerId
-    ) {
+    if (interactionMode !== "dragMagnifier") return;
+
+    if (dragPointerIdRef.current === null) {
+      event.currentTarget.style.touchAction = "";
       return;
     }
+
+    if (dragPointerIdRef.current !== event.pointerId) return;
     releaseDragCapture(true);
   }
 
@@ -250,7 +269,11 @@ export function ScreenshotCanvas({
     dragPointerIdRef.current = null;
     dragStartRef.current = null;
     lastDragPointRef.current = null;
+    if (stage) {
+      stage.style.touchAction = "";
+    }
     if (hideMagnifier) setMagnifier(null);
+    if (!hideMagnifier) startIdleCooldown();
   }
 
   function clearDragWatchdogTimer(): void {
@@ -270,6 +293,20 @@ export function ScreenshotCanvas({
     hideMagnifierTimerRef.current = window.setTimeout(() => {
       setMagnifier(null);
       hideMagnifierTimerRef.current = null;
+    }, 2000);
+  }
+
+  function clearIdleTimer(): void {
+    if (idleTimerRef.current === null) return;
+    window.clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = null;
+  }
+
+  function startIdleCooldown(): void {
+    clearIdleTimer();
+    idleTimerRef.current = window.setTimeout(() => {
+      nextTouchIsScrollRef.current = true;
+      idleTimerRef.current = null;
     }, 2000);
   }
 

@@ -908,7 +908,6 @@ svg {
 
 .screenshot-stage-drag {
   cursor: grab;
-  touch-action: none;
 }
 
 .screenshot-stage-drag:active {

@@ -69,7 +69,7 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new AndroidBridge(this, webView), "GkdAndroidBridge");
         webView.loadUrl("file:///android_asset/index.html#android");
         if (getActionBar() != null) {
-            getActionBar().setDisplayHomeAsUpEnabled(false);
+            getActionBar().hide();
         }
     }
 
