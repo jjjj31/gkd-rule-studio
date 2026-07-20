@@ -4413,6 +4413,7 @@ function humanStrategyDesc(candidate: SelectorCandidate): string {
     adContainerSkipFallback: "适合作为 WebView 广告兜底",
     clickableAncestorFallback: "目标无稳定属性时的低分兜底",
     visibleNodeFallback: "避免候选为空，需人工复核",
+    negativeActionVariantUnion: "合并同义否定词，跨 App 复用",
   };
   return `${hitText}，${suffix[candidate.strategyName]}`;
 }

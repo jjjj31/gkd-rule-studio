@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GKD Rule Studio - Material You 风格 Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Material 3 Dynamic Color tokens - dark theme */
+    --md-sys-color-primary: #d0bcff;
+    --md-sys-color-on-primary: #381e72;
+    --md-sys-color-primary-container: #4f378b;
+    --md-sys-color-on-primary-container: #eaddff;
+    --md-sys-color-secondary: #ccc2dc;
+    --md-sys-color-on-secondary: #332d41;
+    --md-sys-color-secondary-container: #4a4458;
+    --md-sys-color-on-secondary-container: #e8def8;
+    --md-sys-color-tertiary: #efb8c8;
+    --md-sys-color-on-tertiary: #492532;
+    --md-sys-color-tertiary-container: #633b48;
+    --md-sys-color-on-tertiary-container: #ffd8e4;
+    --md-sys-color-surface: #1c1b1f;
+    --md-sys-color-surface-variant: #49454f;
+    --md-sys-color-on-surface: #e6e1e5;
+    --md-sys-color-on-surface-variant: #cac4d0;
+    --md-sys-color-outline: #938f99;
+    --md-sys-color-outline-variant: #49454f;
+    --md-sys-color-error: #f2b8b5;
+    --md-sys-color-on-error: #601410;
+    --md-sys-color-error-container: #8c1d18;
+    --md-sys-color-success: #81c995;
+    --md-sys-color-surface-tint: #d0bcff;
+    --md-sys-color-inverse-surface: #e6e1e5;
+    --md-sys-color-inverse-on-surface: #322f35;
+    --md-elevation-1: 0 1px 3px 0 rgba(0,0,0,0.3), 0 1px 2px 0 rgba(0,0,0,0.15);
+    --md-elevation-2: 0 2px 6px 0 rgba(0,0,0,0.3), 0 1px 2px 0 rgba(0,0,0,0.15);
+    --md-elevation-3: 0 4px 8px 0 rgba(0,0,0,0.3), 0 2px 4px 0 rgba(0,0,0,0.15);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+  body {
+    font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    min-height: 100vh;
+  }
+
+  .demo-container {
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    padding-bottom: 88px;
+  }
+
+  /* Material App Bar (large) */
+  .app-bar {
+    padding: 24px 16px 16px;
+    background: var(--md-sys-color-surface);
+  }
+  .app-bar-compact {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--md-sys-color-surface);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  }
+  .brand-avatar {
+    width: 44px; height: 44px;
+    border-radius: 14px;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    display: grid; place-items: center;
+    font-size: 20px; font-weight: 700;
+  }
+  .app-bar h1 {
+    font-size: 22px;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--md-sys-color-on-surface);
+  }
+  .app-bar p {
+    font-size: 13px;
+    color: var(--md-sys-color-on-surface-variant);
+    margin-top: 2px;
+  }
+
+  /* Material Cards */
+  .md-card {
+    margin: 8px 16px;
+    padding: 16px;
+    border-radius: 16px;
+    background: var(--md-sys-color-surface);
+    box-shadow: var(--md-elevation-1);
+    border: 1px solid var(--md-sys-color-outline-variant);
+    transition: box-shadow 0.2s;
+  }
+  .md-card:hover { box-shadow: var(--md-elevation-2); }
+  .md-card-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .md-card-header h2 {
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--md-sys-color-on-surface);
+  }
+  .md-card-header p {
+    font-size: 12px;
+    color: var(--md-sys-color-on-surface-variant);
+    margin-top: 4px;
+  }
+
+  /* Material Chips */
+  .chip-group {
+    display: flex; flex-wrap: wrap; gap: 8px;
+  }
+  .md-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--md-sys-color-outline);
+    background: transparent;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .md-chip:hover { background: rgba(208,188,255,0.08); }
+  .md-chip.active {
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+    border-color: transparent;
+  }
+
+  /* Material Buttons */
+  .md-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.025em;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: none;
+    position: relative;
+    overflow: hidden;
+  }
+  .md-btn::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: currentColor;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .md-btn:active::after { opacity: 0.12; }
+  .md-btn:active { transform: scale(0.98); }
+
+  .md-btn-filled {
+    background: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    box-shadow: var(--md-elevation-1);
+  }
+  .md-btn-filled:hover { box-shadow: var(--md-elevation-2); }
+  .md-btn-tonal {
+    background: var(--md-sys-color-secondary-container);
+    color: var(--md-sys-color-on-secondary-container);
+  }
+  .md-btn-outlined {
+    background: transparent;
+    color: var(--md-sys-color-primary);
+    border: 1px solid var(--md-sys-color-outline);
+  }
+  .md-btn-text {
+    background: transparent;
+    color: var(--md-sys-color-primary);
+    padding: 10px 12px;
+  }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .btn-row .md-btn { flex: 1; min-width: 0; }
+
+  /* Material Text Field */
+  .md-textfield {
+    position: relative;
+    margin-top: 12px;
+  }
+  .md-textfield input {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 4px 4px 0 0;
+    border: none;
+    border-bottom: 1px solid var(--md-sys-color-outline);
+    background: rgba(208,188,255,0.04);
+    color: var(--md-sys-color-on-surface);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s;
+  }
+  .md-textfield input:focus {
+    border-bottom-width: 2px;
+    border-bottom-color: var(--md-sys-color-primary);
+    background: rgba(208,188,255,0.08);
+  }
+  .md-textfield label {
+    position: absolute;
+    left: 16px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 14px;
+    transition: all 0.2s;
+    pointer-events: none;
+  }
+  .md-textfield input:focus + label,
+  .md-textfield input:not(:placeholder-shown) + label {
+    top: 2px;
+    transform: translateY(0);
+    font-size: 11px;
+    color: var(--md-sys-color-primary);
+  }
+
+  /* Material List */
+  .md-list {
+    margin-top: 8px;
+  }
+  .md-list-item {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    transition: background 0.2s;
+    cursor: pointer;
+  }
+  .md-list-item:last-child { border-bottom: none; }
+  .md-list-item:active { background: rgba(208,188,255,0.04); }
+  .list-leading {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    display: grid; place-items: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .list-content { flex: 1; min-width: 0; }
+  .list-content strong {
+    font-size: 14px; font-weight: 500;
+    color: var(--md-sys-color-on-surface);
+    display: block;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .list-content span {
+    font-size: 12px;
+    color: var(--md-sys-color-on-surface-variant);
+    font-family: 'Roboto Mono', monospace;
+  }
+  .list-trailing {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: 2px solid var(--md-sys-color-outline);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: transparent;
+    transition: all 0.2s;
+  }
+  .md-list-item.selected .list-trailing {
+    background: var(--md-sys-color-primary);
+    border-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+  }
+
+  /* FAB */
+  .fab {
+    position: fixed;
+    bottom: 100px; right: 20px;
+    width: 56px; height: 56px;
+    border-radius: 16px;
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    border: none;
+    font-size: 24px;
+    display: grid; place-items: center;
+    box-shadow: var(--md-elevation-3);
+    cursor: pointer;
+    z-index: 50;
+    transition: all 0.2s;
+  }
+  .fab:active { transform: scale(0.92); box-shadow: var(--md-elevation-1); }
+
+  /* Bottom Navigation */
+  .md-nav {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 0 20px;
+    background: var(--md-sys-color-surface);
+    border-top: 1px solid var(--md-sys-color-outline-variant);
+    z-index: 100;
+  }
+  .md-nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 4px 16px;
+    border: none; background: transparent;
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 16px;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .md-nav-item .nav-icon {
+    width: 28px; height: 28px;
+    display: grid; place-items: center;
+    font-size: 18px;
+    border-radius: 50%;
+    transition: all 0.2s;
+  }
+  .md-nav-item.active {
+    color: var(--md-sys-color-on-secondary-container);
+  }
+  .md-nav-item.active .nav-icon {
+    background: var(--md-sys-color-secondary-container);
+  }
+
+  /* Canvas for workspace */
+  .canvas-container {
+    margin: 0 16px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--md-sys-color-outline-variant);
+    background: rgba(0,0,0,0.2);
+    aspect-ratio: 9/16;
+    display: grid; place-items: center;
+  }
+  .canvas-container .placeholder {
+    text-align: center;
+    color: var(--md-sys-color-on-surface-variant);
+  }
+  .canvas-container .placeholder .icon { font-size: 48px; opacity: 0.4; margin-bottom: 8px; }
+
+  /* Panels */
+  .md-panel {
+    margin: 8px 16px;
+    padding: 16px;
+    border-radius: 16px;
+    background: var(--md-sys-color-surface);
+    box-shadow: var(--md-elevation-1);
+    border: 1px solid var(--md-sys-color-outline-variant);
+  }
+  .md-panel h3 {
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .badge-md {
+    display: inline-flex; align-items: center;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .badge-assist { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+  .badge-success { background: rgba(129,201,149,0.15); color: var(--md-sys-color-success); }
+
+  .tag-md {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 500;
+    margin: 2px;
+  }
+  .tag-elevated { background: var(--md-sys-color-primary-container); color: var(--md-sys-color-on-primary-container); }
+  .tag-warn { background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container); }
+  .tag-error { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error); }
+
+  .switcher { text-align: center; padding: 16px; }
+  .switcher-btn {
+    padding: 10px 24px;
+    border-radius: 20px;
+    border: 1px solid var(--md-sys-color-outline);
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface-variant);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .workspace { display: none; }
+  .workspace.active { display: block; }
+
+  /* Ripple effect helper */
+  .ripple { position: relative; overflow: hidden; }
+</style>
+</head>
+<body>
+
+<div class="demo-container" id="homeView">
+  <!-- Large App Bar -->
+  <div class="app-bar">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px;">
+      <div class="brand-avatar">G</div>
+      <div>
+        <h1>GKD Rule Studio</h1>
+        <p>规则生成与验证工作台</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Connection Card -->
+  <div class="md-card">
+    <div class="md-card-header">
+      <div>
+        <h2>连接手机</h2>
+        <p>通过 HTTP 服务或 ADB 读取快照</p>
+      </div>
+      <span class="badge-md badge-assist">未连接</span>
+    </div>
+
+    <div class="chip-group">
+      <button class="md-chip active">HTTP 服务</button>
+      <button class="md-chip">ADB 数据线</button>
+    </div>
+
+    <div class="md-textfield" style="margin-top:16px;">
+      <input type="text" id="deviceInput" placeholder=" " />
+      <label for="deviceInput">设备地址</label>
+    </div>
+
+    <div class="btn-row">
+      <button class="md-btn md-btn-outlined">📡 批量测试</button>
+      <button class="md-btn md-btn-filled">📱 连接</button>
+    </div>
+  </div>
+
+  <!-- Snapshots Card -->
+  <div class="md-card">
+    <div class="md-card-header">
+      <div>
+        <h2>快照列表</h2>
+        <p>选择快照进入工作区</p>
+      </div>
+      <span class="badge-md badge-success">24 条</span>
+    </div>
+
+    <div class="md-textfield">
+      <input type="text" id="searchInput" placeholder=" " />
+      <label for="searchInput">搜索应用、包名或 Activity</label>
+    </div>
+
+    <div class="md-list">
+      <div class="md-list-item" onclick="this.classList.toggle('selected')">
+        <div class="list-leading">💬</div>
+        <div class="list-content">
+          <strong>微信</strong>
+          <span>com.tencent.mm · LauncherUI</span>
+        </div>
+        <div class="list-trailing">✓</div>
+      </div>
+      <div class="md-list-item" onclick="this.classList.toggle('selected')">
+        <div class="list-leading">💰</div>
+        <div class="list-content">
+          <strong>支付宝</strong>
+          <span>com.eg.android.AlipayGphone</span>
+        </div>
+        <div class="list-trailing">✓</div>
+      </div>
+      <div class="md-list-item" onclick="this.classList.toggle('selected')">
+        <div class="list-leading">🎵</div>
+        <div class="list-content">
+          <strong>抖音</strong>
+          <span>com.ss.android.ugc.aweme</span>
+        </div>
+        <div class="list-trailing">✓</div>
+      </div>
+      <div class="md-list-item" onclick="this.classList.toggle('selected')">
+        <div class="list-leading">🛒</div>
+        <div class="list-content">
+          <strong>淘宝</strong>
+          <span>com.taobao.taobao · MainActivity3</span>
+        </div>
+        <div class="list-trailing">✓</div>
+      </div>
+    </div>
+
+    <div class="btn-row" style="margin-top:16px;">
+      <button class="md-btn md-btn-outlined">📋 诊断</button>
+      <button class="md-btn md-btn-filled">➕ 创建流程</button>
+    </div>
+  </div>
+
+  <div class="switcher">
+    <button class="switcher-btn" onclick="switchToWorkspace()">👆 点击切换工作区</button>
+  </div>
+</div>
+
+<!-- WORKSPACE -->
+<div class="demo-container workspace" id="workspaceView">
+  <div class="app-bar-compact">
+    <button class="md-btn md-btn-text" onclick="switchToHome()">←</button>
+    <div style="flex:1;">
+      <h2 style="font-size:16px;font-weight:500;">微信 · 规则编辑</h2>
+      <p style="font-size:11px;color:var(--md-sys-color-on-surface-variant);">com.tencent.mm / LauncherUI</p>
+    </div>
+    <button class="md-btn md-btn-text">⚙️</button>
+  </div>
+
+  <div class="canvas-container">
+    <div class="placeholder">
+      <div class="icon">📷</div>
+      <p>截图画布<br><span style="font-size:11px;">点击目标控件选择节点</span></p>
+    </div>
+  </div>
+
+  <div class="chip-group" style="padding:12px 16px;">
+    <button class="md-chip active">🎬 场景</button>
+    <button class="md-chip">🎯 候选</button>
+    <button class="md-chip">📝 Prompt</button>
+    <button class="md-chip">📊 步骤</button>
+    <button class="md-chip">🤖 AI</button>
+  </div>
+
+  <div class="md-panel">
+    <h3>🔍 节点树</h3>
+    <div style="font-size:12px;color:var(--md-sys-color-on-surface-variant);line-height:1.8;font-family:'Roboto Mono',monospace;">
+      <div>└─ FrameLayout (#1)</div>
+      <div>　 └─ LinearLayout (#2)</div>
+      <div>　 　 └─ <span style="color:var(--md-sys-color-primary);">TextView "跳过" (#15) 👈</span></div>
+    </div>
+  </div>
+
+  <div class="md-panel">
+    <h3>🎯 候选 Selector</h3>
+    <div>
+      <span class="tag-md tag-elevated">⭐ 92 [id="skip_btn"]</span>
+      <span class="tag-md tag-warn">⚡ 78 [text="跳过"]</span>
+      <span class="tag-md tag-error">⚠️ 45 [class="Button"]</span>
+    </div>
+  </div>
+
+  <div class="md-panel">
+    <h3>📋 规则预览</h3>
+    <pre style="font-size:10px;color:var(--md-sys-color-on-surface-variant);background:rgba(208,188,255,0.04);padding:12px;border-radius:8px;overflow-x:auto;">
+{
+  key: 1,
+  name: '开屏广告',
+  activityIds: 'LauncherUI',
+  rules: [
+    {
+      matches: '[id="skip_btn"]',
+      snapshotUrls: '...',
+    }
+  ]
+}</pre>
+  </div>
+</div>
+
+<!-- FAB -->
+<button class="fab">➕</button>
+
+<!-- Bottom Navigation -->
+<nav class="md-nav">
+  <button class="md-nav-item active">
+    <span class="nav-icon">🏠</span>
+    <span>首页</span>
+  </button>
+  <button class="md-nav-item">
+    <span class="nav-icon">📷</span>
+    <span>画布</span>
+  </button>
+  <button class="md-nav-item">
+    <span class="nav-icon">🤖</span>
+    <span>AI</span>
+  </button>
+  <button class="md-nav-item">
+    <span class="nav-icon">⚙️</span>
+    <span>设置</span>
+  </button>
+</nav>
+
+<script>
+  function switchToWorkspace() {
+    document.getElementById('homeView').style.display = 'none';
+    document.getElementById('workspaceView').classList.add('active');
+  }
+  function switchToHome() {
+    document.getElementById('homeView').style.display = 'block';
+    document.getElementById('workspaceView').classList.remove('active');
+  }
+  document.querySelectorAll('.md-chip').forEach(chip => {
+    chip.addEventListener('click', function() {
+      if (this.closest('.chip-group')) {
+        this.closest('.chip-group').querySelectorAll('.md-chip').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+      }
+    });
+  });
+  document.querySelectorAll('.md-nav-item').forEach(item => {
+    item.addEventListener('click', function() {
+      document.querySelectorAll('.md-nav-item').forEach(i => i.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>

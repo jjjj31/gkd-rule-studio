@@ -4576,3 +4576,2007 @@ svg {
     align-items: flex-start;
   }
 }
+
+/* ============================================================
+   CYBERPUNK THEME OVERRIDE — AndroidLiteApp
+   Appended after all base styles to take cascade priority.
+   ============================================================ */
+
+/* ---- Cyberpunk CSS Variables (android-scoped) ---- */
+.android-shell {
+  --cp-neon-cyan: #00f0ff;
+  --cp-neon-pink: #ff00a0;
+  --cp-neon-yellow: #f0e800;
+  --cp-neon-green: #00ff88;
+  --cp-neon-purple: #b829dd;
+  --cp-bg-primary: #070a10;
+  --cp-bg-secondary: #0d1117;
+  --cp-bg-tertiary: #111820;
+  --cp-border: rgba(0, 240, 255, 0.18);
+  --cp-border-glow: rgba(0, 240, 255, 0.4);
+  --cp-text-primary: #e0f7ff;
+  --cp-text-secondary: #7a8fa8;
+  --cp-text-dim: #4a5a6e;
+  --cp-font-display: 'Orbitron', sans-serif;
+  --cp-font-mono: 'JetBrains Mono', 'Cascadia Code', monospace;
+}
+
+/* ---- Global scanline overlay (only when android shell is present) ---- */
+.android-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 240, 255, 0.012) 2px,
+    rgba(0, 240, 255, 0.012) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ---- Shell ---- */
+.android-shell {
+  background: var(--cp-bg-primary);
+  font-family: var(--cp-font-mono);
+  gap: 12px;
+}
+
+/* ---- Header ---- */
+.android-header {
+  padding: 6px 2px 10px;
+  border-bottom: 1px solid var(--cp-border);
+  position: relative;
+}
+.android-header::after {
+  content: '';
+  position: absolute;
+  bottom: -1px; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cp-neon-cyan), transparent);
+  box-shadow: 0 0 8px var(--cp-neon-cyan);
+}
+
+/* ---- Brand Mark ---- */
+.android-brand-mark {
+  width: 38px;
+  height: 38px;
+  border: 2px solid var(--cp-neon-cyan);
+  border-radius: 0;
+  background: transparent;
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 18px;
+  font-weight: 800;
+  text-shadow: 0 0 10px var(--cp-neon-cyan);
+  clip-path: polygon(10% 0, 100% 0, 100% 90%, 90% 100%, 0 100%, 0 10%);
+  box-shadow: inset 0 0 12px rgba(0, 240, 255, 0.1);
+}
+
+/* ---- Icon Buttons ---- */
+.android-icon-button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: all 0.2s;
+}
+.android-icon-button:hover {
+  border-color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.08);
+  color: var(--cp-neon-cyan);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.15);
+}
+.android-ai-ready {
+  border-color: var(--cp-neon-green) !important;
+  background: rgba(0, 255, 136, 0.08) !important;
+  color: var(--cp-neon-green) !important;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.2) !important;
+}
+
+/* ---- Status dots ---- */
+.ai-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.ai-status-unknown { background: #555; }
+.ai-status-testing {
+  background: var(--cp-neon-yellow);
+  animation: ai-status-pulse 0.8s ease-in-out infinite;
+}
+.ai-status-connected { background: var(--cp-neon-green); box-shadow: 0 0 6px var(--cp-neon-green); }
+.ai-status-failed { background: var(--cp-neon-pink); box-shadow: 0 0 6px var(--cp-neon-pink); }
+
+/* ---- Cards ---- */
+.android-card,
+.android-snapshot-chooser {
+  background: var(--cp-bg-secondary);
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+  box-shadow: none;
+  position: relative;
+}
+.android-card::before,
+.android-snapshot-chooser::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 40px; height: 2px;
+  background: var(--cp-neon-cyan);
+  box-shadow: 0 0 8px var(--cp-neon-cyan);
+}
+
+/* ---- Section Titles ---- */
+.android-section-title h2 {
+  font-family: var(--cp-font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cp-neon-cyan);
+  letter-spacing: 0.5px;
+  text-shadow: 0 0 6px rgba(0, 240, 255, 0.3);
+}
+.android-section-title span {
+  color: var(--cp-text-secondary);
+  font-size: 11px;
+}
+
+/* ---- Messages ---- */
+.android-message {
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.06);
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+/* ---- Empty states ---- */
+.android-empty {
+  border: 1px dashed var(--cp-border);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.02);
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+
+/* ---- Home ---- */
+.android-home {
+  gap: 14px;
+}
+.android-connect-card {
+  background: var(--cp-bg-secondary);
+}
+
+/* ---- Buttons ---- */
+.android-button,
+.android-import-button {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
+}
+.android-button::before,
+.android-import-button::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 100%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0,240,255,0.06), transparent);
+  transition: left 0.4s;
+}
+.android-button:hover::before,
+.android-import-button:hover::before { left: 100%; }
+
+.android-button:hover:not(:disabled),
+.android-import-button:hover:not(:disabled) {
+  border-color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.08);
+  color: var(--cp-neon-cyan);
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.12);
+}
+
+.android-button-primary {
+  background: rgba(0, 240, 255, 0.1) !important;
+  border-color: var(--cp-neon-cyan) !important;
+  color: var(--cp-neon-cyan) !important;
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.12) !important;
+}
+.android-button-primary:hover:not(:disabled) {
+  background: rgba(0, 240, 255, 0.15) !important;
+  box-shadow: 0 0 30px rgba(0, 240, 255, 0.2) !important;
+}
+
+.android-button-danger {
+  border-color: var(--cp-neon-pink) !important;
+  background: rgba(255, 0, 160, 0.08) !important;
+  color: var(--cp-neon-pink) !important;
+}
+.android-button-danger:hover:not(:disabled) {
+  background: rgba(255, 0, 160, 0.14) !important;
+  box-shadow: 0 0 16px rgba(255, 0, 160, 0.15) !important;
+}
+
+/* ---- Inputs ---- */
+.android-input,
+.android-select,
+.android-textarea {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: all 0.3s;
+}
+.android-input:focus,
+.android-select:focus,
+.android-textarea:focus {
+  border-color: var(--cp-neon-cyan);
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.15), inset 0 0 20px rgba(0, 240, 255, 0.04);
+  outline: none;
+}
+.android-input::placeholder,
+.android-textarea::placeholder {
+  color: var(--cp-text-dim);
+}
+
+/* ---- Snapshot chooser ---- */
+.android-snapshot-check-row {
+  border: 1px solid rgba(0, 240, 255, 0.08);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.02);
+  color: var(--cp-text-secondary);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: all 0.2s;
+}
+.android-snapshot-check-row:hover {
+  border-color: rgba(0, 240, 255, 0.2);
+  background: rgba(0, 240, 255, 0.04);
+}
+.android-snapshot-check-row:has(input:checked) {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.08) !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.08);
+}
+.android-snapshot-check-row input {
+  accent-color: var(--cp-neon-cyan);
+}
+
+/* ---- Custom scenario ---- */
+.android-custom-scenario-box {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.02);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+/* ---- Target summary ---- */
+.android-target-summary {
+  border: 1px solid rgba(0, 240, 255, 0.1);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.02);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.android-target-summary strong {
+  color: var(--cp-text-primary);
+}
+.android-target-summary span {
+  color: var(--cp-text-secondary);
+}
+
+/* ---- Workspace stage ---- */
+.android-workspace-stage {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(0, 240, 255, 0.02), transparent),
+    var(--cp-bg-secondary);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+
+/* ---- Workspace meta ---- */
+.android-workspace-meta strong {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+  font-size: 13px;
+}
+.android-workspace-meta span:not(.status-badge) {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Mode switch (scoped to android) ---- */
+.android-workspace-mode-switch,
+.android-target-switch {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  overflow: hidden;
+}
+.android-workspace-mode-switch button,
+.android-target-switch button {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: transparent;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.android-workspace-mode-switch button.mode-switch-active,
+.android-target-switch button.mode-switch-active {
+  background: rgba(0, 240, 255, 0.12) !important;
+  color: var(--cp-neon-cyan) !important;
+  box-shadow: inset 0 0 12px rgba(0, 240, 255, 0.08) !important;
+}
+
+/* ---- Workspace tabs ---- */
+.android-workspace-tabs {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-secondary);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  backdrop-filter: none;
+}
+.android-workspace-tabs button {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  background: transparent;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: all 0.2s;
+}
+.android-workspace-tabs button:hover,
+.android-tab-active {
+  background: rgba(0, 240, 255, 0.1) !important;
+  color: var(--cp-neon-cyan) !important;
+  box-shadow: inset 0 0 10px rgba(0, 240, 255, 0.06) !important;
+}
+
+/* ---- Test manager button ---- */
+.android-test-manager-button {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+
+/* ---- Manager / Dialog pages ---- */
+.android-manager-page {
+  background: rgba(7, 10, 16, 0.98);
+}
+.android-manager-head h2 {
+  font-family: var(--cp-font-display);
+  font-size: 16px;
+  color: var(--cp-neon-cyan);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+}
+.android-manager-head span {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+}
+.android-manager-actions {
+  border-bottom: 1px solid rgba(0, 240, 255, 0.08);
+}
+
+/* ---- Dialog ---- */
+.android-dialog-backdrop {
+  background: rgba(7, 10, 16, 0.92);
+}
+.android-dialog {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-secondary);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+  box-shadow: 0 0 40px rgba(0, 240, 255, 0.08);
+}
+.android-dialog-head h2 {
+  font-family: var(--cp-font-display);
+  color: var(--cp-neon-cyan);
+  text-shadow: 0 0 6px rgba(0, 240, 255, 0.3);
+}
+
+/* ---- Tab panel & content ---- */
+.android-tab-panel {
+  padding: 13px;
+}
+.android-tab-content {
+  gap: 12px;
+}
+.android-muted {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Candidate list ---- */
+.android-candidate-list {
+  gap: 10px;
+}
+.android-candidate-item {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.02);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition: all 0.2s;
+}
+.android-candidate-item:hover {
+  border-color: rgba(0, 240, 255, 0.35);
+  background: rgba(0, 240, 255, 0.04);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.06);
+}
+.android-candidate-active {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.06) !important;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.1) !important;
+}
+.android-candidate-compact .android-candidate-strategy {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+  font-size: 12px;
+}
+.android-candidate-heading strong {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  text-shadow: 0 0 6px rgba(0, 240, 255, 0.2);
+}
+.android-candidate-item span {
+  color: var(--cp-text-secondary);
+}
+.android-candidate-item code {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+  font-size: 10.5px;
+  opacity: 0.85;
+}
+.android-candidate-item small {
+  color: var(--cp-text-dim);
+}
+.candidate-index-badge {
+  border: 1px solid var(--cp-border);
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary) !important;
+  font-family: var(--cp-font-mono);
+  border-radius: 0;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+
+/* ---- Candidate actions ---- */
+.android-candidate-add,
+.android-candidate-detail {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary) !important;
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition: all 0.2s;
+}
+.android-candidate-add:hover,
+.android-candidate-detail:hover {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.06);
+}
+
+/* ---- Candidate details / JSON preview ---- */
+.android-candidate-details {
+  border: 1px solid rgba(0, 240, 255, 0.08);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.02);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.android-candidate-json-preview {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.android-candidate-risk-list em {
+  color: var(--cp-neon-yellow);
+}
+
+/* ---- AI Panel ---- */
+.android-ai-panel {
+  gap: 12px;
+}
+.android-ai-config,
+.android-ai-candidate-card {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-secondary);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition: all 0.2s;
+}
+.android-ai-candidate-card.selected {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.06) !important;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.1) !important;
+}
+.android-ai-config-title {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+}
+.android-ai-config-title span {
+  color: var(--cp-text-dim);
+}
+.android-ai-config label,
+.android-ai-feedback {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.android-ai-config input,
+.android-ai-feedback select {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.android-ai-config input:focus,
+.android-ai-feedback select:focus {
+  border-color: var(--cp-neon-cyan);
+  box-shadow: 0 0 0 1px rgba(0, 240, 255, 0.1);
+}
+.android-ai-key-row {
+  gap: 6px;
+}
+.android-ai-config-grid {
+  gap: 8px;
+}
+.android-ai-message {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+}
+.android-ai-warning {
+  color: var(--cp-neon-yellow);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+  border: 1px solid rgba(240, 232, 0, 0.2);
+  background: rgba(240, 232, 0, 0.04);
+  padding: 8px 10px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.android-ai-busy {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+}
+.android-ai-busy .spin {
+  color: var(--cp-neon-cyan);
+}
+.android-ai-paste-box {
+  border: 1px dashed var(--cp-border);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.02);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+/* ---- AI Debug ---- */
+.android-ai-debug {
+  border: 1px solid rgba(0, 240, 255, 0.08);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.android-ai-debug-head {
+  border-bottom: 1px solid rgba(0, 240, 255, 0.08);
+}
+.android-ai-debug-head strong {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 11px;
+}
+.android-ai-debug pre {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+
+/* ---- AI Session trigger ---- */
+.android-ai-session-trigger {
+  border-color: var(--cp-neon-purple) !important;
+  color: var(--cp-neon-purple) !important;
+}
+.android-ai-session-trigger:hover {
+  background: rgba(184, 41, 221, 0.08) !important;
+  box-shadow: 0 0 12px rgba(184, 41, 221, 0.15) !important;
+}
+
+/* ---- Session page ---- */
+.android-session-page-body {
+  gap: 10px;
+}
+.android-session-create,
+.android-session-row-open {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-secondary);
+  color: var(--cp-text-secondary);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  transition: all 0.2s;
+}
+.android-session-create:hover,
+.android-session-row-open:hover {
+  border-color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.04);
+}
+.android-session-create {
+  border-color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.05);
+  color: var(--cp-neon-cyan);
+}
+.android-session-row-active .android-session-row-open {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.06) !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.08) !important;
+}
+.android-session-delete {
+  border: 1px solid rgba(255, 0, 160, 0.3);
+  border-radius: 0;
+  background: rgba(255, 0, 160, 0.05);
+  color: var(--cp-neon-pink);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.android-session-delete:hover {
+  background: rgba(255, 0, 160, 0.1);
+  box-shadow: 0 0 10px rgba(255, 0, 160, 0.1);
+}
+.android-session-row-thumb {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+}
+.android-session-row-main strong {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+  font-size: 12px;
+}
+.android-session-row-main small,
+.android-session-row-main em {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- AI Candidate list ---- */
+.android-ai-candidate-list,
+.android-ai-selector-list {
+  gap: 10px;
+}
+.android-ai-candidate-head strong {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 13px;
+}
+.android-ai-candidate-head span,
+.android-ai-risk {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.android-ai-candidate-head em {
+  color: var(--cp-neon-yellow);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+.android-ai-selector-list code {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+/* ---- AI Feedback ---- */
+.android-ai-feedback-summary {
+  gap: 10px;
+}
+.android-ai-feedback-list {
+  gap: 6px;
+}
+.android-ai-feedback-row {
+  border: 1px solid rgba(0, 240, 255, 0.06);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.015);
+  padding: 8px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.android-ai-feedback-check strong {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+  font-size: 12px;
+}
+.android-ai-feedback-row select {
+  border: 1px solid var(--cp-border);
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+}
+.android-ai-note {
+  border: 1px solid var(--cp-border) !important;
+  background: var(--cp-bg-tertiary) !important;
+  color: var(--cp-text-primary) !important;
+  font-family: var(--cp-font-mono) !important;
+}
+
+/* ---- AI Profile ---- */
+.android-ai-profile-list {
+  gap: 8px;
+}
+.android-ai-profile-chip {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: all 0.2s;
+}
+.android-ai-profile-chip:hover {
+  border-color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.04);
+}
+.android-ai-profile-active {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.08) !important;
+  color: var(--cp-neon-cyan) !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.1) !important;
+}
+.android-ai-profile-chip strong {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+}
+.android-ai-profile-chip span {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- AI Config Form ---- */
+.android-ai-config-form {
+  gap: 10px;
+}
+.android-ai-config-form label {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.android-ai-config-form label span {
+  color: var(--cp-text-dim);
+}
+.android-ai-toggle-row input[type="checkbox"] {
+  accent-color: var(--cp-neon-cyan);
+}
+
+/* ---- Runtime Grid ---- */
+.android-runtime-grid {
+  gap: 8px;
+}
+.android-runtime-grid span {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+
+/* ---- Flow Editor ---- */
+.android-flow-form,
+.android-flow-editor {
+  gap: 10px;
+}
+.android-flow-step-list {
+  gap: 8px;
+}
+.android-flow-rail {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-secondary);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.android-flow-rail-body {
+  gap: 8px;
+  padding: 8px;
+}
+.android-flow-rail-scroll {
+  gap: 8px;
+}
+.android-flow-rail-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.android-flow-rail-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.2);
+  border-radius: 0;
+}
+
+/* ---- Flow Canvas Nav ---- */
+.android-flow-canvas-nav {
+  gap: 10px;
+}
+.android-flow-canvas-nav button,
+.android-flow-chip-add {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition: all 0.2s;
+}
+.android-flow-canvas-nav button:hover:not(:disabled),
+.android-flow-chip-add:hover {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.06);
+}
+.android-flow-canvas-nav button:disabled {
+  opacity: 0.3;
+}
+.android-flow-canvas-nav span {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Flow Chips ---- */
+.android-flow-chip {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: all 0.2s;
+}
+.android-flow-chip:hover {
+  border-color: rgba(0, 240, 255, 0.3);
+  background: rgba(0, 240, 255, 0.03);
+}
+.android-flow-chip strong,
+.android-flow-chip em {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+}
+.android-flow-chip-handle {
+  background: var(--cp-bg-secondary);
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+}
+.android-flow-chip-active {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.06) !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.1) !important;
+}
+.android-flow-chip-dragging {
+  border-color: var(--cp-neon-purple) !important;
+  background: rgba(184, 41, 221, 0.08) !important;
+  box-shadow: 0 0 16px rgba(184, 41, 221, 0.15) !important;
+}
+.android-flow-chip-source-dragging {
+  opacity: 0.4;
+}
+
+/* ---- Flow Steps ---- */
+.android-flow-step {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  transition: all 0.2s;
+  text-align: left;
+}
+.android-flow-step:hover {
+  border-color: rgba(0, 240, 255, 0.3);
+  background: rgba(0, 240, 255, 0.03);
+}
+.android-flow-step-active,
+.android-flow-step:hover {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.05) !important;
+}
+.android-flow-step span {
+  color: var(--cp-text-secondary);
+}
+.android-flow-step strong,
+.android-flow-step em {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+}
+.android-flow-step small {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+.android-flow-step code,
+.android-code-preview code {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+/* ---- Flow Editor ---- */
+.android-flow-editor {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-secondary);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+.android-flow-editor-title {
+  gap: 8px;
+}
+
+/* ---- Code Preview ---- */
+.android-code-preview {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+/* ---- Screenshot (android scoped) ---- */
+.android-shell .screenshot-shell {
+  padding: 2px;
+}
+.android-shell .screenshot-stage {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background:
+    linear-gradient(90deg, rgba(0, 240, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(rgba(0, 240, 255, 0.02) 1px, transparent 1px),
+    var(--cp-bg-tertiary);
+  background-size: 20px 20px;
+  box-shadow: inset 0 0 20px rgba(0, 240, 255, 0.03), 0 0 20px rgba(0, 240, 255, 0.04);
+  clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px);
+}
+
+/* ---- Status badges ---- */
+.status-badge {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.status-badge.success,
+.status-badge.low {
+  border-color: rgba(0, 255, 136, 0.3);
+  background: rgba(0, 255, 136, 0.06);
+  color: var(--cp-neon-green);
+}
+.status-badge.medium {
+  border-color: rgba(240, 232, 0, 0.3);
+  background: rgba(240, 232, 0, 0.06);
+  color: var(--cp-neon-yellow);
+}
+.status-badge.high {
+  border-color: rgba(255, 0, 160, 0.3);
+  background: rgba(255, 0, 160, 0.06);
+  color: var(--cp-neon-pink);
+}
+.status-badge.neutral {
+  border-color: rgba(0, 240, 255, 0.25);
+  background: rgba(0, 240, 255, 0.06);
+  color: var(--cp-neon-cyan);
+}
+.status-badge.muted {
+  border-color: rgba(122, 143, 168, 0.15);
+  background: rgba(122, 143, 168, 0.05);
+  color: var(--cp-text-dim);
+}
+
+/* ---- Inline test status ---- */
+.inline-test-status {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+}
+.inline-test-status.status-testing {
+  border-color: rgba(0, 240, 255, 0.3);
+  background: rgba(0, 240, 255, 0.06);
+  color: var(--cp-neon-cyan);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.08);
+}
+.inline-test-status.status-valid {
+  border-color: rgba(0, 255, 136, 0.3);
+  background: rgba(0, 255, 136, 0.06);
+  color: var(--cp-neon-green);
+}
+.inline-test-status.status-tested {
+  border-color: rgba(240, 232, 0, 0.3);
+  background: rgba(240, 232, 0, 0.06);
+  color: var(--cp-neon-yellow);
+}
+.inline-test-status.status-invalid,
+.inline-test-status.status-mistouch {
+  border-color: rgba(255, 0, 160, 0.3);
+  background: rgba(255, 0, 160, 0.06);
+  color: var(--cp-neon-pink);
+}
+.inline-test-status.status-other {
+  border-color: rgba(122, 143, 168, 0.15);
+  background: rgba(122, 143, 168, 0.04);
+  color: var(--cp-text-dim);
+}
+
+/* ---- Inline test items ---- */
+.inline-test-item {
+  border: 1px solid rgba(0, 240, 255, 0.06);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.01);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.inline-test-main strong {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+  font-size: 12px;
+}
+.inline-test-main small {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+.inline-test-actions button {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+  transition: all 0.2s;
+}
+.inline-test-actions button:hover {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.04);
+}
+
+/* ---- Debug report ---- */
+.debug-report-view {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+/* ---- Text link buttons ---- */
+.text-link-button {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.text-link-button.danger {
+  color: var(--cp-neon-pink);
+}
+
+/* ---- Inline test panel ---- */
+.inline-test-panel {
+  border: 1px solid rgba(0, 255, 136, 0.15);
+  border-radius: 0;
+  background: rgba(0, 255, 136, 0.03);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.inline-test-panel-head strong {
+  color: var(--cp-neon-green);
+  font-family: var(--cp-font-display);
+}
+
+/* ---- Scrollbar cyberpunk ---- */
+.android-shell ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.android-shell ::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.15);
+  border-radius: 0;
+  border: none;
+}
+.android-shell ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.3);
+}
+
+/* ---- Selection cyberpunk ---- */
+.android-shell ::selection {
+  background: rgba(0, 240, 255, 0.2);
+  color: #fff;
+}
+
+/* ============================================================
+   CYBERPUNK THEME OVERRIDE — Desktop / Shared
+   ============================================================ */
+
+/* ---- Cyberpunk CSS Variables (global, desktop inherits these) ---- */
+:root {
+  --cp-neon-cyan: #00f0ff;
+  --cp-neon-pink: #ff00a0;
+  --cp-neon-yellow: #f0e800;
+  --cp-neon-green: #00ff88;
+  --cp-neon-purple: #b829dd;
+  --cp-bg-primary: #070a10;
+  --cp-bg-secondary: #0d1117;
+  --cp-bg-tertiary: #111820;
+  --cp-border: rgba(0, 240, 255, 0.18);
+  --cp-border-glow: rgba(0, 240, 255, 0.4);
+  --cp-text-primary: #e0f7ff;
+  --cp-text-secondary: #7a8fa8;
+  --cp-text-dim: #4a5a6e;
+  --cp-font-display: 'Orbitron', sans-serif;
+  --cp-font-mono: 'JetBrains Mono', 'Cascadia Code', monospace;
+}
+
+/* ---- Global base overrides ---- */
+body {
+  background: var(--cp-bg-primary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+}
+
+::selection {
+  background: rgba(0, 240, 255, 0.2);
+  color: #fff;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.15);
+  border-radius: 0;
+  border: none;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 240, 255, 0.3);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---- App shell + scanline ---- */
+.app-shell {
+  background: var(--cp-bg-primary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  position: relative;
+}
+.app-shell::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 240, 255, 0.012) 2px,
+    rgba(0, 240, 255, 0.012) 4px
+  );
+  pointer-events: none;
+}
+
+/* ---- Header ---- */
+.app-header {
+  border-bottom: 1px solid var(--cp-border);
+  background: var(--cp-bg-secondary);
+}
+.workspace-nav .brand-mark {
+  border: 1px solid var(--cp-border-glow);
+  background: var(--cp-bg-primary);
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+.workspace-nav h1 {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+  font-size: 13px;
+}
+.workspace-nav p {
+  color: var(--cp-text-dim);
+}
+
+/* ---- Brand block (desktop home) ---- */
+.home-topbar .brand-mark {
+  border: 1px solid var(--cp-border-glow);
+  background: var(--cp-bg-primary);
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+}
+.home-topbar h1 {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+}
+
+/* ---- Home shell ---- */
+.home-shell {
+  background: var(--cp-bg-primary);
+}
+.home-topbar {
+  border-bottom: 1px solid var(--cp-border);
+  background: var(--cp-bg-secondary);
+}
+.home-status-strip {
+  border: 1px solid var(--cp-border);
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+
+/* ---- Panels ---- */
+.panel,
+.test-log-drawer {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-secondary);
+  box-shadow: 0 0 20px rgba(0, 240, 255, 0.04);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.panel h2,
+.test-log-drawer h2 {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.panel-subtitle {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+.panel-collapse-button {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-display);
+  font-size: 11px;
+}
+.panel-collapse-icon {
+  color: var(--cp-neon-cyan);
+}
+.panel-header-actions .status-badge {
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Console grid ---- */
+.console-grid {
+  gap: 14px;
+}
+
+/* ---- Buttons (shared) ---- */
+.header-button {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition: all 0.2s;
+}
+.header-button:hover {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.06);
+  box-shadow: 0 0 12px rgba(0, 240, 255, 0.08);
+}
+.header-button-active {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.icon-button {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+  transition: all 0.2s;
+}
+.icon-button:hover:not(:disabled) {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.06);
+}
+
+.wide-button,
+.copy-button {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  transition: all 0.2s;
+}
+.wide-button:hover:not(:disabled),
+.copy-button:hover:not(:disabled) {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.04);
+}
+.primary-button {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.08);
+}
+.primary-button:hover:not(:disabled) {
+  border-color: var(--cp-neon-green);
+  color: var(--cp-neon-green);
+  background: rgba(0, 255, 136, 0.08);
+  box-shadow: 0 0 14px rgba(0, 255, 136, 0.1);
+}
+
+/* ---- Mode switch ---- */
+.mode-switch {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+.mode-switch button {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+  transition: all 0.2s;
+}
+.mode-switch-active {
+  border-bottom: 2px solid var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.06);
+  text-shadow: 0 0 6px rgba(0, 240, 255, 0.3);
+}
+
+/* ---- Status badges (global override) ---- */
+.status-badge {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+}
+.status-badge.success {
+  border-color: rgba(0, 255, 136, 0.3);
+  background: rgba(0, 255, 136, 0.06);
+  color: var(--cp-neon-green);
+}
+.status-badge.neutral {
+  border-color: rgba(0, 240, 255, 0.2);
+  background: rgba(0, 240, 255, 0.04);
+  color: var(--cp-neon-cyan);
+}
+.status-badge.muted {
+  color: var(--cp-text-dim);
+}
+.status-badge.low {
+  border-color: rgba(0, 255, 136, 0.25);
+  background: rgba(0, 255, 136, 0.05);
+  color: var(--cp-neon-green);
+}
+.status-badge.medium {
+  border-color: rgba(240, 232, 0, 0.25);
+  background: rgba(240, 232, 0, 0.05);
+  color: var(--cp-neon-yellow);
+}
+.status-badge.high {
+  border-color: rgba(255, 0, 160, 0.25);
+  background: rgba(255, 0, 160, 0.05);
+  color: var(--cp-neon-pink);
+}
+
+/* ---- Candidate list ---- */
+.candidate-item {
+  border: 1px solid rgba(0, 240, 255, 0.08);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.015);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: all 0.2s;
+}
+.candidate-item:hover {
+  border-color: var(--cp-border);
+  background: rgba(0, 240, 255, 0.03);
+}
+.candidate-item-active {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.06) !important;
+  box-shadow: 0 0 16px rgba(0, 240, 255, 0.08);
+}
+.candidate-header {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+}
+.candidate-strategy {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.candidate-score {
+  color: var(--cp-neon-yellow);
+  font-family: var(--cp-font-mono);
+}
+.candidate-matches {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.candidate-details {
+  border-top: 1px solid var(--cp-border);
+  color: var(--cp-text-dim);
+  font-size: 11px;
+}
+.candidate-actions button {
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+.candidate-imported {
+  border-color: rgba(0, 255, 136, 0.3);
+  background: rgba(0, 255, 136, 0.06);
+  color: var(--cp-neon-green);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+.candidate-meta {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Screenshot stage ---- */
+.screenshot-stage {
+  border: 1px solid var(--cp-border);
+  background: var(--cp-bg-primary);
+}
+.node-rect-picked {
+  border-color: var(--cp-neon-cyan) !important;
+  background: rgba(0, 240, 255, 0.12) !important;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+.node-rect-hit {
+  border-color: var(--cp-neon-green) !important;
+  background: rgba(0, 255, 136, 0.08) !important;
+}
+.node-rect-support {
+  border-color: var(--cp-neon-yellow) !important;
+  background: rgba(240, 232, 0, 0.06) !important;
+}
+
+/* ---- Snapshot table (home) ---- */
+.snapshot-table {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.snapshot-head {
+  border-bottom: 1px solid var(--cp-border);
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.snapshot-data-row {
+  border-bottom: 1px solid rgba(0, 240, 255, 0.06);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+  transition: background 0.2s;
+}
+.snapshot-data-row:hover {
+  background: rgba(0, 240, 255, 0.03);
+}
+.snapshot-open-button {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.snapshot-open-button:hover {
+  color: var(--cp-neon-green);
+}
+
+/* ---- Settings drawer ---- */
+.settings-backdrop {
+  background: rgba(4, 8, 13, 0.7);
+}
+.settings-drawer {
+  border-left: 1px solid var(--cp-border);
+  background: rgba(7, 10, 16, 0.98);
+  box-shadow: -18px 0 46px rgba(0, 240, 255, 0.04);
+}
+.settings-drawer-header h2 {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 14px;
+  text-transform: uppercase;
+}
+.settings-drawer-header p {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Settings modal ---- */
+.settings-modal-backdrop {
+  background: rgba(4, 8, 13, 0.7);
+}
+.settings-modal {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-secondary);
+  box-shadow: 0 0 40px rgba(0, 240, 255, 0.06);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+}
+.settings-modal-header h3 {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+.settings-modal-header p {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Settings compact / grid ---- */
+.settings-compact label,
+.settings-grid label {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.settings-compact label > span,
+.settings-grid label > span {
+  color: var(--cp-text-dim);
+}
+.settings-compact select,
+.settings-grid select {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.settings-compact small {
+  color: var(--cp-text-dim);
+}
+
+/* ---- Node tree panel ---- */
+.node-tree-panel {
+  font-family: var(--cp-font-mono);
+}
+.node-tree-row {
+  border-bottom: 1px solid rgba(0, 240, 255, 0.04);
+  color: var(--cp-text-secondary);
+  transition: background 0.15s;
+}
+.node-tree-row:hover {
+  background: rgba(0, 240, 255, 0.03);
+}
+.node-tree-picked {
+  border-left: 2px solid var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.04);
+  color: var(--cp-text-primary);
+}
+.node-tree-hit {
+  border-left: 2px solid var(--cp-neon-green);
+  background: rgba(0, 255, 136, 0.03);
+}
+.node-tree-support {
+  border-left: 2px solid var(--cp-neon-yellow);
+  background: rgba(240, 232, 0, 0.03);
+}
+.node-tree-id {
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+.node-tree-chip {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 9px;
+  clip-path: polygon(2px 0, 100% 0, 100% calc(100% - 2px), calc(100% - 2px) 100%, 0 100%, 0 2px);
+}
+.node-tree-toggle {
+  color: var(--cp-neon-cyan);
+}
+
+/* ---- Flow step items ---- */
+.flow-step-item {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition: all 0.2s;
+}
+.flow-step-item:hover {
+  border-color: var(--cp-neon-cyan);
+}
+.flow-step-item-active {
+  border-color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.06);
+}
+.flow-form input,
+.flow-form textarea,
+.flow-step-editor input,
+.flow-step-editor textarea {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Inputs / selects / textareas (scoped to desktop) ---- */
+.app-shell input:not([type="checkbox"]):not([type="radio"]),
+.app-shell select,
+.app-shell textarea {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+  font-size: 12px;
+}
+.app-shell input:focus:not([type="checkbox"]):not([type="radio"]),
+.app-shell select:focus,
+.app-shell textarea:focus {
+  border-color: var(--cp-neon-cyan);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.1);
+  outline: none;
+}
+.app-shell input::placeholder,
+.app-shell textarea::placeholder {
+  color: var(--cp-text-dim);
+}
+.app-shell input[type="checkbox"] {
+  accent-color: var(--cp-neon-cyan);
+}
+.app-shell option {
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-primary);
+}
+
+/* ---- Misc form rows ---- */
+.app-shell .input-row button,
+.app-shell .preset-row button,
+.app-shell .scenario-actions button,
+.app-shell .custom-scenario-actions button,
+.app-shell .scenario-item-actions button,
+.app-shell .settings-grid button,
+.app-shell .device-grid button {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
+  transition: all 0.2s;
+}
+.app-shell .input-row button:hover:not(:disabled),
+.app-shell .preset-row button:hover:not(:disabled),
+.app-shell .scenario-item-actions button:hover:not(:disabled) {
+  border-color: var(--cp-neon-cyan);
+  color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.04);
+}
+
+/* ---- Home device form ---- */
+.home-device-form input {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+}
+.home-device-form input:focus {
+  border-color: var(--cp-neon-cyan);
+  box-shadow: 0 0 8px rgba(0, 240, 255, 0.1);
+}
+
+/* ---- Home search row ---- */
+.home-search-row {
+  border-bottom: 1px solid var(--cp-border);
+}
+.home-search-row input {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+}
+.home-search-row input:focus {
+  box-shadow: none !important;
+  border: 0 !important;
+}
+
+/* ---- Diagnostics ---- */
+.diagnostics-panel {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+}
+.diagnostic-row {
+  border-bottom: 1px solid rgba(0, 240, 255, 0.05);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.diagnostic-dot {
+  border-radius: 0;
+}
+.diagnostic-success {
+  background: var(--cp-neon-green);
+  box-shadow: 0 0 6px rgba(0, 255, 136, 0.4);
+}
+.diagnostic-error {
+  background: var(--cp-neon-pink);
+  box-shadow: 0 0 6px rgba(255, 0, 160, 0.4);
+}
+.diagnostic-warn {
+  background: var(--cp-neon-yellow);
+  box-shadow: 0 0 6px rgba(240, 232, 0, 0.4);
+}
+.operation-log {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+
+/* ---- Error banner ---- */
+.error-banner {
+  border: 1px solid rgba(255, 0, 160, 0.3);
+  border-radius: 0;
+  background: rgba(255, 0, 160, 0.06);
+  color: var(--cp-neon-pink);
+  font-family: var(--cp-font-mono);
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+}
+
+/* ---- Drop overlay ---- */
+.drop-overlay {
+  border: 1px dashed var(--cp-neon-cyan);
+  border-radius: 0;
+  background: rgba(7, 10, 16, 0.92);
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-display);
+  font-size: 18px;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.3);
+}
+
+/* ---- Empty state ---- */
+.empty-state {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Code preview ---- */
+.code-preview {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-primary);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.code-preview code {
+  color: var(--cp-neon-green);
+}
+
+/* ---- Preview panel ---- */
+.preview-note {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.score-note {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+
+/* ---- Risk list ---- */
+.risk-plus {
+  border: 1px solid rgba(0, 255, 136, 0.2);
+  border-radius: 0;
+  background: rgba(0, 255, 136, 0.05);
+  color: var(--cp-neon-green);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+.risk-minus {
+  border: 1px solid rgba(255, 0, 160, 0.2);
+  border-radius: 0;
+  background: rgba(255, 0, 160, 0.05);
+  color: var(--cp-neon-pink);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+
+/* ---- Test log drawer ---- */
+.test-log-drawer pre code {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Scenario items ---- */
+.scenario-item {
+  border: 1px solid rgba(0, 240, 255, 0.06);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition: all 0.2s;
+}
+.scenario-item:hover {
+  border-color: var(--cp-border);
+}
+.scenario-item-selected {
+  border-color: var(--cp-neon-cyan);
+  background: rgba(0, 240, 255, 0.06);
+}
+.scenario-item-name {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+}
+.scenario-item-desc {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 10px;
+}
+
+/* ---- Scenario import box ---- */
+.scenario-import-box {
+  border: 1px dashed var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+}
+.scenario-import-box textarea {
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Custom scenario box ---- */
+.custom-scenario-box input,
+.custom-scenario-box textarea {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Repo guide / message ---- */
+.repo-guide {
+  border: 1px solid var(--cp-border);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.repo-guide strong {
+  color: var(--cp-text-primary);
+  font-family: var(--cp-font-mono);
+}
+.repo-message {
+  border: 1px solid rgba(0, 240, 255, 0.2);
+  border-radius: 0;
+  background: rgba(0, 240, 255, 0.04);
+  color: var(--cp-text-secondary);
+  font-family: var(--cp-font-mono);
+}
+.repo-error {
+  border-color: rgba(255, 0, 160, 0.3);
+  background: rgba(255, 0, 160, 0.04);
+  color: var(--cp-neon-pink);
+}
+
+/* ---- History ---- */
+.history-block {
+  font-family: var(--cp-font-mono);
+}
+.history-title {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+.history-title span:last-child {
+  background: var(--cp-bg-tertiary);
+  border-radius: 0;
+  color: var(--cp-neon-cyan);
+  font-family: var(--cp-font-mono);
+}
+.history-item {
+  border: 1px solid rgba(0, 240, 255, 0.06);
+  border-radius: 0;
+  background: var(--cp-bg-tertiary);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+}
+
+/* ---- AI config panel ---- */
+.ai-config-panel .preset-row button {
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Viewer actions / workspace ---- */
+.viewer-actions {
+  gap: 8px;
+}
+
+/* ---- Home actions row ---- */
+.home-actions-row {
+  gap: 8px;
+}
+
+/* ---- Home connect panel ---- */
+.home-connect-panel .panel-subtitle {
+  font-family: var(--cp-font-mono);
+}
+
+/* ---- Workflow list ---- */
+.workflow-list {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+
+/* ---- Snapshot select cell ---- */
+.snapshot-select-cell input[type="checkbox"] {
+  accent-color: var(--cp-neon-cyan);
+}
+
+/* ---- Device grid ---- */
+.device-grid {
+  font-family: var(--cp-font-mono);
+}
+.device-status {
+  color: var(--cp-text-dim);
+  font-family: var(--cp-font-mono);
+  font-size: 11px;
+}
+
+/* ---- End of Cyberpunk Theme ---- */

@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>GKD Rule Studio - Glassmorphism 风格 Demo</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #0a0f1a;
+    --bg-mid: #121929;
+    --glass-bg: rgba(20, 30, 55, 0.55);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-border-hover: rgba(255, 255, 255, 0.15);
+    --text-primary: #f0f4fa;
+    --text-secondary: #9aa8c2;
+    --accent-cyan: #00d4aa;
+    --accent-blue: #4facfe;
+    --accent-purple: #a855f7;
+    --accent-pink: #ec4899;
+    --accent-warn: #f59e0b;
+    --accent-danger: #ef4444;
+    --success: #22c55e;
+    --shadow-glow: 0 0 40px rgba(79, 172, 254, 0.15);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* Animated gradient background */
+  .bg-orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .orb-1 { width: 300px; height: 300px; background: var(--accent-blue); top: -100px; right: -80px; animation: float 8s ease-in-out infinite; }
+  .orb-2 { width: 250px; height: 250px; background: var(--accent-purple); bottom: 100px; left: -100px; animation: float 10s ease-in-out infinite 1s; }
+  .orb-3 { width: 200px; height: 200px; background: var(--accent-cyan); top: 40%; right: -60px; animation: float 12s ease-in-out infinite 2s; }
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(-20px, 15px) scale(1.05); }
+    66% { transform: translate(15px, -10px) scale(0.95); }
+  }
+
+  .demo-container {
+    position: relative;
+    z-index: 1;
+    max-width: 480px;
+    margin: 0 auto;
+    min-height: 100vh;
+    padding-bottom: 80px;
+  }
+
+  /* Header */
+  .app-header {
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .brand-glass {
+    width: 42px; height: 42px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(0,212,170,0.3), rgba(79,172,254,0.3));
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(20px);
+    display: grid; place-items: center;
+    font-size: 18px; font-weight: 800;
+    color: var(--accent-cyan);
+    box-shadow: 0 4px 20px rgba(0,212,170,0.2);
+  }
+  .brand-text h1 { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .brand-text p { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  /* Status strip */
+  .status-strip {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    padding: 0 16px 12px;
+  }
+  .status-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 12px 10px;
+    text-align: center;
+    backdrop-filter: blur(20px);
+    transition: all 0.3s ease;
+  }
+  .status-card:active { transform: scale(0.97); }
+  .status-card .num {
+    font-size: 20px; font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .status-card .label { font-size: 10px; color: var(--text-secondary); margin-top: 4px; }
+
+  /* Section cards */
+  .section {
+    margin: 12px 16px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 16px;
+    backdrop-filter: blur(24px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    transition: border-color 0.3s;
+  }
+  .section:hover { border-color: var(--glass-border-hover); }
+  .section-header {
+    display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px;
+  }
+  .section-header h2 { font-size: 14px; font-weight: 600; }
+  .section-header p { font-size: 11px; color: var(--text-secondary); margin-top: 3px; }
+  .badge {
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .badge-success { background: rgba(34,197,94,0.15); color: var(--success); border-color: rgba(34,197,94,0.25); }
+  .badge-muted { background: rgba(255,255,255,0.05); color: var(--text-secondary); }
+
+  /* Toggle switch */
+  .toggle-group {
+    display: flex;
+    background: rgba(0,0,0,0.25);
+    border-radius: 14px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .toggle-btn {
+    flex: 1;
+    padding: 8px 0;
+    border: none;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s;
+  }
+  .toggle-btn.active {
+    background: linear-gradient(135deg, rgba(79,172,254,0.25), rgba(0,212,170,0.2));
+    color: var(--text-primary);
+    box-shadow: 0 2px 12px rgba(79,172,254,0.2);
+  }
+
+  /* Inputs */
+  .input-glass {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid var(--glass-border);
+    background: rgba(0,0,0,0.2);
+    color: var(--text-primary);
+    font-size: 13px;
+    outline: none;
+    transition: all 0.3s;
+    margin-top: 10px;
+  }
+  .input-glass:focus {
+    border-color: rgba(79,172,254,0.5);
+    box-shadow: 0 0 0 3px rgba(79,172,254,0.1);
+  }
+  .input-glass::placeholder { color: rgba(154,168,194,0.5); }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px 16px;
+    border: none;
+    border-radius: 14px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+  .btn:active { transform: scale(0.96); }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    color: white;
+    box-shadow: 0 4px 20px rgba(79,172,254,0.35);
+  }
+  .btn-primary:hover { box-shadow: 0 6px 28px rgba(79,172,254,0.5); }
+  .btn-glass {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+  }
+  .btn-glass:hover { background: rgba(255,255,255,0.1); border-color: var(--glass-border-hover); }
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; }
+  .btn-row .btn { flex: 1; }
+
+  /* Snapshot list */
+  .snapshot-list { margin-top: 12px; }
+  .snapshot-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(0,0,0,0.15);
+    margin-bottom: 8px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+  }
+  .snapshot-item:active { transform: scale(0.98); }
+  .snapshot-item.selected { border-color: rgba(79,172,254,0.4); background: rgba(79,172,254,0.08); }
+  .snapshot-checkbox {
+    width: 20px; height: 20px;
+    border-radius: 6px;
+    border: 2px solid var(--text-secondary);
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    transition: all 0.2s;
+  }
+  .snapshot-item.selected .snapshot-checkbox {
+    background: var(--accent-blue);
+    border-color: var(--accent-blue);
+  }
+  .snapshot-info { flex: 1; min-width: 0; }
+  .snapshot-info strong { font-size: 13px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .snapshot-info code { font-size: 10px; color: var(--text-secondary); font-family: 'Cascadia Code', monospace; }
+  .snapshot-action {
+    padding: 6px 12px;
+    border-radius: 10px;
+    background: rgba(79,172,254,0.12);
+    color: var(--accent-blue);
+    font-size: 11px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* Bottom tab bar */
+  .tab-bar {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 16px 24px;
+    background: rgba(10, 15, 26, 0.85);
+    backdrop-filter: blur(30px);
+    border-top: 1px solid var(--glass-border);
+    z-index: 100;
+  }
+  .tab-item {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 6px 14px;
+    border-radius: 14px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.25s;
+  }
+  .tab-item.active {
+    color: var(--accent-cyan);
+    background: rgba(0,212,170,0.1);
+  }
+  .tab-icon {
+    width: 24px; height: 24px;
+    display: grid; place-items: center;
+  }
+
+  /* Workspace Demo */
+  .workspace-demo { display: none; }
+  .workspace-demo.active { display: block; }
+  .canvas-area {
+    margin: 0 16px;
+    border-radius: 20px;
+    overflow: hidden;
+    border: 1px solid var(--glass-border);
+    background: rgba(0,0,0,0.3);
+    aspect-ratio: 9/16;
+    display: grid; place-items: center;
+    position: relative;
+  }
+  .canvas-placeholder {
+    text-align: center;
+    color: var(--text-secondary);
+  }
+  .canvas-placeholder svg { opacity: 0.4; margin-bottom: 12px; }
+  .canvas-overlay {
+    position: absolute; inset: 0;
+    border: 2px solid var(--accent-blue);
+    border-radius: 20px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .canvas-area:hover .canvas-overlay { opacity: 1; }
+
+  /* Panel chips */
+  .chip-row {
+    display: flex; gap: 8px;
+    padding: 12px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .chip-row::-webkit-scrollbar { display: none; }
+  .chip {
+    padding: 8px 14px;
+    border-radius: 20px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s;
+  }
+  .chip.active {
+    background: linear-gradient(135deg, rgba(79,172,254,0.3), rgba(168,85,247,0.25));
+    color: var(--text-primary);
+    border-color: rgba(79,172,254,0.3);
+  }
+
+  /* Message toast */
+  .toast {
+    position: fixed;
+    top: 20px; left: 50%;
+    transform: translateX(-50%) translateY(-60px);
+    padding: 10px 20px;
+    border-radius: 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(20px);
+    color: var(--text-primary);
+    font-size: 13px;
+    z-index: 200;
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+  /* Scroll indicator for workspace */
+  .panel-scroll {
+    margin: 12px 16px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .mini-panel {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 14px;
+    backdrop-filter: blur(20px);
+  }
+  .mini-panel h3 { font-size: 12px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; }
+  .mini-panel h3 .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .candidate-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-size: 11px;
+    margin: 2px;
+    background: rgba(79,172,254,0.1);
+    color: var(--accent-blue);
+    border: 1px solid rgba(79,172,254,0.15);
+  }
+  .risk-low { background: rgba(34,197,94,0.1); color: var(--success); border-color: rgba(34,197,94,0.2); }
+  .risk-med { background: rgba(245,158,11,0.1); color: var(--accent-warn); border-color: rgba(245,158,11,0.2); }
+  .risk-high { background: rgba(239,68,68,0.1); color: var(--accent-danger); border-color: rgba(239,68,68,0.2); }
+
+  .switcher { text-align: center; padding: 16px; }
+  .switcher-btn {
+    padding: 8px 20px;
+    border-radius: 20px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+  }
+</style>
+</head>
+<body>
+
+<!-- Animated background orbs -->
+<div class="bg-orb orb-1"></div>
+<div class="bg-orb orb-2"></div>
+<div class="bg-orb orb-3"></div>
+
+<div class="demo-container" id="homeView">
+  <!-- Header -->
+  <header class="app-header">
+    <div class="brand-glass">G</div>
+    <div class="brand-text">
+      <h1>GKD Rule Studio</h1>
+      <p>规则生成与验证工作台</p>
+    </div>
+  </header>
+
+  <!-- Status strip -->
+  <div class="status-strip">
+    <div class="status-card">
+      <div class="num">正式版</div>
+      <div class="label">目标版本</div>
+    </div>
+    <div class="status-card">
+      <div class="num" style="background:linear-gradient(135deg,var(--accent-purple),var(--accent-pink));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">24</div>
+      <div class="label">可用快照</div>
+    </div>
+    <div class="status-card">
+      <div class="num" style="background:linear-gradient(135deg,var(--accent-cyan),var(--accent-blue));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">0</div>
+      <div class="label">已选流程</div>
+    </div>
+  </div>
+
+  <!-- Connect Panel -->
+  <div class="section">
+    <div class="section-header">
+      <div>
+        <h2>连接手机</h2>
+        <p>通过 HTTP 服务或 ADB 读取快照</p>
+      </div>
+      <span class="badge badge-muted">未连接</span>
+    </div>
+    <div class="toggle-group">
+      <button class="toggle-btn active">HTTP 服务</button>
+      <button class="toggle-btn">ADB 数据线</button>
+    </div>
+    <input class="input-glass" placeholder="输入设备地址，如 192.168.1.23:8888" />
+    <div class="btn-row">
+      <button class="btn btn-glass">📡 批量测试</button>
+      <button class="btn btn-primary">📱 连接 / 刷新</button>
+    </div>
+  </div>
+
+  <!-- Snapshots Panel -->
+  <div class="section">
+    <div class="section-header">
+      <div>
+        <h2>快照列表</h2>
+        <p>选择快照进入工作区编辑规则</p>
+      </div>
+      <span class="badge badge-success">24 条</span>
+    </div>
+    <input class="input-glass" placeholder="🔍 搜索应用名称、包名或 Activity" />
+    <div class="snapshot-list">
+      <div class="snapshot-item" onclick="this.classList.toggle('selected')">
+        <div class="snapshot-checkbox">✓</div>
+        <div class="snapshot-info">
+          <strong>微信</strong>
+          <code>com.tencent.mm · LauncherUI</code>
+        </div>
+        <button class="snapshot-action">进入 →</button>
+      </div>
+      <div class="snapshot-item" onclick="this.classList.toggle('selected')">
+        <div class="snapshot-checkbox"></div>
+        <div class="snapshot-info">
+          <strong>支付宝</strong>
+          <code>com.eg.android.AlipayGphone · MainActivity</code>
+        </div>
+        <button class="snapshot-action">进入 →</button>
+      </div>
+      <div class="snapshot-item" onclick="this.classList.toggle('selected')">
+        <div class="snapshot-checkbox"></div>
+        <div class="snapshot-info">
+          <strong>抖音</strong>
+          <code>com.ss.android.ugc.aweme · MainActivity</code>
+        </div>
+        <button class="snapshot-action">进入 →</button>
+      </div>
+      <div class="snapshot-item" onclick="this.classList.toggle('selected')">
+        <div class="snapshot-checkbox"></div>
+        <div class="snapshot-info">
+          <strong>淘宝</strong>
+          <code>com.taobao.taobao · MainActivity3</code>
+        </div>
+        <button class="snapshot-action">进入 →</button>
+      </div>
+    </div>
+    <div class="btn-row" style="margin-top:14px;">
+      <button class="btn btn-glass">📋 复制诊断</button>
+      <button class="btn btn-primary">➕ 创建流程</button>
+    </div>
+  </div>
+
+  <div class="switcher">
+    <button class="switcher-btn" onclick="switchToWorkspace()">👆 点击进入工作区 Demo</button>
+  </div>
+</div>
+
+<!-- WORKSPACE VIEW -->
+<div class="demo-container workspace-demo" id="workspaceView">
+  <header class="app-header">
+    <button class="btn btn-glass" style="padding:8px 12px;" onclick="switchToHome()">←</button>
+    <div class="brand-text">
+      <h1>微信 · 规则编辑</h1>
+      <p>com.tencent.mm / LauncherUI</p>
+    </div>
+    <button class="btn btn-glass" style="padding:8px 12px;">⚙️</button>
+  </header>
+
+  <!-- Canvas -->
+  <div class="canvas-area">
+    <div class="canvas-overlay"></div>
+    <div class="canvas-placeholder">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <rect x="3" y="3" width="18" height="18" rx="4"/>
+        <circle cx="8.5" cy="8.5" r="1.5"/>
+        <path d="M21 15l-5-5L5 21"/>
+      </svg>
+      <p>截图画布区域<br><span style="font-size:11px;">点击目标控件选择节点</span></p>
+    </div>
+  </div>
+
+  <!-- Tab chips -->
+  <div class="chip-row">
+    <div class="chip active">🎬 场景</div>
+    <div class="chip">🎯 候选</div>
+    <div class="chip">📝 Prompt</div>
+    <div class="chip">📊 步骤</div>
+    <div class="chip">🤖 AI</div>
+  </div>
+
+  <!-- Panels -->
+  <div class="panel-scroll">
+    <div class="mini-panel">
+      <h3><span class="dot" style="background:var(--accent-blue);"></span>节点树</h3>
+      <div style="font-size:11px;color:var(--text-secondary);line-height:1.8;">
+        <div>└─ FrameLayout (#1)</div>
+        <div>　 └─ LinearLayout (#2)</div>
+        <div>　 　 └─ <span style="color:var(--accent-cyan);">TextView "跳过" (#15) 👈</span></div>
+        <div>　 　 └─ Button "关闭" (#16)</div>
+      </div>
+    </div>
+
+    <div class="mini-panel">
+      <h3><span class="dot" style="background:var(--accent-purple);"></span>候选 Selector</h3>
+      <div>
+        <span class="candidate-tag risk-low">⭐ 92 [id="skip_btn"]</span>
+        <span class="candidate-tag risk-med">⚡ 78 [text="跳过"]</span>
+        <span class="candidate-tag risk-high">⚠️ 45 [class="Button"]</span>
+        <span class="candidate-tag">📋 复制</span>
+      </div>
+    </div>
+
+    <div class="mini-panel">
+      <h3><span class="dot" style="background:var(--accent-pink);"></span>规则预览</h3>
+      <pre style="font-size:10px;color:var(--text-secondary);background:rgba(0,0,0,0.2);padding:8px;border-radius:8px;overflow-x:auto;margin-top:6px;">
+{
+  key: 1,
+  name: '开屏广告',
+  activityIds: 'LauncherUI',
+  rules: [
+    {
+      matches: '[id="skip_btn"]',
+      snapshotUrls: '...',
+    }
+  ]
+}</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Tab Bar -->
+<nav class="tab-bar">
+  <button class="tab-item active">
+    <div class="tab-icon">🏠</div>
+    <span>首页</span>
+  </button>
+  <button class="tab-item">
+    <div class="tab-icon">📷</div>
+    <span>画布</span>
+  </button>
+  <button class="tab-item">
+    <div class="tab-icon">🤖</div>
+    <span>AI</span>
+  </button>
+  <button class="tab-item">
+    <div class="tab-icon">⚙️</div>
+    <span>设置</span>
+  </button>
+</nav>
+
+<div class="toast" id="toast">操作成功</div>
+
+<script>
+  function switchToWorkspace() {
+    document.getElementById('homeView').style.display = 'none';
+    document.getElementById('workspaceView').classList.add('active');
+    showToast('已进入工作区');
+  }
+  function switchToHome() {
+    document.getElementById('homeView').style.display = 'block';
+    document.getElementById('workspaceView').classList.remove('active');
+  }
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  // Chip switcher
+  document.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    });
+  });
+
+  // Tab switcher
+  document.querySelectorAll('.tab-item').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+    });
+  });
+</script>
+
+</body>
+</html>
