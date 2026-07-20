@@ -12,7 +12,7 @@ import type {
 import type { AppRuleDraft } from "../types/ruleDraft";
 import type { RawSubscriptionDraft } from "./testSubscription";
 import { enhancedFetch, extensionFetch, hasNetworkExtension, fetchWithTimeout } from "./networkExtension";
-import { normalizeSnapshot } from "./snapshotZip";
+import { normalizeSnapshot } from "./snapshotNormalize";
 
 interface RpcError {
   message: string;

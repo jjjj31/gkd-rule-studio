@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import { pickNodeAtPoint } from "./nodePicker";
 import { generateSelectorCandidates } from "./selectorStrategies";
-import { normalizeSnapshot } from "./snapshotZip";
+import { normalizeSnapshot } from "./snapshotNormalize";
 import {
   createAndroidFlowSteps,
   createAndroidSingleRulePreview,

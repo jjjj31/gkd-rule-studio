@@ -4,12 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "adb-helper": "node scripts/adb-helper.mjs",
     "dev": "vite --host 127.0.0.1 --port 5174",
     "build": "tsc -b && vite build",
     "build:android-assets": "tsc -b && vite build --base ./ --outDir android/app/src/main/assets --emptyOutDir",
-    "package:release": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-release.ps1",
-    "package:full": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-and-package.ps1",
     "start": "vite preview --host 127.0.0.1 --port 5174",
     "preview": "vite preview --host 127.0.0.1 --port 5174",
     "test": "vitest run",
@@ -20,7 +17,6 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "json5": "^2.2.3",
-    "jszip": "^3.10.1",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"

@@ -5,7 +5,7 @@ import {
 } from "./customScenario";
 import { buildHelpPrompt } from "./helpPrompt";
 import { pickNodeAtPoint } from "./nodePicker";
-import { normalizeSnapshot } from "./snapshotZip";
+import { normalizeSnapshot } from "./snapshotNormalize";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import type {
   RawGkdSnapshot,

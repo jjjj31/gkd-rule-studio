@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { RULE_SETTINGS_PRESETS } from "./ruleSettings";
-import { normalizeSnapshot } from "../lib/snapshotZip";
+import { normalizeSnapshot } from "../lib/snapshotNormalize";
 import type { RawGkdSnapshot } from "../types/gkdSnapshot";
 
 describe("rule settings presets", () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pickNodeAtPoint } from "./nodePicker";
-import { normalizeSnapshot } from "./snapshotZip";
+import { normalizeSnapshot } from "./snapshotNormalize";
 import { generateSelectorCandidates } from "./selectorStrategies";
 import { diagnoseRuleRun } from "./actionPlan";
 import { createAppRuleDraft, stringifyRuleDraft } from "./ruleDraft";

@@ -7,7 +7,7 @@ import type {
 } from "../types/gkdSnapshot";
 import { pickNodeAtPoint } from "./nodePicker";
 import { generateRegionSelectorCandidates } from "./regionCandidates";
-import { normalizeSnapshot } from "./snapshotZip";
+import { normalizeSnapshot } from "./snapshotNormalize";
 
 describe("same-region selector candidates", () => {
   it("includes candidates from other nodes with the same selected bounds", () => {

@@ -36,7 +36,7 @@
 1. 改代码前先读相关文件，理解全貌再动
 2. 最短的 diff 解决问题（ponytail 模式）
 3. 改完说清楚：改了哪个文件、现在用户要在手机上试什么
-4. 用户每次改完代码都会重新打包 APK，项目里有 `pnpm run package:full` 脚本
+4. 用户每次改完代码都会重新打包 APK，项目里有 `pnpm run build:android-assets` 脚本构建 WebView 资源
 
 ---
 
@@ -65,24 +65,17 @@ Android APK build (requires Gradle):
 cd android && gradle assembleDebug
 ```
 
-Release packaging (PowerShell):
-```bash
-pnpm run package:release   # Package existing build
-pnpm run package:full      # Build + package everything
-```
-
 ## Architecture
 
-### Dual-platform entry: Desktop vs Android
+### Platform
 
-`App.tsx` routes based on URL: `?mode=android` or `#android` renders `<AndroidLiteApp/>`, otherwise `<DesktopApp/>`. Both share the same lib layer but have independent component trees:
+`App.tsx` renders `<AndroidLiteApp/>` (from `components/AndroidLiteApp.tsx`). This is a touch-optimized mobile UI that connects to GKD HTTP service directly. Communicates with the native Android layer via `window.GkdAndroidBridge` (clipboard, HTTP proxy, back button) — see `vite-env.d.ts` for the bridge interface.
 
-- **Desktop** (`DesktopApp` in `App.tsx`): Full-featured UI with file drag-drop, subscription repo integration, device connection, and multi-panel layout.
-- **Android** (`AndroidLiteApp` in `components/AndroidLiteApp.tsx`): Touch-optimized mobile UI that connects to GKD HTTP service directly. Communicates with the native Android layer via `window.GkdAndroidBridge` (clipboard, HTTP proxy, back button) — see `vite-env.d.ts` for the bridge interface.
+The desktop version (formerly `DesktopApp`) has been moved to the `desktop` branch.
 
 ### Core data flow
 
-1. **Snapshot loading** → `ParsedGkdSnapshot` (from GKD HTTP service via `deviceApi.ts`, or from `.zip` file via `snapshotZip.ts`)
+1. **Snapshot loading** → `ParsedGkdSnapshot` (from GKD HTTP service via `deviceApi.ts`)
 2. **User taps screenshot** → `nodePicker.ts` resolves tap coordinates to `NodePickResult` on the accessibility tree
 3. **Candidate generation** → `regionCandidates.ts` produces ranked `SelectorCandidate[]` using multiple selector strategies (id, vid, text, bounds, etc.)
 4. **Rule draft** → `ruleDraft.ts` (single-step) or `flowDraft.ts` (multi-step) assembles candidates into `AppRuleDraft` (JSON5-serializable GKD rule format)
@@ -107,7 +100,6 @@ pnpm run package:full      # Build + package everything
 | `flowDraft.ts` | Multi-step flow rule assembly + help prompt generation |
 | `nodePicker.ts` | Hit-test on accessibility tree from screen coordinates |
 | `regionCandidates.ts` | Multi-strategy selector candidate generation and ranking |
-| `subscriptionRepo.ts` | File System Access API for writing rules into a local GKD subscription repo clone |
 | `gkdTarget.ts` | Debug vs official GKD package targeting (`com.gkd.debug` vs `com.gkd`) |
 | `customScenario.ts` | User-defined scenario presets persisted to localStorage |
 | `candidateGuidance.ts` | Beginner-friendly guidance labels for each candidate strategy |
@@ -132,22 +124,20 @@ Tests use **vitest** in node environment. Test files live alongside source in `s
 - Styling: Plain CSS in `src/styles.css` (no CSS modules, no Tailwind)
 - Serialization: **JSON5** for GKD rule output (via `json5` package)
 - Drag-and-drop: `@dnd-kit` for flow step reordering
-- No routing library — URL params/hash for platform mode switch only
 
 ---
 
 # 功能模块详解（中文）
 
 > 本分区为面向小白的模块说明 + 前端逐页交互细节，由 Claude 整理、用户自行修正。重点说清「每个模块是什么、和谁配合、用户在页面上看到什么、怎么操作」。
-> 下列「后端」指 `src/lib/*.ts` 与 `src/types/*.ts`；「前端」指 `src/App.tsx` 与 `src/components/*.tsx`。安卓版是主线（`AndroidLiteApp`），桌面版（`DesktopApp`）结构类似但功能更全、当前维护较少。
+> 下列「后端」指 `src/lib/*.ts` 与 `src/types/*.ts`；「前端」指 `src/App.tsx` 与 `src/components/*.tsx`。安卓版是主线（`AndroidLiteApp`）。桌面版（`DesktopApp`）已移至 `desktop` 分支。
 
 ## 一、模块总分类
 
 | 类别      | 模块             | 文件                                                             | 一句话职责                                             |
 | ------- | -------------- | -------------------------------------------------------------- | ------------------------------------------------- |
-| 平台入口    | 平台路由           | `App.tsx`                                                      | 按 URL 判断渲染桌面版或安卓版                                 |
+| 平台入口    | 平台路由           | `App.tsx`                                                      | 渲染 AndroidLiteApp                                 |
 | 前端-页面壳  | 安卓主壳           | `components/AndroidLiteApp.tsx`                                | 安卓版全部 UI 与状态（连接/选择/工作区/标签页/对话框）                   |
-| 前端-页面壳  | 桌面主壳           | `App.tsx` 的 `DesktopApp`                                       | 桌面版三栏布局（左中右）                                      |
 | 前端-交互核心 | 放大镜截图          | `components/ScreenshotCanvas.tsx`                              | 显示截图、放大镜拖动选点、画命中框                                 |
 | 前端-面板   | 快照选择器          | `AndroidLiteApp` 内 `AndroidSnapshotChooser`                    | 首页勾选快照、多选进流程                                      |
 | 前端-面板   | 候选卡片           | `AndroidLiteApp` 内 `CandidateSummary`                          | 显示候选 selector、测试、复制 JSON5                         |
@@ -167,8 +157,6 @@ Tests use **vitest** in node environment. Test files live alongside source in `s
 | 设备通信    | 设备 HTTP 客户端    | `lib/deviceApi.ts`                                             | 与 gkd HTTP 服务通信（快照、订阅导入、本地规则）                     |
 | 设备通信    | 网络通道扩展         | `lib/networkExtension.ts`                                      | fetch / GM_xmlhttpRequest / 超时封装                  |
 | 设备通信    | 目标包名           | `lib/gkdTarget.ts`                                             | 官方版 / Beta 版包名切换与持久化                              |
-| 设备通信    | ADB 辅助         | `lib/adbApi.ts`                                                | 调试报告推送到 adb helper 脚本                             |
-| 快照解析    | zip 快照         | `lib/snapshotZip.ts`                                           | 从本地 `.zip` 解析快照 + 截图归一化                           |
 | 快照解析    | 节点命中           | `lib/nodePicker.ts`                                            | 屏幕坐标 → 命中节点 + 祖先/兄弟/邻近文本                          |
 | 选点交互    | 放大镜几何          | `lib/dragMagnifier.ts`                                         | 拖动放大镜的坐标换算、节点框映射                                  |
 | 候选生成    | 候选生成总入口        | `lib/regionCandidates.ts`                                      | 主候选 + 同框节点候选，排序去重                                 |
@@ -190,8 +178,6 @@ Tests use **vitest** in node environment. Test files live alongside source in `s
 | 调试      | 调试日志           | `lib/debugLog.ts`                                              | 全局分类调试日志、导出报告                                     |
 | 杂项      | 剪贴板            | `lib/clipboard.ts`                                             | 跨平台复制（Web / 安卓桥 / GM）                             |
 
-> 桌面版还多了订阅仓库写入（`subscriptionRepo.ts`）、`SubscriptionRepoPanel`、`NodeTreePanel`、`RulePreview`、`RuleSettingsPanel`、`CollapsiblePanel`、`HomePage`、`SnapshotLoader` 等组件，主要给桌面多面板布局用，安卓版不直接用。下面交互细节以安卓版为主。
-
 ## 二、后端模块详解（按数据流顺序）
 
 ### 2.1 设备通信层
@@ -199,7 +185,6 @@ Tests use **vitest** in node environment. Test files live alongside source in `s
 - **`deviceApi.ts`**：`createDeviceApiClient(origin)` 先发 `getServerInfo` 拿到 gkd 版本/包名，再封装 `getSnapshots / getSnapshot / getScreenshot / captureSnapshot / loadSnapshot / updateSubscription / appendLocalRules`。`loadSnapshot` 同时拉取快照 JSON 和截图二进制，把截图做成 `blob:URL`，再用 `normalizeSnapshot` 归一化成 `ParsedGkdSnapshot`。它和 `gkdTarget.ts` 配合：`getServerInfo` 返回的 `gkdAppInfo.id` 用来比对当前目标包名，不匹配就给用户提醒。
 - **`networkExtension.ts`**：`deviceApi` 默认走 `fetch`；在油猴/魔改环境中优先用 `window.__NetworkExtension__`（`GM_xmlhttpRequest`）跨域。`fetchWithTimeout` / `enhancedFetch` 是带超时的封装。aiModel 也复用它。
 - **`gkdTarget.ts`**：管理「正式版 `li.songe.gkd`」vs「Beta 版 `li.songe.gkd.debug`」。Beta 版才有 `localRules/append`（直接把规则存进 gkd 本地规则），正式版只能复制规则让用户手动粘。这一选择影响「测试后导入」按钮的行为（导入 vs 复制）。
-- **`snapshotZip.ts`**：桌面版拖拽 `.zip` 时用；安卓版一般走 HTTP，但 `normalizeSnapshot` 被两边共用。
 
 > 配合关系：`AndroidLiteApp.connect()` → `createDeviceApiClient` → `getSnapshots()`。选了快照后 `loadDeviceSnapshot` → `loadSnapshot` → `openSnapshot`。
 
@@ -368,7 +353,7 @@ regionCandidates(selectorStrategies+riskScoring+actionPlan) ─► SelectorCandi
 
 ## 五、状态持久化与入口约定
 
-- 入口路由：URL 带 `?mode=android` 或 hash 为 `#android` → 安卓版；否则桌面版。
+- 入口路由：`App.tsx` 直接渲染 `<AndroidLiteApp />`。
 - localStorage key 一览：
   - `gkd-rule-studio-inline-testing`：测试集合 + AI sessions
   - `gkd-rule-studio-snapshot-memory`：每张快照上次的选点 + 选中的候选 id（重开快照时还原）

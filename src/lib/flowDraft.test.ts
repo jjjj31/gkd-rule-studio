@@ -5,7 +5,7 @@ import {
 } from "./flowDraft";
 import { pickNodeAtPoint } from "./nodePicker";
 import { generateSelectorCandidates } from "./selectorStrategies";
-import { normalizeSnapshot } from "./snapshotZip";
+import { normalizeSnapshot } from "./snapshotNormalize";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import type {
   RawGkdSnapshot,
