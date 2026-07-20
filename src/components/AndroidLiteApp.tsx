@@ -4389,6 +4389,7 @@ function humanStrategyTitle(strategyName: SelectorCandidate["strategyName"]): st
     adContainerSkipFallback: "广告容器内跳过兜底",
     clickableAncestorFallback: "可点击父区域兜底",
     visibleNodeFallback: "可见节点兜底",
+    negativeActionVariantUnion: "否定动作变体合并",
   };
   return titles[strategyName];
 }

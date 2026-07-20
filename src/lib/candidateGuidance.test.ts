@@ -35,7 +35,7 @@ describe("candidate guidance", () => {
     const guidance = getCandidateGuidance(
       candidate({
         strategyName: "textSkipGuarded",
-        match: 'TextView[text^="跳过"][text.length<10][visibleToUser=true]',
+        match: 'TextView[text^="跳过"][text.length<10][width<=500][height<=300][visibleToUser=true]',
       }),
       2,
     );

@@ -31,12 +31,13 @@ export type SelectorAttr =
   | "height"
   | "text.length";
 
-export type SelectorOperator = "eq" | "contains" | "startsWith" | "lt" | "lte";
+export type SelectorOperator = "eq" | "contains" | "startsWith" | "lt" | "lte" | "orEq";
 
 export interface SelectorCondition {
   attr: SelectorAttr;
   op: SelectorOperator;
-  value: string | number | boolean;
+  // orEq 时 value 是字符串数组，序列化为 [text="否" || text="暂不"]。
+  value: string | number | boolean | string[];
 }
 
 export interface SimpleSelector {
@@ -61,14 +62,18 @@ export type SelectorPlan =
       target: SimpleSelector;
       neighbor: SimpleSelector;
       relation: "next" | "previous";
-      distance: number;
+      // 教程 §5.3.2.3：数字 = 固定距离（+1 / +2）；
+      // 数字数组 = 元组表达式（+(1,2) 同时命中多个距离）；
+      // "n" = 多项式简写（+n 等价 +(1n+0)，表示任意正距离）。
+      distance: number | number[] | "n";
     }
   | {
       kind: "contextSibling";
       context: SimpleSelector;
       target: SimpleSelector;
       relation: "next" | "previous";
-      distance: number;
+      // 同 sibling.distance。
+      distance: number | number[] | "n";
     }
   | {
       kind: "matchesChain";
@@ -176,7 +181,8 @@ export type MvpStrategyName =
   | "simpleContextRelation"
   | "adContainerSkipFallback"
   | "clickableAncestorFallback"
-  | "visibleNodeFallback";
+  | "visibleNodeFallback"
+  | "negativeActionVariantUnion";
 
 export interface SelectorCandidate {
   id: string;

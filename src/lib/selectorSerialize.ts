@@ -150,8 +150,20 @@ function isFastQueryFriendlyPlan(plan: SelectorPlan): boolean {
   }
 }
 
-function formatRelation(relation: "next" | "previous", distance: number): string {
+function formatRelation(
+  relation: "next" | "previous",
+  distance: number | number[] | "n",
+): string {
   const symbol = relation === "next" ? "+" : "-";
+  if (distance === "n") {
+    // 教程 §5.3.2.3.2 简写：+(n) 可以省略括号 → +n。
+    return `${symbol}n`;
+  }
+  if (Array.isArray(distance)) {
+    // 教程 §5.3.2.3.1 元组表达式：+(1,2,3)。
+    // 单元素元组 (1) 等价于普通 +1，但保留括号更清楚。
+    return `${symbol}(${distance.join(",")})`;
+  }
   return distance === 1 ? symbol : `${symbol}${distance}`;
 }
 
@@ -170,6 +182,15 @@ function formatCondition(condition: SelectorCondition): string {
       return `[${condition.attr}<${condition.value}]`;
     case "lte":
       return `[${condition.attr}<=${condition.value}]`;
+    case "orEq":
+      // 教程研究报告 logicalOrVariantUnion：[text="否" || text="暂不"]
+      // 用于版本差异/简繁差异/同义否定词合并。
+      if (!Array.isArray(condition.value) || condition.value.length === 0) {
+        return "";
+      }
+      return `[${condition.value
+        .map((v) => `${condition.attr}="${escapeSelectorString(String(v))}"`)
+        .join(" || ")}]`;
   }
 }
 
