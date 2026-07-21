@@ -8,7 +8,6 @@
  */
 import {
   Bot,
-  Bug,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -21,6 +20,7 @@ import {
   Plus,
   Plug,
   RefreshCw,
+  ScrollText,
   Smartphone,
   Trash2,
 } from "lucide-react";
@@ -276,10 +276,9 @@ export function AndroidLiteApp() {
     null,
   );
   const [aiDebugLogs, setAiDebugLogs] = useState<string[]>([]);
-  const [testManagerOpen, setTestManagerOpen] = useState(false);
   const [aiSessionManagerOpen, setAiSessionManagerOpen] = useState(false);
-  const [debugReportOpen, setDebugReportOpen] = useState(false);
-  const [debugReportText, setDebugReportText] = useState("");
+  const [logPageOpen, setLogPageOpen] = useState(false);
+  const [testPageOpen, setTestPageOpen] = useState(false);
   const [flowPreparing, setFlowPreparing] = useState(false);
   const pushedWorkspaceHistoryRef = useRef(false);
   const aiMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -355,10 +354,6 @@ export function AndroidLiteApp() {
     : -1;
   const activeAiProfile = getActiveAiProfile(aiProfileStore);
   const aiLoading = aiPendingCount > 0;
-  const activeTestingCount = inlineTesting.items.filter(
-    (item) => item.status === "testing",
-  ).length;
-  const totalTestingRecordCount = inlineTesting.items.length;
   const currentAiSessionSnapshotId =
     workspaceMode === "flow" ? activeFlowStep?.snapshot.id : snapshot?.id;
   const currentAiSessionControlKey =
@@ -1779,18 +1774,6 @@ export function AndroidLiteApp() {
     }, 1400);
   }
 
-  async function handleOpenDebugReport(): Promise<void> {
-    const report = exportDebugReport();
-    setDebugReportText(report);
-    setDebugReportOpen(true);
-    void flushToAdbHelper();
-  }
-
-  async function handleCopyDebugReport(): Promise<void> {
-    await copyTextToClipboard(debugReportText);
-    setMessage("调试报告已复制到剪贴板");
-  }
-
   function markCopied(
     kind: "scene" | "rule" | "draft" | "flowDraft" | "flowPrompt",
   ) {
@@ -1850,6 +1833,17 @@ export function AndroidLiteApp() {
               onClick={() => setAiConfigOpen(true)}
             >
               <Plug size={16} />
+            </button>
+            <button
+              aria-label="日志"
+              className="android-icon-button"
+              type="button"
+              onClick={() => {
+                setLogPageOpen(true);
+                void flushToAdbHelper();
+              }}
+            >
+              <ScrollText size={16} />
             </button>
             <span
               className={`ai-status-dot ai-status-${aiConnectionStatus.status}`}
@@ -1924,6 +1918,14 @@ export function AndroidLiteApp() {
           <div className="android-workspace-title">
             <strong>{snapshot?.appInfo?.name ?? snapshot?.appId ?? "未加载快照"}</strong>
           </div>
+          <button
+            aria-label="当前测试"
+            className="android-icon-button"
+            type="button"
+            onClick={() => setTestPageOpen(true)}
+          >
+            <ListChecks size={16} />
+          </button>
           <div className="mode-switch android-workspace-mode-switch">
             <button
               className={workspaceMode === "single" ? "mode-switch-active" : ""}
@@ -1941,21 +1943,6 @@ export function AndroidLiteApp() {
               {flowPreparing ? "载入" : "多步"}
             </button>
           </div>
-          <button
-            className="android-button android-test-manager-button"
-            type="button"
-            onClick={() => setTestManagerOpen(true)}
-          >
-            测试 {activeTestingCount}/{totalTestingRecordCount}
-          </button>
-          <button
-            aria-label="调试报告"
-            className="android-icon-button"
-            type="button"
-            onClick={() => void handleOpenDebugReport()}
-          >
-            <Bug size={16} />
-          </button>
         </div>
         {snapshot ? (
           <>
@@ -2100,7 +2087,6 @@ export function AndroidLiteApp() {
               candidates={aiCandidates}
             config={aiConfig}
             generatedMode={aiGeneratedMode}
-            debugLogs={aiDebugLogs}
             elapsedSeconds={aiElapsedSeconds}
             canGenerate={canGenerateAiRules}
             inlineTesting={inlineTesting}
@@ -2109,12 +2095,11 @@ export function AndroidLiteApp() {
             operation={aiOperation}
             selectedAiCandidateId={selectedAiCandidateId}
             session={activeAiSession}
+            snapshot={snapshot}
             targetPackage={targetPackage}
             testSubscription={testSubscription}
             workspaceMode={workspaceMode}
             onAddCandidate={addAiCandidateToTestZone}
-            onClearDebugLogs={() => setAiDebugLogs([])}
-            onCopyDebugLogs={() => void copyTextToClipboard(aiDebugLogs.join("\n"))}
             onGenerate={() => void generateAiRules()}
             onNewSession={createNewAiSession}
             onOpenSessions={() => setAiSessionManagerOpen(true)}
@@ -2146,17 +2131,6 @@ export function AndroidLiteApp() {
           onTestConfig={() => void testAiConfigLocal()}
         />
       )}
-      {view === "workspace" && testManagerOpen && (
-        <AndroidInlineTestManagerPage
-          items={inlineTesting.items}
-          loading={loading}
-          targetPackage={targetPackage}
-          onClose={() => setTestManagerOpen(false)}
-          onDelete={deleteInlineTestRecord}
-          onEnd={endInlineTest}
-          onImport={(item) => void importInlineItem(item)}
-        />
-      )}
       {view === "workspace" && aiSessionManagerOpen && (
         <AndroidAiSessionManagerPage
           activeSessionId={activeAiSession?.id ?? null}
@@ -2173,71 +2147,41 @@ export function AndroidLiteApp() {
           onDeleteSession={removeAiSession}
         />
       )}
-      {view === "workspace" && debugReportOpen && (
-        <AndroidDebugReportPanel
-          text={debugReportText}
-          onClose={() => setDebugReportOpen(false)}
-          onCopy={() => void handleCopyDebugReport()}
-          onClear={() => {
+      {logPageOpen && (
+        <AndroidLogPage
+          debugReportText={exportDebugReport()}
+          aiRequestLogs={aiDebugLogs}
+          onClose={() => setLogPageOpen(false)}
+          onCopyDebugReport={async () => {
+            await copyTextToClipboard(exportDebugReport());
+            setMessage("调试报告已复制到剪贴板");
+          }}
+          onClearDebugReport={() => {
             clearDebugLog();
-            setDebugReportText("");
-            setDebugReportOpen(false);
             setMessage("调试日志已清除");
+          }}
+          onCopyAiLogs={async () => {
+            await copyTextToClipboard(aiDebugLogs.join("\n"));
+            setMessage("AI 请求日志已复制到剪贴板");
+          }}
+          onClearAiLogs={() => {
+            setAiDebugLogs([]);
+            setMessage("AI 请求日志已清空");
           }}
         />
       )}
-    </main>
-  );
-}
-
-function AndroidDebugReportPanel({
-  text,
-  onClose,
-  onCopy,
-  onClear,
-}: {
-  text: string;
-  onClose: () => void;
-  onCopy: () => void;
-  onClear: () => void;
-}) {
-  return (
-    <section className="android-manager-page" aria-label="调试报告">
-      <div className="android-manager-head">
-        <div>
-          <h2>调试报告</h2>
-          <span>{text ? `${text.split("\n").length} 行` : "无数据"}</span>
-        </div>
-        <button className="android-icon-button" type="button" onClick={onClose}>
-          ×
-        </button>
-      </div>
-      <div className="android-manager-actions">
-        <button
-          className="android-button android-button-primary"
-          disabled={!text}
-          type="button"
-          onClick={onCopy}
-        >
-          <ClipboardCopy size={14} />
-          复制报告
-        </button>
-        <button
-          className="android-button android-button-danger"
-          type="button"
-          onClick={onClear}
-        >
-          清除日志
-        </button>
-      </div>
-      {text ? (
-        <pre className="debug-report-view">
-          <code>{text}</code>
-        </pre>
-      ) : (
-        <p className="android-muted">还没有调试日志记录。连接设备、选择快照或生成规则后会产生记录。</p>
+      {testPageOpen && (
+        <AndroidTestPage
+          items={inlineTesting.items}
+          loading={loading}
+          targetPackage={targetPackage}
+          onClose={() => setTestPageOpen(false)}
+          onDelete={deleteInlineTestRecord}
+          onEnd={endInlineTest}
+          onImport={(item) => void importInlineItem(item)}
+        />
       )}
-    </section>
+    </main>
   );
 }
 
@@ -2426,6 +2370,210 @@ function formatAiError(cause: unknown, apiKey: string): string {
     return `${cleaned}\n${diagnosis.hint}`;
   }
   return cleaned;
+}
+
+function AndroidLogPage({
+  debugReportText,
+  aiRequestLogs,
+  onClose,
+  onCopyDebugReport,
+  onClearDebugReport,
+  onCopyAiLogs,
+  onClearAiLogs,
+}: {
+  debugReportText: string;
+  aiRequestLogs: string[];
+  onClose: () => void;
+  onCopyDebugReport: () => void;
+  onClearDebugReport: () => void;
+  onCopyAiLogs: () => void;
+  onClearAiLogs: () => void;
+}) {
+  const debugLineCount = debugReportText ? debugReportText.split("\n").length : 0;
+  const aiLineCount = aiRequestLogs.length;
+  const aiLogText = aiRequestLogs.join("\n");
+
+  return (
+    <section className="android-manager-page" aria-label="日志">
+      <div className="android-manager-head">
+        <div>
+          <h2>日志</h2>
+          <span>所有日志和报告</span>
+        </div>
+        <button className="android-icon-button" type="button" onClick={onClose}>
+          ×
+        </button>
+      </div>
+
+      <div className="android-manager-body">
+        <div className="android-log-section">
+          <div className="android-section-title">
+            <h2>全局调试报告</h2>
+            <span>{debugLineCount > 0 ? `${debugLineCount} 行` : "无数据"}</span>
+          </div>
+          <p className="android-log-desc">
+            记录所有分类的调试日志：网络 / 快照 / 选点 / 候选 / AI / GKD 同步 / 错误。最长保留 500 条，主要给排查问题用。
+          </p>
+          <div className="android-manager-actions">
+            <button
+              className="android-button android-button-primary"
+              disabled={!debugReportText}
+              type="button"
+              onClick={onCopyDebugReport}
+            >
+              <ClipboardCopy size={14} />
+              复制报告
+            </button>
+            <button
+              className="android-button android-button-danger"
+              type="button"
+              onClick={onClearDebugReport}
+            >
+              清除日志
+            </button>
+          </div>
+          {debugReportText ? (
+            <pre className="debug-report-view">
+              <code>{debugReportText}</code>
+            </pre>
+          ) : (
+            <p className="android-muted">
+              还没有调试日志记录。连接设备、选择快照或生成规则后会产生记录。
+            </p>
+          )}
+        </div>
+
+        <div className="android-log-section">
+          <div className="android-section-title">
+            <h2>AI 请求日志</h2>
+            <span>{aiLineCount > 0 ? `${aiLineCount} 条` : "无数据"}</span>
+          </div>
+          <p className="android-log-desc">
+            只记录 AI 请求 / 响应详情：消息条数、token 估算、多模态回退、超时、错误码。最多 80 条，给排查 AI 调用用。
+          </p>
+          <div className="android-manager-actions">
+            <button
+              className="android-button android-button-primary"
+              disabled={aiLineCount === 0}
+              type="button"
+              onClick={onCopyAiLogs}
+            >
+              <ClipboardCopy size={14} />
+              复制
+            </button>
+            <button
+              className="android-button android-button-danger"
+              type="button"
+              onClick={onClearAiLogs}
+            >
+              清空
+            </button>
+          </div>
+          {aiLineCount > 0 ? (
+            <pre className="debug-report-view">
+              <code>{aiLogText}</code>
+            </pre>
+          ) : (
+            <p className="android-muted">
+              还没有 AI 请求日志。在工作区配好 AI 模型后，生成 AI 规则会产生记录。
+            </p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AndroidTestPage({
+  items,
+  loading,
+  targetPackage,
+  onClose,
+  onDelete,
+  onEnd,
+  onImport,
+}: {
+  items: InlineRuleTestItem[];
+  loading: boolean;
+  targetPackage: GkdTargetPackage;
+  onClose: () => void;
+  onDelete: (itemId: string) => void;
+  onEnd: (itemId: string) => void;
+  onImport: (item: InlineRuleTestItem) => void;
+}) {
+  const activeItems = items.filter((item) => item.status === "testing");
+  const validCount = items.filter((item) => item.status === "valid").length;
+  const finishedCount = items.length - activeItems.length;
+
+  return (
+    <section className="android-manager-page" aria-label="当前测试">
+      <div className="android-manager-head">
+        <div>
+          <h2>当前测试</h2>
+          <span>
+            正在测试 {activeItems.length} 条 / 已测试 {finishedCount} 条 / 可导入 {validCount} 条
+          </span>
+        </div>
+        <button className="android-icon-button" type="button" onClick={onClose}>
+          ×
+        </button>
+      </div>
+      {items.length > 0 ? (
+        <div className="inline-test-list manager">
+          {items.map((item) => {
+            const context = formatCompactContext(item);
+            return (
+              <div key={item.id} className="inline-test-item manager">
+                <span className="android-session-row-thumb">
+                  {item.thumbnailUrl ? (
+                    <img alt="" src={item.thumbnailUrl} />
+                  ) : (
+                    <ListChecks size={17} />
+                  )}
+                </span>
+                <span className="inline-test-main">
+                  <strong>{context.appName}</strong>
+                  <small>
+                    {context.nodeLabel}
+                    {item.selectorIndex !== undefined
+                      ? ` / 候选 #${item.selectorIndex}`
+                      : ""}
+                  </small>
+                </span>
+                <span className={`inline-test-status status-${item.status}`}>
+                  {inlineStatusLabel(item.status)}
+                </span>
+                <div className="inline-test-actions">
+                  {item.status === "testing" ? (
+                    <button type="button" onClick={() => onEnd(item.id)}>
+                      结束测试
+                    </button>
+                  ) : (
+                    <button
+                      disabled={!item.canImport || loading}
+                      type="button"
+                      onClick={() => onImport(item)}
+                    >
+                      {isDebugTarget(targetPackage) ? "导入" : "复制"}
+                    </button>
+                  )}
+                  <button
+                    className="danger"
+                    type="button"
+                    onClick={() => onDelete(item.id)}
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="android-muted">还没有正在测试或测试过的规则。</p>
+      )}
+    </section>
+  );
 }
 
 function AndroidWorkspaceTabs({
@@ -2855,88 +3003,6 @@ function AndroidScenePanel({
   );
 }
 
-function AndroidInlineTestManagerPage({
-  items,
-  loading,
-  targetPackage,
-  onClose,
-  onDelete,
-  onEnd,
-  onImport,
-}: {
-  items: InlineRuleTestItem[];
-  loading: boolean;
-  targetPackage: GkdTargetPackage;
-  onClose: () => void;
-  onDelete: (itemId: string) => void;
-  onEnd: (itemId: string) => void;
-  onImport: (item: InlineRuleTestItem) => void;
-}) {
-  const activeItems = items.filter((item) => item.status === "testing");
-  const validCount = items.filter((item) => item.status === "valid").length;
-
-  return (
-    <section className="android-manager-page" aria-label="当前测试管理">
-      <div className="android-manager-head">
-        <div>
-          <h2>当前测试</h2>
-          <span>
-            正在测试 {activeItems.length} 条 / 已测试 {items.length - activeItems.length} 条 /{" "}
-            可导入 {validCount} 条
-          </span>
-        </div>
-        <button className="android-icon-button" type="button" onClick={onClose}>
-          ×
-        </button>
-      </div>
-      {items.length > 0 ? (
-        <div className="inline-test-list manager">
-          {items.map((item) => {
-            const context = formatCompactContext(item);
-            return (
-            <div key={item.id} className="inline-test-item manager">
-              <span className="android-session-row-thumb">
-                {item.thumbnailUrl ? <img alt="" src={item.thumbnailUrl} /> : <ListChecks size={17} />}
-              </span>
-              <span className="inline-test-main">
-                <strong>{context.appName}</strong>
-                <small>
-                  {context.nodeLabel}
-                  {item.selectorIndex !== undefined ? ` / 候选 #${item.selectorIndex}` : ""}
-                </small>
-              </span>
-              <span className={`inline-test-status status-${item.status}`}>
-                {inlineStatusLabel(item.status)}
-              </span>
-              <div className="inline-test-actions">
-                {item.status === "testing" ? (
-                  <button type="button" onClick={() => onEnd(item.id)}>
-                    结束测试
-                  </button>
-                ) : (
-                  <button
-                    disabled={!item.canImport || loading}
-                    type="button"
-                    onClick={() => onImport(item)}
-                  >
-                    {isDebugTarget(targetPackage) ? "导入" : "复制"}
-                  </button>
-                )}
-                <button className="danger" type="button" onClick={() => onDelete(item.id)}>
-                  删除
-                </button>
-              </div>
-            </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="android-muted">还没有正在测试或测试过的规则。</p>
-      )}
-    </section>
-  );
-}
-
 function AndroidAiSessionManagerPage({
   sessions,
   activeSessionId,
@@ -3034,15 +3100,13 @@ function AndroidAiPanel({
   inlineTesting,
   selectedAiCandidateId,
   session,
+  snapshot,
   targetPackage,
-  debugLogs,
   elapsedSeconds,
   loading,
   message,
   operation,
   testSubscription,
-  onClearDebugLogs,
-  onCopyDebugLogs,
   onGenerate,
   onNewSession,
   onOpenSessions,
@@ -3061,15 +3125,13 @@ function AndroidAiPanel({
   inlineTesting: InlineRuleTestingState;
   selectedAiCandidateId: string | null;
   session: InlineAiSession | null;
+  snapshot: ParsedGkdSnapshot | null;
   targetPackage: GkdTargetPackage;
-  debugLogs: string[];
   elapsedSeconds: number;
   loading: boolean;
   message: string | null;
   operation: AiOperation;
   testSubscription: TestSubscriptionDraft;
-  onClearDebugLogs: () => void;
-  onCopyDebugLogs: () => void;
   onGenerate: () => void;
   onNewSession: () => void;
   onOpenSessions: () => void;
@@ -3136,30 +3198,6 @@ function AndroidAiPanel({
         </div>
       )}
       {message && <p className="android-ai-message">{message}</p>}
-      <section className="android-ai-debug">
-        <div className="android-ai-debug-head">
-          <strong>开发者测试日志</strong>
-          <div>
-            <button
-              className="text-link-button"
-              disabled={debugLogs.length === 0}
-              type="button"
-              onClick={onCopyDebugLogs}
-            >
-              复制
-            </button>
-            <button
-              className="text-link-button danger"
-              disabled={debugLogs.length === 0}
-              type="button"
-              onClick={onClearDebugLogs}
-            >
-              清空
-            </button>
-          </div>
-        </div>
-        <pre>{debugLogs.length ? debugLogs.join("\n") : "暂无日志"}</pre>
-      </section>
       {generatedMode && generatedMode !== workspaceMode && (
         <p className="android-ai-warning">
           当前显示的是{generatedMode === "flow" ? "流程" : "单步"}模式候选，重新生成后会更新。
@@ -3176,6 +3214,7 @@ function AndroidAiPanel({
               imported={isAiCandidateImported(testSubscription, candidate)}
               isSelected={candidate.id === selectedAiCandidateId}
               session={session}
+              snapshot={snapshot}
               targetPackage={targetPackage}
               onAddCandidate={onAddCandidate}
               onEndTest={onEndCandidateTest}
@@ -3203,6 +3242,7 @@ function AndroidAiCandidateCard({
   inlineTesting,
   isSelected,
   session,
+  snapshot,
   targetPackage,
   onAddCandidate,
   onEndTest,
@@ -3215,6 +3255,7 @@ function AndroidAiCandidateCard({
   inlineTesting: InlineRuleTestingState;
   isSelected: boolean;
   session: InlineAiSession | null;
+  snapshot: ParsedGkdSnapshot | null;
   targetPackage: GkdTargetPackage;
   onAddCandidate: (candidate: AiRuleCandidate) => void;
   onEndTest: (itemId: string) => void;
@@ -3238,11 +3279,18 @@ function AndroidAiCandidateCard({
       )
     : null;
 
+  const candidateValidation = useMemo(() => {
+    if (!snapshot) return null;
+    return validateAiCandidateAgainstSnapshot(candidate, snapshot);
+  }, [candidate, snapshot]);
+
   async function copyCandidateJson5(): Promise<void> {
     await copyTextToClipboard(stringifyRuleDraft(candidate.app));
     setCopiedJson5(true);
     window.setTimeout(() => setCopiedJson5(false), 1300);
   }
+
+  const unparsed = candidateValidation?.unparsedMatches ?? [];
 
   return (
     <article
@@ -3262,6 +3310,15 @@ function AndroidAiCandidateCard({
         {imported && <em>导入过</em>}
       </div>
       {candidate.risk && <p className="android-ai-risk">{candidate.risk}</p>}
+      {unparsed.length > 0 ? (
+        <p className="android-ai-warning">
+          ⚠️ {unparsed.length} 条 selector 本工具无法预览，需人工验证：
+          {unparsed.slice(0, 2).map((match) => (
+            <code key={match}>{match}</code>
+          ))}
+          {unparsed.length > 2 ? " …" : null}
+        </p>
+      ) : null}
       <div className="android-ai-selector-list">
         {selectors.slice(0, 4).map((selector, index) => (
           <code key={`${candidate.id}-${index}`}>{selector}</code>
@@ -3779,6 +3836,7 @@ function AndroidPromptPanel({
               inlineTesting={inlineTesting}
               isSelected={candidate.id === selectedAiCandidateId}
               session={externalAiSession}
+              snapshot={snapshot}
               targetPackage={targetPackage}
               onAddCandidate={onAddExternalCandidate}
               onEndTest={onEndCandidateTest}

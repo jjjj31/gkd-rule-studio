@@ -174,14 +174,26 @@ function formatCondition(condition: SelectorCondition): string {
         return `[${condition.attr}=${condition.value ? "true" : "false"}]`;
       }
       return `[${condition.attr}="${escapeSelectorString(String(condition.value))}"]`;
+    case "notEq":
+      return `[${condition.attr}!="${escapeSelectorString(String(condition.value))}"]`;
     case "contains":
       return `[${condition.attr}*="${escapeSelectorString(String(condition.value))}"]`;
     case "startsWith":
       return `[${condition.attr}^="${escapeSelectorString(String(condition.value))}"]`;
+    case "notStartsWith":
+      return `[${condition.attr}!^="${escapeSelectorString(String(condition.value))}"]`;
+    case "endsWith":
+      return `[${condition.attr}$="${escapeSelectorString(String(condition.value))}"]`;
+    case "notEndsWith":
+      return `[${condition.attr}!$="${escapeSelectorString(String(condition.value))}"]`;
     case "lt":
       return `[${condition.attr}<${condition.value}]`;
     case "lte":
       return `[${condition.attr}<=${condition.value}]`;
+    case "gt":
+      return `[${condition.attr}>${condition.value}]`;
+    case "gte":
+      return `[${condition.attr}>=${condition.value}]`;
     case "orEq":
       // 教程研究报告 logicalOrVariantUnion：[text="否" || text="暂不"]
       // 用于版本差异/简繁差异/同义否定词合并。

@@ -906,6 +906,27 @@ svg {
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
+.android-manager-body {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.android-log-section {
+  display: grid;
+  gap: 10px;
+}
+
+.android-log-desc {
+  margin: 0;
+  color: #8f9cab;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .debug-report-view {
   overflow: auto;
   margin: 0;
@@ -1470,44 +1491,6 @@ svg {
 
 .android-ai-paste-box .android-button {
   justify-self: start;
-}
-
-.android-ai-debug {
-  display: grid;
-  gap: 7px;
-  padding: 9px;
-  border: 1px solid rgba(139, 154, 172, 0.13);
-  border-radius: 9px;
-  background: rgba(5, 10, 16, 0.34);
-}
-
-.android-ai-debug-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.android-ai-debug-head strong {
-  color: #dbe7f3;
-  font-size: 12px;
-}
-
-.android-ai-debug-head > div {
-  display: flex;
-  gap: 8px;
-}
-
-.android-ai-debug pre {
-  max-height: 190px;
-  margin: 0;
-  overflow: auto;
-  color: #9fb1c4;
-  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
-  font-size: 10.5px;
-  line-height: 1.45;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .android-ai-session-trigger {
@@ -2210,7 +2193,7 @@ body {
   background: transparent;
 }
 
-   CYBERPUNK THEME OVERRIDE — AndroidLiteApp
+/* CYBERPUNK THEME OVERRIDE — AndroidLiteApp
    Appended after all base styles to take cascade priority.
    ============================================================ */
 
@@ -2811,27 +2794,6 @@ body {
   border-radius: 0;
   background: rgba(0, 240, 255, 0.02);
   clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-}
-
-/* ---- AI Debug ---- */
-.android-ai-debug {
-  border: 1px solid rgba(0, 240, 255, 0.08);
-  border-radius: 0;
-  background: var(--cp-bg-tertiary);
-  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
-}
-.android-ai-debug-head {
-  border-bottom: 1px solid rgba(0, 240, 255, 0.08);
-}
-.android-ai-debug-head strong {
-  color: var(--cp-neon-cyan);
-  font-family: var(--cp-font-display);
-  font-size: 11px;
-}
-.android-ai-debug pre {
-  color: var(--cp-text-secondary);
-  font-family: var(--cp-font-mono);
-  font-size: 10px;
 }
 
 /* ---- AI Session trigger ---- */
