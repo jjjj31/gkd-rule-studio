@@ -17,6 +17,9 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.6)
+      '@gkd-kit/selector':
+        specifier: ^0.5.23
+        version: 0.5.23
       json5:
         specifier: ^2.2.3
         version: 2.2.3
@@ -81,6 +84,9 @@ packages:
 
   '@emnapi/wasi-threads@1.2.1':
     resolution: {integrity: sha512-uTII7OYF+/Mes/MrcIOYp5yOtSMLBWSIoLPpcgwipoiKbli6k322tcoFsxoIIxPDqW01SQGAgko4EzZi2BNv2w==}
+
+  '@gkd-kit/selector@0.5.23':
+    resolution: {integrity: sha512-HTegxwogKIxopvGup5wTEGzxW9ko7iS9mXEEpZi6SvbVUEumjGptJtIXd4ixNKJ2RyOWX3wfoyArbrDOUiTFYw==}
 
   '@jridgewell/sourcemap-codec@1.5.5':
     resolution: {integrity: sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og==}
@@ -592,6 +598,8 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
+
+  '@gkd-kit/selector@0.5.23': {}
 
   '@jridgewell/sourcemap-codec@1.5.5': {}
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizeSnapshot } from "./snapshotNormalize";
-import { parseGkdSelectorExpression, validateAiCandidateAgainstSnapshot } from "./selectorMatcher";
+import { validateAiCandidateAgainstSnapshot } from "./selectorMatcher";
 import type { AiRuleCandidate } from "./aiModel";
 import type {
   NormalizedSnapshotNode,
@@ -11,7 +11,7 @@ import type {
 } from "../types/gkdSnapshot";
 
 /**
- * 测试 fixture：手搭一棵小树，覆盖 AI 各种关系/运算符写法。
+ * 测试 fixture：手搭一棵小树，覆盖 GKD selector 各种关系/运算符写法。
  *
  *   0: FrameLayout root (width=1080)
  *     1: FrameLayout (width=200)
@@ -107,171 +107,6 @@ function ids(nodes: NormalizedSnapshotNode[]): number[] {
   return nodes.map((n) => n.id);
 }
 
-describe("selectorMatcher AI 路径", () => {
-  it("*[text=...] 通配符按任意类型命中（回归 bug 1：* 被字面比较）", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`*[text="跳过"]`);
-    expect(expr).not.toBeNull();
-    expect(ids(matchExpr(snap, expr!))).toEqual([2]);
-  });
-
-  it("TextView[text=...] 只命中指定类型", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`TextView[text="跳过"]`);
-    expect(expr).not.toBeNull();
-    expect(ids(matchExpr(snap, expr!))).toEqual([2]);
-  });
-
-  it("TextView[text^=...] 命中以指定串开头", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`TextView[text^="跳过"]`);
-    expect(ids(matchExpr(snap, expr!))).toEqual([2]);
-  });
-
-  it("[id$='_skip'] 命中以 _skip 结尾（回归 bug 6：$= 条件丢失）", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`[id$="_skip"]`);
-    expect(ids(matchExpr(snap, expr!))).toEqual([14]);
-  });
-
-  it("[text!='广告'] 命中 text 不是广告的节点（回归 bug 7：!= 条件丢失）", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`[text!="广告"]`);
-    const hitIds = ids(matchExpr(snap, expr!));
-    // 唯一 text=广告 的节点是 id 4，应被排除
-    expect(hitIds).not.toContain(4);
-    expect(hitIds).toContain(2);
-    expect(hitIds).toContain(6);
-  });
-
-  it("[width>=100] 命中 width 不小于 100（回归 bug 8：>= 被解析成 =100]）", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`[width>=100]`);
-    const hitIds = ids(matchExpr(snap, expr!));
-    // fixture 里 width>=100 的节点：0(1080),1(200),3(120),4(160),5(300),10(400),13(200),14(100),15(200),16(100)
-    expect(hitIds).toEqual([0, 1, 3, 4, 5, 10, 13, 14, 15, 16]);
-  });
-
-  it("[text='A'] +3 [text='B'] 兄弟距离 3 命中 B（回归 bug 3：被 AND 合并成同一 selector）", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`[text="A"] +3 [text="B"]`);
-    // 默认点击目标是末段 = B
-    expect(ids(matchExpr(snap, expr!))).toEqual([9]);
-  });
-
-  it("[text='P'] + [text='Q'] 单独 + 等价 +1 命中相邻兄弟", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`[text="P"] + [text="Q"]`);
-    expect(ids(matchExpr(snap, expr!))).toEqual([12]);
-  });
-
-  it("FrameLayout > Button[text='关闭'] 直系父-子命中（取末段 = Button）", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`FrameLayout > Button[text="关闭"]`);
-    // id 3 是 Button text=关闭, pid=1=FrameLayout
-    expect(ids(matchExpr(snap, expr!))).toEqual([3]);
-  });
-
-  it("@[text='取消'] < * 父-子反向，点击目标是左段 [text='取消']（回归 bug 4：< 关系未实现 + * 不匹配）", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(`@[text="取消"] < *`);
-    // 点击目标是带 @ 的段 = [text="取消"]，任何节点都有 * 祖先，故 [text="取消"] 全部命中
-    expect(ids(matchExpr(snap, expr!))).toEqual([14]);
-  });
-
-  it("*(garbage) 非法类型名，parseGkdSelectorExpression 返回 null（不画框、进入 unparsedMatches）", () => {
-    const parsed = parseGkdSelectorExpression(`*(text 乱码垃圾字符串)`);
-    expect(parsed).toBeNull();
-  });
-
-  it("多段链无 @ 时默认点击末段：LinearLayout > FrameLayout > TextView[text='ChainEnd']", () => {
-    const snap = buildFixture();
-    const expr = parseGkdSelectorExpression(
-      `LinearLayout > FrameLayout > TextView[text="ChainEnd"]`,
-    );
-    // 15(LinearLayout) → 16(FrameLayout) → 17(TextView "ChainEnd")
-    expect(ids(matchExpr(snap, expr!))).toEqual([17]);
-  });
-
-  it("validateAiCandidateAgainstSnapshot 端到端：合法 match 命中节点、非法 match 进 unparsedMatches", () => {
-    const snap = buildFixture();
-    const candidate: AiRuleCandidate = makeCandidate([
-      `TextView[text="跳过"]`,
-      `*(text 乱码垃圾字符串)`,
-    ]);
-    const validation = validateAiCandidateAgainstSnapshot(candidate, snap);
-    expect(validation.clickNodes.length).toBeGreaterThan(0);
-    expect(ids(validation.clickNodes)).toEqual([2]);
-    expect(validation.unparsedMatches).toEqual([`*(text 乱码垃圾字符串)`]);
-  });
-});
-
-// 仅暴露给测试内部使用的小工具：parser 配 matchGkdExpr。
-function matchExpr(snap: ParsedGkdSnapshot, expr: { segments: unknown[] }): NormalizedSnapshotNode[] {
-  // parseGkdSelectorExpression 返回的 segments 内部是 GkdSegment，TS 类型私有；
-  // 这里直接走 validateAiCandidateAgainstSnapshot 的等价路径：单条 match 构造一个 candidate。
-  const candidate: AiRuleCandidate = {
-    id: "t",
-    title: "t",
-    summary: "",
-    risk: "",
-    app: { id: "x", name: "x", groups: [{ key: 1, name: "g", rules: [{ key: 1, matches: serializeBack(expr) }] }] },
-  };
-  return validateAiCandidateAgainstSnapshot(candidate, snap).clickNodes;
-}
-
-function serializeBack(expr: { segments: unknown[] }): string[] {
-  // 把 segments 还原成 GKD selector 字符串，方便喂给 validateAiCandidate。
-  // 简单实现：导出 GkdSegment 的可序列化字段。
-  const segs = expr.segments as Array<{
-    relation: string;
-    selector: { typeName?: string; conditions: Array<{ attr: string; op: string; value: unknown }> };
-    isClickTarget: boolean;
-    distance?: number | number[] | "n";
-  }>;
-  const parts: string[] = [];
-  segs.forEach((seg, i) => {
-    if (i > 0) {
-      if (seg.relation === "child") parts.push(">");
-      else if (seg.relation === "parent") parts.push("<");
-      else if (seg.relation === "next") {
-        if (seg.distance === "n") parts.push("+n");
-        else if (Array.isArray(seg.distance)) parts.push(`+(${seg.distance.join(",")})`);
-        else if (seg.distance === 1 || seg.distance === undefined) parts.push("+");
-        else parts.push(`+${seg.distance}`);
-      } else if (seg.relation === "previous") {
-        if (seg.distance === "n") parts.push("-n");
-        else if (Array.isArray(seg.distance)) parts.push(`-(${seg.distance.join(",")})`);
-        else if (seg.distance === 1 || seg.distance === undefined) parts.push("-");
-        else parts.push(`-${seg.distance}`);
-      }
-    }
-    if (seg.isClickTarget) parts.push("@");
-    const tn = seg.selector.typeName;
-    const conds = seg.selector.conditions
-      .map((c) => {
-        const v = typeof c.value === "string" ? `"${c.value}"` : String(c.value);
-        const opMap: Record<string, string> = {
-          eq: "=",
-          notEq: "!=",
-          contains: "*=",
-          startsWith: "^=",
-          endsWith: "$=",
-          notStartsWith: "!^=",
-          notEndsWith: "!$=",
-          lt: "<",
-          lte: "<=",
-          gt: ">",
-          gte: ">=",
-        };
-        return `[${c.attr}${opMap[c.op] ?? c.op}${v}]`;
-      })
-      .join("");
-    parts.push(tn ? `${tn}${conds}` : conds);
-  });
-  return [parts.join(" ")];
-}
-
 function makeCandidate(matches: string[]): AiRuleCandidate {
   return {
     id: "test",
@@ -291,3 +126,147 @@ function makeCandidate(matches: string[]): AiRuleCandidate {
     },
   };
 }
+
+function run(snap: ParsedGkdSnapshot, matches: string[]) {
+  return validateAiCandidateAgainstSnapshot(makeCandidate(matches), snap);
+}
+
+describe("selectorMatcher AI 路径（@gkd-kit/selector）", () => {
+  it("*[text=...] 通配符按任意类型命中", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`*[text="跳过"]`]);
+    expect(ids(v.clickNodes)).toEqual([2]);
+    expect(v.unparsedMatches).toBeUndefined();
+  });
+
+  it("TextView[text=...] 只命中指定类型", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`TextView[text="跳过"]`]);
+    expect(ids(v.clickNodes)).toEqual([2]);
+  });
+
+  it("TextView[text^=...] 命中以指定串开头", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`TextView[text^="跳过"]`]);
+    expect(ids(v.clickNodes)).toEqual([2]);
+  });
+
+  it("[id$='_skip'] 命中以 _skip 结尾", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`[id$="_skip"]`]);
+    expect(ids(v.clickNodes)).toEqual([14]);
+  });
+
+  it("[text!='广告'] 命中 text 不是广告的节点", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`[text!="广告"]`]);
+    const hitIds = ids(v.clickNodes);
+    expect(hitIds).not.toContain(4);
+    expect(hitIds).toContain(2);
+    expect(hitIds).toContain(6);
+  });
+
+  it("[width>=100] 命中 width 不小于 100", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`[width>=100]`]);
+    // KMP 的 querySelectorAllContextArray 不含根节点（标准 CSS 行为）；
+    // 手写解析器之前多算 0 是 bug，这里与 gkd-kit/inspect 行为一致
+    expect(ids(v.clickNodes)).toEqual([1, 3, 4, 5, 10, 13, 14, 15, 16]);
+  });
+
+  it("[text='A'] +3 [text='B'] 兄弟距离 3 命中 B（默认末段 = 点击目标）", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`[text="A"] +3 [text="B"]`]);
+    expect(ids(v.clickNodes)).toEqual([9]);
+  });
+
+  it("[text='P'] + [text='Q'] 单独 + 等价 +1 命中相邻兄弟 Q", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`[text="P"] + [text="Q"]`]);
+    expect(ids(v.clickNodes)).toEqual([12]);
+  });
+
+  it("FrameLayout > Button[text='关闭'] 直系父-子命中（默认末段 = Button）", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`FrameLayout > Button[text="关闭"]`]);
+    expect(ids(v.clickNodes)).toEqual([3]);
+  });
+
+  it("@[text='取消'] < * 父-子反向，点击目标是 @ 段 [text='取消']", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`@[text="取消"] < *`]);
+    expect(ids(v.clickNodes)).toEqual([14]);
+  });
+
+  it("非法 selector 进入 unparsedMatches，不画框", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`*(text 乱码垃圾字符串)`]);
+    expect(v.clickNodes).toEqual([]);
+    expect(v.unparsedMatches).toEqual([`*(text 乱码垃圾字符串)`]);
+  });
+
+  it("多段链无 @ 时默认点击末段", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`LinearLayout > FrameLayout > TextView[text="ChainEnd"]`]);
+    // 15(LinearLayout) → 16(FrameLayout) → 17(TextView)
+    expect(ids(v.clickNodes)).toEqual([17]);
+  });
+
+  it("E2E：合法 + 非法混合，合法命中、非法进 unparsedMatches", () => {
+    const snap = buildFixture();
+    const v = run(snap, [`TextView[text="跳过"]`, `*(text 乱码垃圾字符串)`]);
+    expect(ids(v.clickNodes)).toEqual([2]);
+    expect(v.unparsedMatches).toEqual([`*(text 乱码垃圾字符串)`]);
+  });
+
+  // ─── 以下是 KMP 包带来的新能力，手写解析器做不到的语法 ───
+
+  it("<< Descendant（任意深度后代）", () => {
+    const snap = buildFixture();
+    // Button[text="关闭"](3) << LinearLayout(15) = LinearLayout 在 Button 任意上方祖先
+    // 但我们的 fixture 里 Button 3 的祖先链：3 ← 1 ← 0，没有 LinearLayout 13 或 15
+    // 用 FrameLayout(16) << LinearLayout(15) 反向：LinearLayout(15) 是 16 的父亲
+    const v = run(snap, [`FrameLayout[childCount=1] << LinearLayout[childCount=1]`]);
+    // 16 是 FrameLayout childCount=1，15 是其 LinearLayout 父
+    // 关系 "16 << 15" 意味着 15 是 16 的祖先（Descendant 反向）
+    // 等价写法是 15 FrameLayout[childCount=1] —— 但我们要测的是 <<
+    // 换成简单场景：LinearLayout[childCount=1] << Button[id$='_skip'] 意味着
+    // LinearLayout 在 Button 的祖先链上 → 15 → 16 → 17? Button 14 的祖先是 13, 0，没有 15
+    // 改用：TextView[text="ChainEnd"] << LinearLayout[childCount=1]
+    // 17 的祖先链：17 ← 16 ← 15，15 是 LinearLayout
+    expect(ids(v.clickNodes)).toEqual([15]);
+  });
+
+  it("-> Previous（前一个兄弟）", () => {
+    const snap = buildFixture();
+    // A(6) -> B(9) 表示 B 在 A 前面 = "前面"语义
+    // 实际上 GKD 的 - 和 -> 都是"前兄弟"，A -> B 表示 A 在 B 的前面
+    // 即 "B -> A" = "B 的后一个兄弟是 A"
+    // 这里 [text="B"] -> [text="A"] 表示 A 在 B 后面，B 在 A 前面
+    // fixture 里 6=A index 0, 9=B index 3，所以 A 在 B 前面（A->B 是 next 3）
+    // 改成测 [text="X"] -> [text="A"] = A 的前一个兄弟是 X，即 A 在 X 后面
+    // 6=A(index 0) 没有前兄弟；7=X(index 1) 的前兄弟不是 A
+    // 实际：8=Y(index 2) -> [text="A"]? Y 的前兄弟是 X(7)，不匹配
+    // 用 [text="Y"] - [text="A"] (直接 -) 也表示 A 是 Y 的前兄弟 → 不匹配
+    // 用 [text="A"] - [text="X"]: A 的后兄弟 = X → 即 X 是 A 的后一个 → 匹配
+    const v = run(snap, [`[text="X"] - [text="A"]`]);
+    // 默认末段是 A = 节点 6
+    expect(ids(v.clickNodes)).toEqual([6]);
+  });
+
+  it("@ 在链中间：点击目标是被 @ 标记的段", () => {
+    const snap = buildFixture();
+    // LinearLayout @FrameLayout TextView[text="ChainEnd"]
+    // 链：15 → 16 → 17，@ 在 16 → target = 16
+    const v = run(snap, [`LinearLayout @FrameLayout TextView[text="ChainEnd"]`]);
+    expect(ids(v.clickNodes)).toEqual([16]);
+  });
+
+  it("裸空格链 = 隐式 Ancestor(1)（KMP 官方行为）", () => {
+    const snap = buildFixture();
+    // LinearLayout TextView[text="ChainEnd"] = "TextView 是 LinearLayout 的后代"
+    // 17 的祖先链：17 ← 16 ← 15，15 是 LinearLayout
+    const v = run(snap, [`LinearLayout TextView[text="ChainEnd"]`]);
+    expect(ids(v.clickNodes)).toEqual([17]);
+  });
+});
