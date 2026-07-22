@@ -5,6 +5,7 @@
 import type { ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type { FlowRuleStep } from "../types/flowDraft";
 import type { SelectorCandidate } from "../types/ruleDraft";
+import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import {
   createAppRuleDraft,
   selectFallbackCandidates,
@@ -61,7 +62,7 @@ export function resolveAndroidFlowCanvasSnapshots<TSnapshot extends SnapshotList
     });
 }
 
-/** 从已加载的 ParsedGkdSnapshot 数组创建 FlowRuleStep（安卓版多步）。每个步骤初始无选点。 */
+/** 从已加载的 ParsedGkdSnapshot 数组创建 FlowRuleStep（安卓版多步）。每个步骤初始无选点，使用统一的默认场景。 */
 export function createAndroidFlowSteps(
   snapshots: ParsedGkdSnapshot[],
 ): FlowRuleStep[] {
@@ -70,6 +71,8 @@ export function createAndroidFlowSteps(
     title: "",
     note: "",
     delayNote: "步骤间延迟只作为 prompt 上下文，不保证强流程顺序。",
+    ruleSettings: DEFAULT_RULE_SETTINGS,
+    scenarioId: "function",
     snapshot,
     pickResult: null,
     candidates: [],

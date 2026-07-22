@@ -54,6 +54,29 @@ describe("flow draft generation", () => {
     ]);
   });
 
+  it("respects a user-supplied preKeys override on a later step", () => {
+    const first = buildSnapshot("com.demo.MainActivity", "展开");
+    const second = buildSnapshot("com.demo.PanelActivity", "关闭");
+    const third = buildSnapshot("com.demo.ResultActivity", "返回");
+    const step1 = buildStep("step-1", "点展开", first, { x: 160, y: 330 });
+    const step2 = buildStep("step-2", "点关闭", second, { x: 160, y: 330 });
+    const step3 = buildStep("step-3", "点返回", third, { x: 160, y: 330 });
+    // 步骤 3 显式只依赖步骤 1(不依赖 2),覆盖默认线性全串 [1,2]
+    step3.preKeys = [1];
+
+    const draft = createFlowAppRuleDraft({
+      flowName: "旁路第 2 步",
+      flowDesc: "测试手动 preKeys 覆盖",
+      steps: [step1, step2, step3],
+    });
+
+    expect(draft?.groups[0].rules.map((rule) => rule.preKeys)).toEqual([
+      undefined,
+      [1],
+      [1],
+    ]);
+  });
+
   it("builds a flow help prompt that asks AI to generate a complete rule", () => {
     const steps = [
       buildStep(
@@ -127,6 +150,8 @@ function buildStep(
     title,
     note: `${title} 后等待界面自然变化`,
     delayNote: "仅作为 prompt 上下文，不保证强流程顺序",
+    ruleSettings: DEFAULT_RULE_SETTINGS,
+    scenarioId: "function",
     snapshot,
     pickResult,
     candidates,

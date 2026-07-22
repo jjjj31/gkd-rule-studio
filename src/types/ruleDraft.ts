@@ -29,9 +29,24 @@ export type SelectorAttr =
   | "visibleToUser"
   | "width"
   | "height"
-  | "text.length";
+  | "text.length"
+  | "depth"
+  | "index"
+  | "childCount";
 
-export type SelectorOperator = "eq" | "contains" | "startsWith" | "lt" | "lte" | "orEq";
+export type SelectorOperator =
+  | "eq"
+  | "notEq"
+  | "contains"
+  | "startsWith"
+  | "endsWith"
+  | "notStartsWith"
+  | "notEndsWith"
+  | "lt"
+  | "lte"
+  | "gt"
+  | "gte"
+  | "orEq";
 
 export interface SelectorCondition {
   attr: SelectorAttr;
@@ -150,6 +165,11 @@ export interface SelectorValidation {
   hitCount: number;
   clickNodes: NormalizedSnapshotNode[];
   supportNodes: NormalizedSnapshotNode[];
+  /**
+   * AI 路径专用：本工具无法解析、无法预览的 matches 字符串。
+   * 来自 AI 候选的 matches 列表解析失败时，原文进这里，前端不画框并显示警示。
+   */
+  unparsedMatches?: string[];
 }
 
 export interface RiskItem {

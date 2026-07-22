@@ -50,7 +50,7 @@ pnpm test
 pnpm run typecheck
 pnpm run dev                  # 浏览器开发
 pnpm run build:android-assets # 构建 Android WebView 资源
-pnpm run package:full         # 构建 + 打包 APK
+cd android && gradle assembleDebug  # 打包 APK
 ```
 
 ## 相关
