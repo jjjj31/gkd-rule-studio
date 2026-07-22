@@ -192,6 +192,8 @@ interface SnapshotWorkspaceMemory {
   selectedCandidateId: string | null;
 }
 
+const MAIN_TRANSIENT_MS = 2500;
+
 export function AndroidLiteApp() {
   const [deviceUrl, setDeviceUrl] = useState(
     () => localStorage.getItem("gkd-rule-builder-device-url") ?? "",
@@ -282,6 +284,9 @@ export function AndroidLiteApp() {
   const [flowPreparing, setFlowPreparing] = useState(false);
   const pushedWorkspaceHistoryRef = useRef(false);
   const aiMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const mainMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const externalAiMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const prolongedMainRef = useRef(false);
   const syncQueueRef = useRef<{
     running: boolean;
     pendingState: InlineRuleTestingState | null;
@@ -409,7 +414,7 @@ export function AndroidLiteApp() {
     window.addEventListener("popstate", handlePopState);
     return () => {
       window.removeEventListener("popstate", handlePopState);
-      clearTransientAiMessage();
+      clearAllTransientMessages();
     };
   }, []);
 
@@ -515,7 +520,7 @@ export function AndroidLiteApp() {
       setDeviceUrl(nextClient.origin);
       localStorage.setItem("gkd-rule-builder-device-url", nextClient.origin);
       if (matchesTargetPackage(nextClient.serverInfo.gkdAppInfo?.id, targetPackage)) {
-        setMessage("连接成功");
+        showMainTransient("连接成功");
       } else {
         setMessage(
           `已连接，但当前目标是 ${targetPackageLabel(
@@ -555,7 +560,7 @@ export function AndroidLiteApp() {
         const availableIds = new Set(nextSnapshots.map((item) => item.id));
         return new Set([...current].filter((id) => availableIds.has(id)));
       });
-      setMessage(`刷新成功：${nextSnapshots.length} 条快照`);
+      showMainTransient(`刷新成功：${nextSnapshots.length} 条快照`);
       debugLog("snapshot", "refresh:ok", `${nextSnapshots.length} snapshots`, {
         snapshotCount: nextSnapshots.length,
         selectedSnapshotId: selectedSnapshotId,
@@ -621,6 +626,15 @@ export function AndroidLiteApp() {
     });
     setPickResult(rememberedPick);
     setSelectedCandidateId(remembered?.selectedCandidateId ?? null);
+    // 切到新快照时清掉上一张快照残留的 AI 候选 / 选区，避免旧 AI 提示还停在新画布上。
+    setSelectedAiCandidateId(null);
+    setAiCandidates([]);
+    setAiGeneratedMode(null);
+    setActiveAiSessionId(null);
+    setExternalAiCandidates([]);
+    setExternalAiMode(null);
+    setExternalAiSessionId(null);
+    clearAllTransientMessages();
     setWorkspaceMode("single");
     setView("workspace");
     setActiveTab("scene");
@@ -789,7 +803,7 @@ export function AndroidLiteApp() {
       setRuleSettings(resolveCustomScenarioSettings(scenario, snapshot));
       setCustomScenarioName("");
       setCustomScenarioText("");
-      setMessage(`已导入场景：${scenario.name}`);
+      showMainTransient(`已导入场景：${scenario.name}`);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "导入自定义场景失败");
     }
@@ -818,7 +832,7 @@ export function AndroidLiteApp() {
     setSelectedCandidateId(null);
     setWorkspaceMode("flow");
     setActiveTab("scene");
-    setMessage("已添加新步骤，请在当前快照上选择目标控件");
+    showMainTransient("已添加新步骤，请在当前快照上选择目标控件");
   }
 
   function selectFlowStep(stepId: string): void {
@@ -830,6 +844,7 @@ export function AndroidLiteApp() {
     setSelectedSnapshotId(String(step.snapshot.id));
     setPickResult(step.pickResult);
     setSelectedCandidateId(step.selectedCandidate?.id ?? null);
+    clearAiCandidateState();
     setMessage(null);
   }
 
@@ -849,6 +864,16 @@ export function AndroidLiteApp() {
     await loadDeviceSnapshot(next.id, client);
   }
 
+  function clearAiCandidateState(): void {
+    setSelectedAiCandidateId(null);
+    setAiCandidates([]);
+    setAiGeneratedMode(null);
+    setActiveAiSessionId(null);
+    setExternalAiCandidates([]);
+    setExternalAiMode(null);
+    setExternalAiSessionId(null);
+  }
+
   async function loadFlowCanvasSnapshot(
     id: number | string,
     targetClient = client,
@@ -866,7 +891,9 @@ export function AndroidLiteApp() {
       const activeStep =
         flowSteps.find((step) => step.id === activeFlowStepId) ?? null;
       const stepIsOnNextSnapshot = activeStep?.snapshot.id === nextSnapshot.id;
+      setSnapshot(nextSnapshot);
       if (activeStep && !stepIsOnNextSnapshot) {
+        // 当前步骤绑定的是另一张快照 → 直接改绑，清空旧选点和候选
         setFlowSteps((current) =>
           current.map((step) =>
             step.id === activeStep.id
@@ -874,16 +901,22 @@ export function AndroidLiteApp() {
               : step,
           ),
         );
+        setPickResult(null);
+        setSelectedCandidateId(null);
+        clearAiCandidateState();
+        showMainTransient(`已切到快照 #${nextSnapshot.id}，请选择目标控件`);
+      } else if (stepIsOnNextSnapshot) {
+        // 当前步骤本来就绑定这张快照 → 恢复步骤上的选点
+        setPickResult(activeStep?.pickResult ?? null);
+        setSelectedCandidateId(
+          activeStep?.selectedCandidate?.id ?? null,
+        );
+      } else {
+        // 没有激活步骤 → 清空
+        setPickResult(null);
+        setSelectedCandidateId(null);
       }
-      setSnapshot(nextSnapshot);
-      setPickResult(stepIsOnNextSnapshot ? activeStep?.pickResult ?? null : null);
-      setSelectedCandidateId(
-        stepIsOnNextSnapshot ? activeStep?.selectedCandidate?.id ?? null : null,
-      );
       setSelectedSnapshotId(String(numericId));
-      if (activeStep && !stepIsOnNextSnapshot) {
-        setMessage("已为当前步骤切换快照，请在新快照上选择目标控件");
-      }
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "切换快照失败");
     } finally {
@@ -1145,7 +1178,7 @@ export function AndroidLiteApp() {
     setMessage(null);
     try {
       await client.updateSubscription(exportRawSubscription(draft));
-      setMessage(
+      showMainTransient(
         `${successMessage}：${summary.ruleCount} 条规则`,
       );
       debugLog("sync", "gkd:ok", `${summary.ruleCount} rules`, {
@@ -1222,7 +1255,7 @@ export function AndroidLiteApp() {
       setTestSubscription((current) =>
         markImportedAndClearBuffer(addAppDraftToTestSubscription(current, item.app)),
       );
-      setMessage(
+      showMainTransient(
         `已保存到 GKD 本地规则 Beta：新增 ${result.addedRules} 条，跳过重复 ${result.skippedDuplicates} 条`,
       );
     } catch (cause) {
@@ -1250,7 +1283,7 @@ export function AndroidLiteApp() {
     setAiProfileStore(nextStore);
     if (active) setAiConfig(active.config);
     saveAiProfileStore(nextStore);
-    setAiMessage("当前模型配置已清空");
+    showAiTransient("当前模型配置已清空");
   }
 
   function saveAiProfileLocal(profile: AiModelProfile): void {
@@ -1259,7 +1292,7 @@ export function AndroidLiteApp() {
     setAiProfileStore(nextStore);
     if (active) setAiConfig(active.config);
     saveAiProfileStore(nextStore);
-    setAiMessage(`模型配置已保存：${active?.name ?? profile.name}`);
+    showAiTransient(`模型配置已保存：${active?.name ?? profile.name}`);
   }
 
   function selectAiProfileLocal(profileId: string): void {
@@ -1277,7 +1310,7 @@ export function AndroidLiteApp() {
     setAiProfileStore(nextStore);
     if (active) setAiConfig(active.config);
     saveAiProfileStore(nextStore);
-    setAiMessage("模型配置已删除");
+    showAiTransient("模型配置已删除");
   }
 
   async function testAiConfigLocal(): Promise<void> {
@@ -1287,7 +1320,7 @@ export function AndroidLiteApp() {
     try {
       appendAiDebugLog("test:start");
       const result = await testAiConnection(aiConfig, appendAiDebugLog);
-      setAiMessage(result);
+      showAiTransient(result);
       appendAiDebugLog(`test:done ${result}`);
       saveConnectionStatus({ status: "connected", lastTested: Date.now() });
       setAiConnectionStatus({ status: "connected", lastTested: Date.now() });
@@ -1399,7 +1432,7 @@ export function AndroidLiteApp() {
       setActiveAiSessionId(sessionId);
       setAiCandidates(nextCandidates);
       setAiGeneratedMode(mode);
-      setAiMessage(`AI 返回 ${nextCandidates.length} 个候选`);
+      showAiTransient(`AI 返回 ${nextCandidates.length} 个候选`);
       appendAiDebugLog(`generate:done candidates=${nextCandidates.length}`);
       debugLog("ai", "generate:ok", `${nextCandidates.length} candidates`, {
         mode,
@@ -1431,7 +1464,7 @@ export function AndroidLiteApp() {
     setAiCandidates([]);
     setAiGeneratedMode(input.mode);
     setActiveTab("ai");
-    setAiMessage("已开启新的 AI session");
+    showAiTransient("已开启新的 AI session");
   }
 
   async function selectAiSession(sessionId: string): Promise<void> {
@@ -1462,7 +1495,7 @@ export function AndroidLiteApp() {
       setAiCandidates(nextSession?.candidates ?? []);
       setAiGeneratedMode(nextSession?.mode ?? null);
     }
-    showTransientAiMessage("已删除 AI session");
+    showAiTransient("已删除 AI session");
   }
 
   function formatCurrentAiSessionTitle(): string {
@@ -1577,7 +1610,7 @@ export function AndroidLiteApp() {
       setExternalAiCandidates(nextCandidates);
       setExternalAiMode(input.mode);
       setAiPasteText("");
-      setExternalAiMessage(`已提取 ${nextCandidates.length} 个外部 AI 规则候选`);
+      showExternalAiTransient(`已提取 ${nextCandidates.length} 个外部 AI 规则候选`);
     } catch (cause) {
       setExternalAiMessage(cause instanceof Error ? cause.message : "解析 AI 返回内容失败");
     }
@@ -1656,7 +1689,7 @@ export function AndroidLiteApp() {
     setExternalAiMessage(null);
     try {
       await copyTextToClipboard(buildExternalFeedbackPrompt(feedbacks, mode === "flow"));
-      setExternalAiMessage("已复制测试反馈 prompt，可粘贴给外部 AI 修正规则");
+      showExternalAiTransient("已复制测试反馈 prompt，可粘贴给外部 AI 修正规则");
       appendAiDebugLog(`feedback:copied mode=${mode} count=${feedbacks.length}`);
     } catch (cause) {
       setExternalAiMessage(cause instanceof Error ? cause.message : "复制测试反馈失败");
@@ -1697,7 +1730,7 @@ export function AndroidLiteApp() {
       setAiCandidates(nextCandidates);
       setAiGeneratedMode(mode);
       setActiveTab("ai");
-      setAiMessage(`反馈已返回 ${nextCandidates.length} 个候选`);
+      showAiTransient(`反馈已返回 ${nextCandidates.length} 个候选`);
       appendAiDebugLog(`feedback:done candidates=${nextCandidates.length}`);
     } catch (cause) {
       setAiMessage(formatAiError(cause, aiConfig.apiKey));
@@ -1765,13 +1798,61 @@ export function AndroidLiteApp() {
     aiMessageTimerRef.current = null;
   }
 
-  function showTransientAiMessage(text: string): void {
+  function clearTransientMainMessage(): void {
+    if (mainMessageTimerRef.current === null) return;
+    window.clearTimeout(mainMessageTimerRef.current);
+    mainMessageTimerRef.current = null;
+  }
+
+  function clearTransientExternalAiMessage(): void {
+    if (externalAiMessageTimerRef.current === null) return;
+    window.clearTimeout(externalAiMessageTimerRef.current);
+    externalAiMessageTimerRef.current = null;
+  }
+
+  function clearAllTransientMessages(): void {
+    clearTransientAiMessage();
+    clearTransientMainMessage();
+    clearTransientExternalAiMessage();
+  }
+
+  function showMainTransient(text: string): void {
+    clearTransientMainMessage();
+    prolongedMainRef.current = false;
+    setMessage(text);
+    mainMessageTimerRef.current = window.setTimeout(() => {
+      mainMessageTimerRef.current = null;
+      setMessage(null);
+    }, MAIN_TRANSIENT_MS);
+  }
+
+  function prolongMainMessage(): void {
+    if (mainMessageTimerRef.current === null) return;
+    if (prolongedMainRef.current) return;
+    prolongedMainRef.current = true;
+    window.clearTimeout(mainMessageTimerRef.current);
+    mainMessageTimerRef.current = window.setTimeout(() => {
+      mainMessageTimerRef.current = null;
+      setMessage(null);
+    }, MAIN_TRANSIENT_MS);
+  }
+
+  function showAiTransient(text: string): void {
     clearTransientAiMessage();
     setAiMessage(text);
     aiMessageTimerRef.current = window.setTimeout(() => {
-      setAiMessage((current) => (current === text ? null : current));
       aiMessageTimerRef.current = null;
-    }, 1400);
+      setAiMessage(null);
+    }, MAIN_TRANSIENT_MS);
+  }
+
+  function showExternalAiTransient(text: string): void {
+    clearTransientExternalAiMessage();
+    setExternalAiMessage(text);
+    externalAiMessageTimerRef.current = window.setTimeout(() => {
+      externalAiMessageTimerRef.current = null;
+      setExternalAiMessage(null);
+    }, MAIN_TRANSIENT_MS);
   }
 
   function markCopied(
@@ -1818,7 +1899,7 @@ export function AndroidLiteApp() {
                 setClient(null);
                 setSnapshots([]);
                 setSelectedSnapshotIds(new Set());
-                setMessage(`已切换目标：${targetPackageLabel(packageId)}`);
+                showMainTransient(`已切换目标：${targetPackageLabel(packageId)}`);
               }}
             />
             <button
@@ -1864,7 +1945,16 @@ export function AndroidLiteApp() {
         )}
       </header>
 
-      {message && <div className="android-message">{message}</div>}
+      {message && (
+        <button
+          type="button"
+          aria-label="延长显示这条提示"
+          className="android-message"
+          onClick={prolongMainMessage}
+        >
+          {message}
+        </button>
+      )}
       {view === "home" && (
         <section className="android-home">
           <div className="android-card android-connect-card">
@@ -2154,19 +2244,19 @@ export function AndroidLiteApp() {
           onClose={() => setLogPageOpen(false)}
           onCopyDebugReport={async () => {
             await copyTextToClipboard(exportDebugReport());
-            setMessage("调试报告已复制到剪贴板");
+            showMainTransient("调试报告已复制到剪贴板");
           }}
           onClearDebugReport={() => {
             clearDebugLog();
-            setMessage("调试日志已清除");
+            showMainTransient("调试日志已清除");
           }}
           onCopyAiLogs={async () => {
             await copyTextToClipboard(aiDebugLogs.join("\n"));
-            setMessage("AI 请求日志已复制到剪贴板");
+            showMainTransient("AI 请求日志已复制到剪贴板");
           }}
           onClearAiLogs={() => {
             setAiDebugLogs([]);
-            setMessage("AI 请求日志已清空");
+            showMainTransient("AI 请求日志已清空");
           }}
         />
       )}
@@ -2844,6 +2934,9 @@ const FlowStepChipContent = forwardRef<
         {index + 1}
       </strong>
       <span>{flowStepDisplayTitle(step, index)}</span>
+      {step.preKeys && step.preKeys.length > 0 && (
+        <span className="status-badge neutral">{step.preKeys.length}前</span>
+      )}
       {step.selectedCandidate ? (
         <>
           <span className="status-badge success">已选</span>
@@ -2905,6 +2998,85 @@ function AndroidFlowCanvasNav({
 
 function flowStepDisplayTitle(step: FlowRuleStep, index: number): string {
   return step.title.trim() || `步骤 ${index + 1}`;
+}
+
+function FlowProgress({ steps }: { steps: FlowRuleStep[] }) {
+  if (steps.length === 0) return null;
+  const doneCount = steps.filter((step) => step.selectedCandidate).length;
+  const missing = steps
+    .map((step, index) => (step.selectedCandidate ? null : index + 1))
+    .filter((index): index is number => index !== null);
+  return (
+    <div className="android-flow-progress">
+      <span>
+        完成 {doneCount} / {steps.length} 步
+      </span>
+      {missing.length > 0 && (
+        <span className="android-flow-progress-missing">
+          未选候选:步骤 {missing.join("、")} 将被跳过
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FlowStepPreKeysEditor({
+  steps,
+  activeStep,
+  activeStepIndex,
+  onUpdateStep,
+}: {
+  steps: FlowRuleStep[];
+  activeStep: FlowRuleStep;
+  activeStepIndex: number;
+  onUpdateStep: (stepId: string, patch: Partial<FlowRuleStep>) => void;
+}) {
+  const currentPreKeys = activeStep.preKeys ?? null;
+  return (
+    <div className="android-flow-editor-prekeys">
+      <div className="android-flow-editor-prekeys-label">
+        <strong>前置步骤(默认依赖前面所有步)</strong>
+        <span>勾选哪些步触发后本步才会跑。不勾 = 默认线性全串。</span>
+      </div>
+      <div className="android-flow-editor-prekeys-list">
+        {steps.slice(0, activeStepIndex).map((other, idx) => {
+          const otherKey = idx + 1;
+          const checked = currentPreKeys?.includes(otherKey) ?? false;
+          return (
+            <label key={other.id} className="android-flow-editor-prekeys-row">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(event) => {
+                  const existing = activeStep.preKeys
+                    ? [...activeStep.preKeys]
+                    : steps
+                        .slice(0, activeStepIndex)
+                        .map((_, previousIndex) => previousIndex + 1);
+                  const next = event.target.checked
+                    ? Array.from(new Set([...existing, otherKey])).sort(
+                        (a, b) => a - b,
+                      )
+                    : existing.filter((key) => key !== otherKey);
+                  onUpdateStep(activeStep.id, { preKeys: next });
+                }}
+              />
+              <span>
+                {otherKey}. {flowStepDisplayTitle(other, idx)}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <button
+        className="android-button"
+        type="button"
+        onClick={() => onUpdateStep(activeStep.id, { preKeys: undefined })}
+      >
+        恢复默认(线性全串)
+      </button>
+    </div>
+  );
 }
 
 function AndroidScenePanel({
@@ -4005,6 +4177,7 @@ function AndroidFlowEditor({
           onChange={(event) => onFlowDescChange(event.target.value)}
         />
       </div>
+      <FlowProgress steps={steps} />
       <div className="android-flow-step-list">
         {steps.map((step, index) => (
           <button
@@ -4012,6 +4185,9 @@ function AndroidFlowEditor({
             className={[
               "android-flow-step",
               step.id === activeStepId ? "android-flow-step-active" : "",
+              !step.selectedCandidate
+                ? "android-flow-step-missing"
+                : "",
             ]
               .filter(Boolean)
               .join(" ")}
@@ -4067,6 +4243,14 @@ function AndroidFlowEditor({
               onUpdateStep(activeStep.id, { note: event.target.value })
             }
           />
+          {activeStepIndex > 0 && (
+            <FlowStepPreKeysEditor
+              steps={steps}
+              activeStep={activeStep}
+              activeStepIndex={activeStepIndex}
+              onUpdateStep={onUpdateStep}
+            />
+          )}
         </div>
       )}
       <div className="android-action-row">

@@ -93,6 +93,14 @@ function isBuildableStep(step: FlowRuleStep): step is BuildableFlowStep {
   return Boolean(step.snapshot && step.selectedCandidate);
 }
 
+function formatStepPreKeys(step: FlowRuleStep, index: number): string {
+  if (step.preKeys && step.preKeys.length > 0) {
+    return `[${step.preKeys.join(",")}]`;
+  }
+  if (index === 0) return "无(第 1 步)";
+  return "默认线性全串";
+}
+
 function createFlowRule(
   step: BuildableFlowStep,
   index: number,
@@ -131,6 +139,7 @@ function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
     `步骤 ${index + 1}：${stepTitle}`,
     `- note: ${step.note.trim() || "-"}`,
     `- delayNote: ${step.delayNote.trim() || "-"}`,
+    `- preKeys: ${formatStepPreKeys(step, index)}`,
     `- appId: ${step.snapshot.appId}`,
     `- appName: ${step.snapshot.appInfo?.name ?? "-"}`,
     `- activityId: ${step.snapshot.activityId}`,
