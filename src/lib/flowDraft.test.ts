@@ -150,6 +150,8 @@ function buildStep(
     title,
     note: `${title} 后等待界面自然变化`,
     delayNote: "仅作为 prompt 上下文，不保证强流程顺序",
+    ruleSettings: DEFAULT_RULE_SETTINGS,
+    scenarioId: "function",
     snapshot,
     pickResult,
     candidates,

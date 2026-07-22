@@ -292,14 +292,21 @@ export function AndroidLiteApp() {
     pendingState: InlineRuleTestingState | null;
     pendingMessage: string;
   }>({ running: false, pendingState: null, pendingMessage: "" });
+  const activeFlowStep =
+    flowSteps.find((step) => step.id === activeFlowStepId) ?? null;
+  const effectiveRuleSettings =
+    workspaceMode === "flow"
+      ? activeFlowStep?.ruleSettings ?? ruleSettings
+      : ruleSettings;
+
   const candidates = useMemo(() => {
     if (!snapshot || !pickResult) return [];
     return generateRegionSelectorCandidates({
       snapshot,
-      ruleSettings,
+      ruleSettings: effectiveRuleSettings,
       pickResult,
     });
-  }, [snapshot, pickResult, ruleSettings]);
+  }, [snapshot, pickResult, effectiveRuleSettings]);
   const selectedCandidate = useMemo(() => {
     // 当 AI 候选被选中时，不要让普通候选回退到 candidates[0]，
     // 否则画布会同时显示普通候选的命中框而不是 AI 候选的。
@@ -336,8 +343,6 @@ export function AndroidLiteApp() {
       ruleSettings,
     });
   }, [snapshot, pickResult, ruleSettings]);
-  const activeFlowStep =
-    flowSteps.find((step) => step.id === activeFlowStepId) ?? null;
   const selectedSnapshotList = useMemo(
     () => snapshots.filter((item) => selectedSnapshotIds.has(item.id)),
     [snapshots, selectedSnapshotIds],
@@ -627,13 +632,7 @@ export function AndroidLiteApp() {
     setPickResult(rememberedPick);
     setSelectedCandidateId(remembered?.selectedCandidateId ?? null);
     // 切到新快照时清掉上一张快照残留的 AI 候选 / 选区，避免旧 AI 提示还停在新画布上。
-    setSelectedAiCandidateId(null);
-    setAiCandidates([]);
-    setAiGeneratedMode(null);
-    setActiveAiSessionId(null);
-    setExternalAiCandidates([]);
-    setExternalAiMode(null);
-    setExternalAiSessionId(null);
+    clearAiCandidateState();
     clearAllTransientMessages();
     setWorkspaceMode("single");
     setView("workspace");
@@ -682,7 +681,7 @@ export function AndroidLiteApp() {
       ancestors: nextPick.ancestors.map((n) => ({ id: n.id, label: nodeLabel(n) })),
       clickableAncestor: nextPick.clickableAncestor?.id,
     });
-    const nextCandidates = buildCandidates(snapshot, ruleSettings, nextPick);
+    const nextCandidates = buildCandidates(snapshot, effectiveRuleSettings, nextPick);
     // 保留用户之前手动选的卡：在同一组候选中按 matches 匹配，不过度覆盖用户的意图
     const previousSelected = candidates.find(
       (c) => c.id === selectedCandidateId,
@@ -731,26 +730,81 @@ export function AndroidLiteApp() {
     const nextSettings =
       preset?.build(snapshot) ??
       (custom ? resolveCustomScenarioSettings(custom, snapshot) : undefined);
-    if (nextSettings) setRuleSettings(nextSettings);
-    if (nextSettings && snapshot && pickResult) {
-      const nextCandidates = buildCandidates(snapshot, nextSettings, pickResult);
-      const previousSelected = candidates.find(
-        (c) => c.id === selectedCandidateId,
-      );
-      const previousMatchesKey =
-        previousSelected?.rule.matches.join(" && ") ?? null;
-      let nextSelectedCandidate = nextCandidates[0] ?? null;
-      if (previousMatchesKey) {
-        const kept = nextCandidates.find(
-          (c) => c.rule.matches.join(" && ") === previousMatchesKey,
-        );
-        if (kept) nextSelectedCandidate = kept;
-      }
-      setSelectedCandidateId(nextSelectedCandidate?.id ?? null);
-      syncActiveFlowStep({
-        candidates: nextCandidates,
-        selectedCandidate: nextSelectedCandidate,
+    if (!nextSettings) return;
+
+    if (workspaceMode === "flow" && activeFlowStep) {
+      // flow 模式：场景参数写入当前激活步骤，候选重算后写回 step
+      const { nextCandidates, nextSelected } = applyScenarioToCandidates({
+        nextSettings,
+        snapshot: activeFlowStep.snapshot,
+        pickResult: activeFlowStep.pickResult,
+        previousCandidates: activeFlowStep.candidates,
+        previousSelectedId: activeFlowStep.selectedCandidate?.id ?? null,
       });
+      updateFlowStep(activeFlowStep.id, {
+        ruleSettings: nextSettings,
+        scenarioId: nextScenarioId,
+        candidates: nextCandidates,
+        selectedCandidate: nextSelected,
+      });
+      // 如果当前画布就是该步骤的快照，同步本地候选状态
+      if (snapshot?.id === activeFlowStep.snapshot.id) {
+        setSelectedCandidateId(nextSelected?.id ?? null);
+      }
+    } else {
+      // single 模式：写全局 ruleSettings + 本地候选
+      setRuleSettings(nextSettings);
+      if (snapshot && pickResult) {
+        const { nextSelected } = applyScenarioToCandidates({
+          nextSettings,
+          snapshot,
+          pickResult,
+          previousCandidates: candidates,
+          previousSelectedId: selectedCandidateId,
+        });
+        setSelectedCandidateId(nextSelected?.id ?? null);
+        // 不调 syncActiveFlowStep（single 模式无需同步到步骤）
+      }
+    }
+  }
+
+  /** flow 模式：在步骤编辑器中切换场景 → 更新该步骤的 ruleSettings 并重算候选。 */
+  function handleStepScenarioChange(
+    stepId: string,
+    nextScenarioId: string,
+  ): void {
+    const step = flowSteps.find((s) => s.id === stepId);
+    if (!step) return;
+
+    const preset = RULE_SETTINGS_PRESETS.find(
+      (item) => item.id === nextScenarioId,
+    );
+    const custom = customScenarios.find(
+      (item) => item.id === nextScenarioId,
+    );
+    const nextSettings =
+      preset?.build(step.snapshot) ??
+      (custom
+        ? resolveCustomScenarioSettings(custom, step.snapshot)
+        : undefined);
+    if (!nextSettings) return;
+
+    const { nextCandidates, nextSelected } = applyScenarioToCandidates({
+      nextSettings,
+      snapshot: step.snapshot,
+      pickResult: step.pickResult,
+      previousCandidates: step.candidates,
+      previousSelectedId: step.selectedCandidate?.id ?? null,
+    });
+    updateFlowStep(stepId, {
+      ruleSettings: nextSettings,
+      scenarioId: nextScenarioId,
+      candidates: nextCandidates,
+      selectedCandidate: nextSelected,
+    });
+    // 如果当前画布就是该步骤的快照，同步本地候选状态
+    if (snapshot?.id === step.snapshot.id) {
+      setSelectedCandidateId(nextSelected?.id ?? null);
     }
   }
 
@@ -815,11 +869,18 @@ export function AndroidLiteApp() {
       return;
     }
 
+    // 新建步骤默认继承最后一步的场景（同屏多动作时省事）
+    const lastStep = flowSteps.length > 0 ? flowSteps[flowSteps.length - 1] : null;
+    const inheritedRuleSettings = lastStep?.ruleSettings ?? ruleSettings;
+    const inheritedScenarioId = lastStep?.scenarioId ?? scenarioId;
+
     const nextStep: FlowRuleStep = {
       id: `android-flow-${snapshot.id}-${Date.now()}`,
       title: "",
       note: "",
       delayNote: "",
+      ruleSettings: inheritedRuleSettings,
+      scenarioId: inheritedScenarioId,
       snapshot,
       pickResult: null,
       candidates: [],
@@ -2159,6 +2220,7 @@ export function AndroidLiteApp() {
             activeStep={activeFlowStep}
             activeStepId={activeFlowStepId}
             copied={copied}
+            customScenarios={customScenarios}
             flowDesc={flowDesc}
             flowName={flowName}
             flowPreview={flowPreview}
@@ -2169,6 +2231,7 @@ export function AndroidLiteApp() {
             onFlowNameChange={setFlowName}
             onRemoveStep={removeFlowStep}
             onSelectStep={selectFlowStep}
+            onStepScenarioChange={handleStepScenarioChange}
             onUpdateStep={updateFlowStep}
           />
         )}
@@ -2285,6 +2348,43 @@ function buildCandidates(
     ruleSettings,
     pickResult,
   });
+}
+
+/**
+ * 选场景后重算候选，同时保留用户之前手选的卡片（按 matches 匹配）。
+ * 单步模式和 flow 模式的每步编辑器都可复用。
+ */
+function applyScenarioToCandidates(args: {
+  nextSettings: RuleSettings;
+  snapshot: ParsedGkdSnapshot;
+  pickResult: NodePickResult | null;
+  previousCandidates: SelectorCandidate[];
+  previousSelectedId: string | null;
+}): {
+  nextCandidates: SelectorCandidate[];
+  nextSelected: SelectorCandidate | null;
+} {
+  if (!args.pickResult) {
+    return { nextCandidates: [], nextSelected: null };
+  }
+  const nextCandidates = buildCandidates(
+    args.snapshot,
+    args.nextSettings,
+    args.pickResult,
+  );
+  const previousSelected = args.previousCandidates.find(
+    (c) => c.id === args.previousSelectedId,
+  );
+  const previousMatchesKey =
+    previousSelected?.rule.matches.join(" && ") ?? null;
+  let nextSelected: SelectorCandidate | null = nextCandidates[0] ?? null;
+  if (previousMatchesKey) {
+    const kept = nextCandidates.find(
+      (c) => c.rule.matches.join(" && ") === previousMatchesKey,
+    );
+    if (kept) nextSelected = kept;
+  }
+  return { nextCandidates, nextSelected };
 }
 
 function loadInlineTestingState(): InlineRuleTestingState {
@@ -4124,6 +4224,7 @@ function AndroidFlowEditor({
   steps,
   activeStep,
   activeStepId,
+  customScenarios,
   flowName,
   flowDesc,
   flowPreview,
@@ -4135,10 +4236,12 @@ function AndroidFlowEditor({
   onUpdateStep,
   onRemoveStep,
   onCopyFlowDraft,
+  onStepScenarioChange,
 }: {
   steps: FlowRuleStep[];
   activeStep: FlowRuleStep | null;
   activeStepId: string | null;
+  customScenarios: CustomScenario[];
   flowName: string;
   flowDesc: string;
   flowPreview: string;
@@ -4150,6 +4253,7 @@ function AndroidFlowEditor({
   onUpdateStep: (stepId: string, patch: Partial<FlowRuleStep>) => void;
   onRemoveStep: (stepId: string) => void;
   onCopyFlowDraft: () => void;
+  onStepScenarioChange: (stepId: string, scenarioId: string) => void;
 }) {
   const activeStepIndex = steps.findIndex((step) => step.id === activeStepId);
   const activeStepTitle =
@@ -4243,6 +4347,29 @@ function AndroidFlowEditor({
               onUpdateStep(activeStep.id, { note: event.target.value })
             }
           />
+          <select
+            className="android-select"
+            value={activeStep.scenarioId}
+            onChange={(event) =>
+              onStepScenarioChange(activeStep.id, event.target.value)
+            }
+          >
+            {RULE_SETTINGS_PRESETS.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.label}
+              </option>
+            ))}
+            {customScenarios.length > 0 && (
+              <optgroup label="自定义场景">
+                {customScenarios.map((scenario) => (
+                  <option key={scenario.id} value={scenario.id}>
+                    {scenario.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <RuntimeSummary settings={activeStep.ruleSettings} />
           {activeStepIndex > 0 && (
             <FlowStepPreKeysEditor
               steps={steps}
