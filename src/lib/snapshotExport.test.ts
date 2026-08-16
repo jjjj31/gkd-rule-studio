@@ -29,6 +29,19 @@ describe("snapshotExport", () => {
     );
   });
 
+  it("uses the sanitized custom name as export file stem when provided", () => {
+    const date = new Date(2026, 7, 15, 22, 10, 33);
+    expect(
+      snapshotExportFileStem({ id: date.getTime(), appId: "com.demo" }, "微信开屏"),
+    ).toBe("微信开屏");
+    expect(
+      snapshotExportFileStem({ id: date.getTime(), appId: "com.demo" }, "  "),
+    ).toBe("gkd-snapshot-20260815-221033-com.demo");
+    expect(
+      snapshotExportFileStem({ id: date.getTime(), appId: "com.demo" }, null),
+    ).toBe("gkd-snapshot-20260815-221033-com.demo");
+  });
+
   it("exports markdown with metadata, screenshot reference and nested node tree", () => {
     const snapshotId = new Date(2025, 7, 15, 22, 30, 30).getTime();
     const snapshot = buildSnapshot(snapshotId, {

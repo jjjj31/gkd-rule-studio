@@ -19,12 +19,14 @@ import {
   KeyRound,
   ListChecks,
   Loader2,
+  Pencil,
   Plus,
   Plug,
   RefreshCw,
   ScrollText,
   Smartphone,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   DndContext,
@@ -83,7 +85,6 @@ import {
 import {
   createDeviceApiClient,
   extractDeviceOrigins,
-  formatSnapshotOption,
   type DeviceApiClient,
 } from "../lib/deviceApi";
 import {
@@ -139,6 +140,12 @@ import { pickNodeAtPoint } from "../lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../lib/regionCandidates";
 import { normalizeSnapshot } from "../lib/snapshotNormalize";
 import { buildSnapshotExport, saveExportedFile } from "../lib/snapshotExport";
+import {
+  loadSnapshotNames,
+  persistSnapshotNames,
+  snapshotOptionLabel,
+  type SnapshotNameMap,
+} from "../lib/snapshotNames";
 import { validateAiCandidateAgainstSnapshot } from "../lib/selectorMatcher";
 import {
   createAppRuleDraft,
@@ -227,6 +234,9 @@ export function AndroidLiteApp() {
   const [loading, setLoading] = useState(false);
   const [openingId, setOpeningId] = useState<number | null>(null);
   const [exportingSnapshotId, setExportingSnapshotId] = useState<number | null>(null);
+  const [snapshotNames, setSnapshotNames] = useState<SnapshotNameMap>(loadSnapshotNames);
+  const [renamingSnapshotId, setRenamingSnapshotId] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const [openingFlow] = useState(false);
   const [copied, setCopied] = useState<
     "scene" | "rule" | "draft" | "flowDraft" | "flowPrompt" | null
@@ -596,7 +606,11 @@ export function AndroidLiteApp() {
         client.getScreenshot(item.id),
       ]);
       const parsed = normalizeSnapshot(raw, "", `设备快照 ${item.id}`);
-      const files = buildSnapshotExport(parsed);
+      const files = buildSnapshotExport(
+        parsed,
+        new Date(),
+        snapshotNames[String(item.id)],
+      );
       await saveExportedFile(
         files.screenshotName,
         new Blob([screenshot], { type: "image/png" }),
@@ -1132,6 +1146,33 @@ export function AndroidLiteApp() {
   function syncActiveFlowStep(patch: Partial<FlowRuleStep>): void {
     if (workspaceMode !== "flow" || !activeFlowStepId) return;
     updateFlowStep(activeFlowStepId, patch);
+  }
+
+  function startRenameSnapshot(item: DeviceSnapshotSummary): void {
+    setRenamingSnapshotId(item.id);
+    setRenameDraft(snapshotNames[String(item.id)] ?? "");
+  }
+
+  function commitRenameSnapshot(id: number): void {
+    const nextName = renameDraft.trim();
+    setSnapshotNames((current) => {
+      const next = { ...current };
+      if (nextName) {
+        next[String(id)] = nextName;
+      } else {
+        delete next[String(id)];
+      }
+      persistSnapshotNames(next);
+      return next;
+    });
+    setRenamingSnapshotId(null);
+    setRenameDraft("");
+    showMainTransient(nextName ? `已命名为「${nextName}」` : "已恢复默认名称");
+  }
+
+  function cancelRenameSnapshot(): void {
+    setRenamingSnapshotId(null);
+    setRenameDraft("");
   }
 
   function toggleSnapshotSelection(id: number): void {
@@ -2090,11 +2131,18 @@ export function AndroidLiteApp() {
               openingId={openingId}
               openingFlow={openingFlow}
               exportingId={exportingSnapshotId}
+              names={snapshotNames}
+              renameDraft={renameDraft}
+              renamingId={renamingSnapshotId}
               selectedIds={selectedSnapshotIds}
               snapshots={snapshots}
+              onCancelRename={cancelRenameSnapshot}
+              onCommitRename={commitRenameSnapshot}
               onExport={(item) => void exportSnapshotFromHome(item)}
               onOpenSelected={() => void openSelectedSnapshots()}
               onRefresh={() => void refreshSnapshots()}
+              onRenameDraftChange={setRenameDraft}
+              onStartRename={startRenameSnapshot}
               onToggle={toggleSnapshotSelection}
             />
           ) : (
@@ -4201,10 +4249,17 @@ function AndroidSnapshotChooser({
   openingId,
   openingFlow,
   exportingId,
+  names,
+  renameDraft,
+  renamingId,
   onToggle,
   onRefresh,
   onOpenSelected,
   onExport,
+  onStartRename,
+  onCommitRename,
+  onCancelRename,
+  onRenameDraftChange,
 }: {
   snapshots: DeviceSnapshotSummary[];
   selectedIds: Set<number>;
@@ -4212,10 +4267,17 @@ function AndroidSnapshotChooser({
   openingId: number | null;
   openingFlow: boolean;
   exportingId: number | null;
+  names: SnapshotNameMap;
+  renameDraft: string;
+  renamingId: number | null;
   onToggle: (id: number) => void;
   onRefresh: () => void;
   onOpenSelected: () => void;
   onExport: (item: DeviceSnapshotSummary) => void;
+  onStartRename: (item: DeviceSnapshotSummary) => void;
+  onCommitRename: (id: number) => void;
+  onCancelRename: () => void;
+  onRenameDraftChange: (value: string) => void;
 }) {
   const openMode = resolveAndroidSnapshotOpenMode(selectedIds);
   const isOpening = openingId !== null || openingFlow;
@@ -4227,33 +4289,83 @@ function AndroidSnapshotChooser({
       </div>
       {snapshots.length > 0 ? (
         <div className="android-snapshot-check-list">
-          {snapshots.map((item) => (
-            <div key={item.id} className="android-snapshot-check-row">
-              <label className="android-snapshot-check-toggle">
-                <input
-                  checked={selectedIds.has(item.id)}
-                  disabled={isOpening}
-                  type="checkbox"
-                  onChange={() => onToggle(item.id)}
-                />
-                <span>{formatSnapshotOption(item)}</span>
-              </label>
-              <button
-                aria-label={`导出快照：${formatSnapshotOption(item)}`}
-                className="android-icon-button android-snapshot-export-button"
-                disabled={isOpening || exportingId !== null}
-                title="导出为 Markdown 文档 + 截图"
-                type="button"
-                onClick={() => onExport(item)}
-              >
-                {exportingId === item.id ? (
-                  <Loader2 className="spin" size={16} />
+          {snapshots.map((item) => {
+            const customName = names[String(item.id)] ?? null;
+            const label = snapshotOptionLabel(item, customName);
+            return (
+              <div key={item.id} className="android-snapshot-check-row">
+                {renamingId === item.id ? (
+                  <div className="android-snapshot-rename-row">
+                    <input
+                      autoFocus
+                      className="android-input android-snapshot-rename-input"
+                      placeholder="快照名称，留空恢复默认"
+                      value={renameDraft}
+                      onChange={(event) => onRenameDraftChange(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") onCommitRename(item.id);
+                        if (event.key === "Escape") onCancelRename();
+                      }}
+                    />
+                    <button
+                      aria-label="保存名称"
+                      className="android-icon-button android-snapshot-export-button"
+                      type="button"
+                      onClick={() => onCommitRename(item.id)}
+                    >
+                      <Check size={16} />
+                    </button>
+                    <button
+                      aria-label="取消改名"
+                      className="android-icon-button android-snapshot-export-button"
+                      type="button"
+                      onClick={onCancelRename}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
                 ) : (
-                  <Download size={16} />
+                  <>
+                    <label className="android-snapshot-check-toggle">
+                      <input
+                        checked={selectedIds.has(item.id)}
+                        disabled={isOpening}
+                        type="checkbox"
+                        onChange={() => onToggle(item.id)}
+                      />
+                      <span>{label}</span>
+                    </label>
+                    <div className="android-snapshot-row-actions">
+                      <button
+                        aria-label={`重命名快照：${label}`}
+                        className="android-icon-button android-snapshot-export-button"
+                        disabled={isOpening || renamingId !== null}
+                        title="重命名快照"
+                        type="button"
+                        onClick={() => onStartRename(item)}
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        aria-label={`导出快照：${label}`}
+                        className="android-icon-button android-snapshot-export-button"
+                        disabled={isOpening || exportingId !== null || renamingId !== null}
+                        title="导出为 Markdown 文档 + 截图"
+                        type="button"
+                        onClick={() => onExport(item)}
+                      >
+                        {exportingId === item.id ? (
+                          <Loader2 className="spin" size={16} />
+                        ) : (
+                          <Download size={16} />
+                        )}
+                      </button>
+                    </div>
+                  </>
                 )}
-              </button>
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="android-empty">手机上没有快照。请先在 GKD 里保存快照，然后刷新。</div>

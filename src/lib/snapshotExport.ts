@@ -10,6 +10,7 @@ import type {
   ParsedGkdSnapshot,
   SnapshotNodeAttr,
 } from "../types/gkdSnapshot";
+import { sanitizeSnapshotFileName } from "./snapshotNames";
 
 export interface SnapshotExportFiles {
   markdownName: string;
@@ -17,10 +18,17 @@ export interface SnapshotExportFiles {
   screenshotName: string;
 }
 
-/** 生成导出文件名主干：gkd-snapshot-20260815-221033-com.example.app */
+/**
+ * 生成导出文件名主干。有自定义快照名时直接用它（清洗后），
+ * 否则用 gkd-snapshot-20260815-221033-com.example.app。
+ */
 export function snapshotExportFileStem(
   snapshot: Pick<ParsedGkdSnapshot, "id" | "appId">,
+  customName?: string | null,
 ): string {
+  const safeName = sanitizeSnapshotFileName(customName ?? "");
+  if (safeName) return safeName;
+
   const date = new Date(snapshot.id);
   // GKD 快照 id 是毫秒时间戳；早于 2000 年或非法值按原始 id 处理。
   const time = date.getTime();
@@ -42,13 +50,15 @@ export function snapshotExportFileStem(
 
 /**
  * 组装导出文件：Markdown 文档内容 + 配套截图文件名。
+ * customName 是用户给快照起的名字（可选），会作为导出文件名主干。
  * screenshotBlob 由调用方从设备接口获取，这里只负责纯文本部分。
  */
 export function buildSnapshotExport(
   snapshot: ParsedGkdSnapshot,
   now: Date = new Date(),
+  customName?: string | null,
 ): SnapshotExportFiles {
-  const stem = snapshotExportFileStem(snapshot);
+  const stem = snapshotExportFileStem(snapshot, customName);
   const screenshotName = `${stem}.png`;
   return {
     markdownName: `${stem}.md`,

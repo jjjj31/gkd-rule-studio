@@ -730,6 +730,26 @@ svg {
   cursor: pointer;
 }
 
+.android-snapshot-row-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.android-snapshot-rename-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.android-snapshot-rename-row .android-snapshot-rename-input {
+  min-width: 0;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+
 .android-icon-button.android-snapshot-export-button {
   width: 30px;
   height: 30px;
@@ -746,7 +766,9 @@ svg {
   background: rgba(45, 92, 145, 0.16);
 }
 
-.android-snapshot-check-row input {
+/* 只作用于勾选框，不能写成 .android-snapshot-check-row input，
+   否则会把行内改名输入框也压成 17×17。 */
+.android-snapshot-check-toggle input {
   width: 17px;
   height: 17px;
   accent-color: #58a6ff;
@@ -2492,7 +2514,7 @@ body {
   background: rgba(0, 240, 255, 0.08) !important;
   box-shadow: 0 0 10px rgba(0, 240, 255, 0.08);
 }
-.android-snapshot-check-row input {
+.android-snapshot-check-toggle input {
   accent-color: var(--cp-neon-cyan);
 }
 
