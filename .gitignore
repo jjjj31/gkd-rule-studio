@@ -30,3 +30,22 @@ CLAUDE.md
 .zcode
 .ui-demos
 .playwright-mcp
+# Added by code-review-graph
+.code-review-graph/
+
+# AI 编辑器/工具配置
+.codebuddy/
+.cursor/
+.cursorrules
+.gemini/
+.kiro/
+.qoder/
+.vscode/
+.windsurfrules
+.mcp.json
+opencode.jsonc
+CODEBUDDY.md
+GEMINI.md
+QODER.md
+AGENTS.md
+.github/code-review-graph.instruction.md
