@@ -3751,7 +3751,10 @@ function AndroidAiBatchFeedbackPanel({
         className="android-button"
         disabled={loading || selectedFeedbacks.length === 0}
         type="button"
-        onClick={() => onSubmit(selectedFeedbacks)}
+        onClick={() => {
+          onSubmit(selectedFeedbacks);
+          setDrafts({});
+        }}
       >
         {loading ? <RefreshCw className="spin" size={16} /> : <ClipboardCopy size={16} />}
         {actionLabel}
