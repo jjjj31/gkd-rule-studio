@@ -708,7 +708,7 @@ svg {
 
 .android-snapshot-check-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 9px;
   align-items: center;
   min-width: 0;
@@ -719,6 +719,26 @@ svg {
   color: #c5d1de;
   font-size: 12px;
   line-height: 1.4;
+}
+
+.android-snapshot-check-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.android-icon-button.android-snapshot-export-button {
+  width: 30px;
+  height: 30px;
+  flex: none;
+}
+
+.android-icon-button.android-snapshot-export-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .android-snapshot-check-row:has(input:checked) {

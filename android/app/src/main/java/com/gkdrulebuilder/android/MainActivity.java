@@ -4,11 +4,15 @@ import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentValues;
 import android.content.Context;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -16,8 +20,11 @@ import android.webkit.WebViewClient;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.Window;
+import android.widget.Toast;
 import org.json.JSONObject;
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -129,6 +136,81 @@ public class MainActivity extends Activity {
                     activity.getActionBar().setDisplayHomeAsUpEnabled(visible);
                 }
             });
+        }
+
+        /**
+         * 保存前端导出的文件（base64）。API 29+ 写入公共下载目录
+         * Download/GKD Rule Studio/（MediaStore，无需权限）；老系统落到应用
+         * 外部私有目录并 Toast 提示完整路径。
+         */
+        @JavascriptInterface
+        public void saveFile(String fileName, String mimeType, String base64) {
+            final byte[] bytes;
+            try {
+                bytes = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+            } catch (Exception cause) {
+                toast("导出失败：文件内容解码失败");
+                return;
+            }
+            final String safeName = fileName == null ? "" : fileName.trim();
+            if (safeName.isEmpty() || safeName.contains("/") || safeName.contains("\\")) {
+                toast("导出失败：文件名非法");
+                return;
+            }
+            networkExecutor.execute(() -> {
+                String savedLabel;
+                try {
+                    savedLabel = saveFileInternal(safeName, mimeType, bytes);
+                } catch (Exception cause) {
+                    String reason = cause.getMessage() == null ? "未知错误" : cause.getMessage();
+                    toast("导出失败：" + reason);
+                    return;
+                }
+                toast("已导出 " + savedLabel);
+            });
+        }
+
+        private String saveFileInternal(String fileName, String mimeType, byte[] bytes)
+            throws Exception {
+            if (android.os.Build.VERSION.SDK_INT >= 29) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+                values.put(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    Environment.DIRECTORY_DOWNLOADS + "/GKD Rule Studio"
+                );
+                Uri uri = context
+                    .getContentResolver()
+                    .insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                if (uri == null) {
+                    throw new Exception("无法创建下载文件");
+                }
+                try (OutputStream out = context.getContentResolver().openOutputStream(uri)) {
+                    if (out == null) {
+                        throw new Exception("无法打开输出流");
+                    }
+                    out.write(bytes);
+                    out.flush();
+                }
+                return "Download/GKD Rule Studio/" + fileName;
+            }
+            File dir = context.getExternalFilesDir(null);
+            if (dir == null) {
+                dir = context.getFilesDir();
+            }
+            File target = new File(dir, fileName);
+            try (FileOutputStream out = new FileOutputStream(target)) {
+                out.write(bytes);
+                out.flush();
+            }
+            return target.getAbsolutePath();
+        }
+
+        private void toast(String text) {
+            mainHandler.post(() ->
+                Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+            );
         }
 
         @JavascriptInterface

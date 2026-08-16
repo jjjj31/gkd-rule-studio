@@ -4,6 +4,7 @@ interface Window {
   GkdAndroidBridge?: {
     copyToClipboard?: (text: string) => void;
     setBackVisible?: (visible: boolean) => void;
+    saveFile?: (fileName: string, mimeType: string, base64: string) => void;
     postJson?: (
       requestId: string,
       url: string,

@@ -13,10 +13,12 @@ import {
   ChevronRight,
   ClipboardCopy,
   Copy,
+  Download,
   Eye,
   EyeOff,
   KeyRound,
   ListChecks,
+  Loader2,
   Plus,
   Plug,
   RefreshCw,
@@ -135,6 +137,8 @@ import {
 } from "../lib/aiModel";
 import { pickNodeAtPoint } from "../lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../lib/regionCandidates";
+import { normalizeSnapshot } from "../lib/snapshotNormalize";
+import { buildSnapshotExport, saveExportedFile } from "../lib/snapshotExport";
 import { validateAiCandidateAgainstSnapshot } from "../lib/selectorMatcher";
 import {
   createAppRuleDraft,
@@ -222,6 +226,7 @@ export function AndroidLiteApp() {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [openingId, setOpeningId] = useState<number | null>(null);
+  const [exportingSnapshotId, setExportingSnapshotId] = useState<number | null>(null);
   const [openingFlow] = useState(false);
   const [copied, setCopied] = useState<
     "scene" | "rule" | "draft" | "flowDraft" | "flowPrompt" | null
@@ -576,6 +581,42 @@ export function AndroidLiteApp() {
       setMessage(msg);
     } finally {
       setLoading(false);
+    }
+  }
+
+  /** 首页导出：拉取快照数据 + 截图，保存为 Markdown 文档和 PNG 两个文件。 */
+  async function exportSnapshotFromHome(item: DeviceSnapshotSummary): Promise<void> {
+    if (!client || exportingSnapshotId !== null) return;
+
+    setExportingSnapshotId(item.id);
+    setMessage(null);
+    try {
+      const [raw, screenshot] = await Promise.all([
+        client.getSnapshot(item.id),
+        client.getScreenshot(item.id),
+      ]);
+      const parsed = normalizeSnapshot(raw, "", `设备快照 ${item.id}`);
+      const files = buildSnapshotExport(parsed);
+      await saveExportedFile(
+        files.screenshotName,
+        new Blob([screenshot], { type: "image/png" }),
+      );
+      await saveExportedFile(
+        files.markdownName,
+        new Blob([files.markdownContent], { type: "text/markdown" }),
+      );
+      showMainTransient(`已导出：${files.markdownName} + 截图`);
+      debugLog("snapshot", "export:ok", `id=${item.id}`, {
+        id: item.id,
+        appId: parsed.appId,
+        nodeCount: parsed.nodes.length,
+      });
+    } catch (cause) {
+      const msg = cause instanceof Error ? cause.message : "导出快照失败";
+      debugLog("error", "export:fail", msg, { id: item.id });
+      setMessage(msg);
+    } finally {
+      setExportingSnapshotId(null);
     }
   }
 
@@ -2048,8 +2089,10 @@ export function AndroidLiteApp() {
               loading={loading}
               openingId={openingId}
               openingFlow={openingFlow}
+              exportingId={exportingSnapshotId}
               selectedIds={selectedSnapshotIds}
               snapshots={snapshots}
+              onExport={(item) => void exportSnapshotFromHome(item)}
               onOpenSelected={() => void openSelectedSnapshots()}
               onRefresh={() => void refreshSnapshots()}
               onToggle={toggleSnapshotSelection}
@@ -4157,18 +4200,22 @@ function AndroidSnapshotChooser({
   loading,
   openingId,
   openingFlow,
+  exportingId,
   onToggle,
   onRefresh,
   onOpenSelected,
+  onExport,
 }: {
   snapshots: DeviceSnapshotSummary[];
   selectedIds: Set<number>;
   loading: boolean;
   openingId: number | null;
   openingFlow: boolean;
+  exportingId: number | null;
   onToggle: (id: number) => void;
   onRefresh: () => void;
   onOpenSelected: () => void;
+  onExport: (item: DeviceSnapshotSummary) => void;
 }) {
   const openMode = resolveAndroidSnapshotOpenMode(selectedIds);
   const isOpening = openingId !== null || openingFlow;
@@ -4181,15 +4228,31 @@ function AndroidSnapshotChooser({
       {snapshots.length > 0 ? (
         <div className="android-snapshot-check-list">
           {snapshots.map((item) => (
-            <label key={item.id} className="android-snapshot-check-row">
-              <input
-                checked={selectedIds.has(item.id)}
-                disabled={isOpening}
-                type="checkbox"
-                onChange={() => onToggle(item.id)}
-              />
-              <span>{formatSnapshotOption(item)}</span>
-            </label>
+            <div key={item.id} className="android-snapshot-check-row">
+              <label className="android-snapshot-check-toggle">
+                <input
+                  checked={selectedIds.has(item.id)}
+                  disabled={isOpening}
+                  type="checkbox"
+                  onChange={() => onToggle(item.id)}
+                />
+                <span>{formatSnapshotOption(item)}</span>
+              </label>
+              <button
+                aria-label={`导出快照：${formatSnapshotOption(item)}`}
+                className="android-icon-button android-snapshot-export-button"
+                disabled={isOpening || exportingId !== null}
+                title="导出为 Markdown 文档 + 截图"
+                type="button"
+                onClick={() => onExport(item)}
+              >
+                {exportingId === item.id ? (
+                  <Loader2 className="spin" size={16} />
+                ) : (
+                  <Download size={16} />
+                )}
+              </button>
+            </div>
           ))}
         </div>
       ) : (
