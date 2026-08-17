@@ -20,6 +20,12 @@ export interface RuleSettings {
   matchRoot?: boolean | null;
 }
 
+/** prompt 里携带的场景信息：预设/自定义场景的名称和说明，帮助 AI 理解参数为什么这么选。 */
+export interface PromptScenarioInfo {
+  label: string;
+  description?: string;
+}
+
 export type SelectorAttr =
   | "id"
   | "vid"

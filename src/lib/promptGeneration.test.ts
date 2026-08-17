@@ -79,6 +79,46 @@ describe("prompt generation", () => {
     expect(prompt).toContain("不要把当前 pickedNode 当成唯一正确目标");
   });
 
+  it("omits the embedded node tree when includeNodeTree is false but keeps pick context", () => {
+    const snapshot = buildSnapshot("com.demo.MainActivity");
+    const pick = pickNodeAtPoint(snapshot, { x: 150, y: 340 });
+    expect(pick).not.toBeNull();
+
+    const prompt = buildHelpPrompt({
+      snapshot,
+      pickResult: pick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      includeNodeTree: false,
+    });
+
+    // 不再内嵌节点树，改为指引读导出文件
+    expect(prompt).not.toContain("节点树摘要：");
+    expect(prompt).toContain("本 prompt 不再内嵌节点树");
+    expect(prompt).toContain("导出文件");
+    // 选点上下文保留
+    expect(prompt).toContain("用户点击的目标节点：");
+    expect(prompt).toContain("祖先链（从近到远）：");
+    expect(prompt).toContain("同级节点：");
+  });
+
+  it("carries scenario label and description alongside run settings", () => {
+    const snapshot = buildSnapshot("com.demo.MainActivity");
+    const pick = pickNodeAtPoint(snapshot, { x: 150, y: 340 });
+
+    const prompt = buildHelpPrompt({
+      snapshot,
+      pickResult: pick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      scenario: { label: "开屏广告", description: "打开应用后一段时间内出现" },
+    });
+
+    expect(prompt).toContain("场景：");
+    expect(prompt).toContain("- 场景名称: 开屏广告");
+    expect(prompt).toContain("- 场景说明: 打开应用后一段时间内出现");
+    expect(prompt).toContain("期望运行参数：");
+    expect(prompt).toContain("- matchTime:");
+  });
+
 });
 
 function buildSnapshot(activityId: string) {

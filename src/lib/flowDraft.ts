@@ -8,6 +8,7 @@ import type { NormalizedSnapshotNode } from "../types/gkdSnapshot";
 import JSON5 from "json5";
 import type { AppRuleDraft, RuleDraft } from "../types/ruleDraft";
 import type { FlowDraftInput, FlowRuleStep } from "../types/flowDraft";
+import { formatRuleSettingsLines } from "./helpPrompt";
 
 interface BuildableFlowStep extends FlowRuleStep {
   selectedCandidate: NonNullable<FlowRuleStep["selectedCandidate"]>;
@@ -49,8 +50,10 @@ export function stringifyFlowRuleDraft(draft: AppRuleDraft): string {
   return JSON5.stringify(draft, null, 2);
 }
 
+/** 多步求助 prompt：默认每步内嵌节点树节选；includeNodeTrees=false 时省略，改为指引外部 AI 读导出文件。 */
 export function buildFlowHelpPrompt(input: FlowDraftInput): string {
   const flowName = input.flowName.trim() || "未命名流程";
+  const includeNodeTrees = input.includeNodeTrees ?? true;
   const appIds = Array.from(new Set(input.steps.map((step) => step.snapshot.appId)));
   const lines = [
     "你是 GKD 规则专家。请根据下面的多快照流程信息生成完整的多步骤 GKD 规则。",
@@ -79,11 +82,19 @@ export function buildFlowHelpPrompt(input: FlowDraftInput): string {
     `- flowDesc: ${input.flowDesc?.trim() || "-"}`,
     `- appIds: ${appIds.join(", ") || "-"}`,
     `- stepCount: ${input.steps.length}`,
+    ...(includeNodeTrees
+      ? []
+      : [
+          "- nodeTree: 本 prompt 不再内嵌各步骤的节点树，避免与导出文件重复。每个快照的完整节点树、bounds 坐标和截图请见随消息附上的导出文件（在工具首页对快照点导出，得到 Markdown 文档 + PNG 截图）；未收到附件时，先要求用户导出并上传，再生成规则。",
+        ]),
     "",
   ];
 
   input.steps.forEach((step, index) => {
-    lines.push(...formatStepForPrompt(step, index), "");
+    lines.push(
+      ...formatStepForPrompt(step, index, includeNodeTrees, input.stepScenarios?.[step.id]),
+      "",
+    );
   });
 
   return lines.join("\n");
@@ -132,7 +143,12 @@ function stepRuleName(step: FlowRuleStep, index: number): string {
   return title;
 }
 
-function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
+function formatStepForPrompt(
+  step: FlowRuleStep,
+  index: number,
+  includeTree: boolean,
+  scenario?: { label: string; description?: string },
+): string[] {
   const pickResult = step.pickResult;
   const stepTitle = step.title.trim() || `步骤 ${index + 1}`;
   const lines = [
@@ -144,6 +160,13 @@ function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
     `- appName: ${step.snapshot.appInfo?.name ?? "-"}`,
     `- activityId: ${step.snapshot.activityId ?? "-"}`,
     `- sourceName: ${step.snapshot.sourceName}`,
+    ...(scenario
+      ? [
+          `- 场景: ${scenario.label}${scenario.description ? `（${scenario.description}）` : ""}`,
+        ]
+      : []),
+    "- 场景参数：",
+    ...formatRuleSettingsLines(step.ruleSettings).map((line) => `  ${line}`),
   ];
 
   if (pickResult) {
@@ -152,10 +175,12 @@ function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
     lines.push("- 用户点击目标节点：未选择");
   }
 
-  lines.push(
-    "- 当前步骤节点树摘要：",
-    ...formatStepTreeExcerpt(step).map((line) => `  ${line}`),
-  );
+  if (includeTree) {
+    lines.push(
+      "- 当前步骤节点树摘要：",
+      ...formatStepTreeExcerpt(step).map((line) => `  ${line}`),
+    );
+  }
 
   return lines;
 }
