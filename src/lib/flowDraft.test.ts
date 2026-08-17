@@ -122,6 +122,65 @@ describe("flow draft generation", () => {
     expect(prompt).toContain("#1 Button");
     expect(prompt).not.toContain("请审查下面这个本地生成的多步骤 GKD 规则草稿");
   });
+
+  it("omits per-step node trees when includeNodeTrees is false but keeps pick targets", () => {
+    const steps = [
+      buildStep(
+        "step-1",
+        "点展开",
+        buildSnapshot("com.demo.MainActivity", "展开"),
+        { x: 150, y: 340 },
+      ),
+      buildStep(
+        "step-2",
+        "点关闭",
+        buildSnapshot("com.demo.PanelActivity", "关闭"),
+        { x: 160, y: 330 },
+      ),
+    ];
+
+    const prompt = buildFlowHelpPrompt({
+      flowName: "展开后关闭",
+      flowDesc: "",
+      steps,
+      includeNodeTrees: false,
+    });
+
+    // 不再内嵌每步节点树，改为流程级指引读导出文件
+    expect(prompt).not.toContain("当前步骤节点树摘要");
+    expect(prompt).toContain("不再内嵌各步骤的节点树");
+    expect(prompt).toContain("导出文件");
+    // 每步的元信息和点击目标保留
+    expect(prompt).toContain("步骤 1：点展开");
+    expect(prompt).toContain("步骤 2：点关闭");
+    expect(prompt).toContain("用户点击目标节点：");
+    // 每步场景参数保留
+    expect(prompt).toContain("- 场景参数：");
+    expect(prompt).toContain("- groupName:");
+  });
+
+  it("labels each step scenario when stepScenarios is provided", () => {
+    const steps = [
+      buildStep(
+        "step-1",
+        "点展开",
+        buildSnapshot("com.demo.MainActivity", "展开"),
+        { x: 150, y: 340 },
+      ),
+    ];
+
+    const prompt = buildFlowHelpPrompt({
+      flowName: "展开",
+      flowDesc: "",
+      steps,
+      stepScenarios: {
+        "step-1": { label: "开屏广告", description: "打开应用后一段时间内出现" },
+      },
+    });
+
+    expect(prompt).toContain("- 场景: 开屏广告（打开应用后一段时间内出现）");
+    expect(prompt).toContain("- 场景参数：");
+  });
 });
 
 function buildStep(

@@ -8,17 +8,21 @@ import type {
   NormalizedSnapshotNode,
   ParsedGkdSnapshot,
 } from "../types/gkdSnapshot";
-import type { RuleSettings } from "../types/ruleDraft";
+import type { PromptScenarioInfo, RuleSettings } from "../types/ruleDraft";
 
 interface PromptInput {
   snapshot: ParsedGkdSnapshot | null;
   pickResult: NodePickResult | null;
   ruleSettings: RuleSettings;
+  /** false 时省略内嵌节点树（复制给外部 AI 时用，节点树由导出文件携带），默认 true。 */
+  includeNodeTree?: boolean;
+  /** 当前选择的场景（预设/自定义）名称与说明，帮助 AI 理解运行参数的来由。 */
+  scenario?: PromptScenarioInfo;
 }
 
 /** 单步求助 prompt 入口：快照+选点+候选+设置 → 格式化文字。包装了场景、节点树、现有候选和兜底策略。 */
 export function buildHelpPrompt(input: PromptInput): string {
-  const { snapshot, pickResult, ruleSettings } = input;
+  const { snapshot, pickResult, ruleSettings, includeNodeTree = true, scenario } = input;
 
   if (!snapshot) {
     return "请先导入或连接设备加载一个 GKD 快照。";
@@ -55,17 +59,17 @@ export function buildHelpPrompt(input: PromptInput): string {
     `- activityId: ${snapshot.activityId}`,
     `- screen: ${snapshot.screenWidth}x${snapshot.screenHeight}`,
     "",
+    ...(scenario
+      ? [
+          "场景：",
+          `- 场景名称: ${scenario.label}`,
+          ...(scenario.description
+            ? [`- 场景说明: ${scenario.description}`]
+            : []),
+        ]
+      : []),
     "期望运行参数：",
-    `- groupName: ${ruleSettings.groupName || "-"}`,
-    `- activityIds: ${ruleSettings.activityIds || "(留空)"}`,
-    `- matchTime: ${ruleSettings.matchTime ?? "(留空)"}`,
-    `- actionMaximum: ${ruleSettings.actionMaximum ?? "(留空)"}`,
-    `- actionCd: ${ruleSettings.actionCd ?? "(留空)"}`,
-    `- resetMatch: ${ruleSettings.resetMatch || "(留空)"}`,
-    `- action: ${ruleSettings.action || "(工具自动判断)"}`,
-    `- actionDelay: ${ruleSettings.actionDelay ?? "(工具自动判断)"}`,
-    `- forcedTime: ${ruleSettings.forcedTime ?? "(工具自动判断)"}`,
-    `- matchRoot: ${ruleSettings.matchRoot ?? "(工具自动判断)"}`,
+    ...formatRuleSettingsLines(ruleSettings),
     "",
   ];
 
@@ -88,12 +92,36 @@ export function buildHelpPrompt(input: PromptInput): string {
     lines.push("用户尚未选择目标节点。请先提示用户点击截图上的目标按钮。", "");
   }
 
-  lines.push(
-    "节点树摘要：",
-    ...formatTreeExcerpt(snapshot, pickResult?.pickedNode ?? null),
-  );
+  if (includeNodeTree) {
+    lines.push(
+      "节点树摘要：",
+      ...formatTreeExcerpt(snapshot, pickResult?.pickedNode ?? null),
+    );
+  } else {
+    lines.push(
+      "节点树说明：",
+      "- 本 prompt 不再内嵌节点树，避免与导出文件重复。完整节点树、bounds 坐标和截图请见随消息附上的快照导出文件（在工具首页对快照点导出，得到 Markdown 文档 + PNG 截图）。",
+      "- 若未收到导出文件附件，请先要求用户导出并上传，再生成规则。",
+    );
+  }
 
   return lines.join("\n");
+}
+
+/** 运行参数行（不带「期望运行参数：」标题），单步 prompt 和多步每步场景参数共用。 */
+export function formatRuleSettingsLines(ruleSettings: RuleSettings): string[] {
+  return [
+    `- groupName: ${ruleSettings.groupName || "-"}`,
+    `- activityIds: ${ruleSettings.activityIds || "(留空)"}`,
+    `- matchTime: ${ruleSettings.matchTime ?? "(留空)"}`,
+    `- actionMaximum: ${ruleSettings.actionMaximum ?? "(留空)"}`,
+    `- actionCd: ${ruleSettings.actionCd ?? "(留空)"}`,
+    `- resetMatch: ${ruleSettings.resetMatch || "(留空)"}`,
+    `- action: ${ruleSettings.action || "(工具自动判断)"}`,
+    `- actionDelay: ${ruleSettings.actionDelay ?? "(工具自动判断)"}`,
+    `- forcedTime: ${ruleSettings.forcedTime ?? "(工具自动判断)"}`,
+    `- matchRoot: ${ruleSettings.matchRoot ?? "(工具自动判断)"}`,
+  ];
 }
 
 function formatTreeExcerpt(

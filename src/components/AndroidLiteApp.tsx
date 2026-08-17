@@ -189,7 +189,11 @@ import type {
   ParsedGkdSnapshot,
 } from "../types/gkdSnapshot";
 import type { FlowRuleStep } from "../types/flowDraft";
-import type { RuleSettings, SelectorCandidate } from "../types/ruleDraft";
+import type {
+  PromptScenarioInfo,
+  RuleSettings,
+  SelectorCandidate,
+} from "../types/ruleDraft";
 import { ScreenshotCanvas } from "./ScreenshotCanvas";
 
 const CUSTOM_SCENARIO_OPTION_ID = "__custom_scenario__";
@@ -344,20 +348,37 @@ export function AndroidLiteApp() {
     return validateAiCandidateAgainstSnapshot(selectedAiCandidate, snapshot);
   }, [selectedAiCandidate, snapshot]);
   const customScenarioEditorOpen = scenarioId === CUSTOM_SCENARIO_OPTION_ID;
+  const scenarioInfo = useMemo(
+    () => resolvePromptScenarioInfo(scenarioId, customScenarios),
+    [scenarioId, customScenarios],
+  );
+  const stepScenarioInfos = useMemo(() => {
+    const map: Record<string, PromptScenarioInfo | undefined> = {};
+    for (const step of flowSteps) {
+      map[step.id] = resolvePromptScenarioInfo(step.scenarioId, customScenarios);
+    }
+    return map;
+  }, [flowSteps, customScenarios]);
   const flowDraft = useMemo(() => {
     return createFlowAppRuleDraft({ flowName, flowDesc, steps: flowSteps });
   }, [flowName, flowDesc, flowSteps]);
   const flowPreview = flowDraft ? stringifyFlowRuleDraft(flowDraft) : "";
   const flowPrompt = useMemo(() => {
-    return buildFlowHelpPrompt({ flowName, flowDesc, steps: flowSteps });
-  }, [flowName, flowDesc, flowSteps]);
+    return buildFlowHelpPrompt({
+      flowName,
+      flowDesc,
+      steps: flowSteps,
+      stepScenarios: stepScenarioInfos,
+    });
+  }, [flowName, flowDesc, flowSteps, stepScenarioInfos]);
   const singleAiPrompt = useMemo(() => {
     return buildHelpPrompt({
       snapshot,
       pickResult,
       ruleSettings,
+      scenario: scenarioInfo,
     });
-  }, [snapshot, pickResult, ruleSettings]);
+  }, [snapshot, pickResult, ruleSettings, scenarioInfo]);
   const selectedSnapshotList = useMemo(
     () => snapshots.filter((item) => selectedSnapshotIds.has(item.id)),
     [snapshots, selectedSnapshotIds],
@@ -873,6 +894,10 @@ export function AndroidLiteApp() {
       snapshot,
       pickResult,
       ruleSettings,
+      scenario: scenarioInfo,
+      // 复制给外部 AI 时不内嵌节点树——完整快照信息由首页导出的
+      // Markdown + PNG 文件随消息附带，避免两份重复。
+      includeNodeTree: false,
     });
     await copyTextToClipboard(prompt);
     markCopied("rule");
@@ -886,7 +911,14 @@ export function AndroidLiteApp() {
 
   async function copyFlowPrompt(): Promise<void> {
     if (flowSteps.length === 0) return;
-    await copyTextToClipboard(flowPrompt);
+    const prompt = buildFlowHelpPrompt({
+      flowName,
+      flowDesc,
+      steps: flowSteps,
+      stepScenarios: stepScenarioInfos,
+      includeNodeTrees: false,
+    });
+    await copyTextToClipboard(prompt);
     markCopied("flowPrompt");
   }
 
@@ -4240,6 +4272,22 @@ function AndroidPromptPanel({
       </div>
     </div>
   );
+}
+
+/** 把场景 id 解析为 prompt 用的场景信息：先查内置预设，再查自定义场景。 */
+function resolvePromptScenarioInfo(
+  scenarioId: string,
+  customScenarios: CustomScenario[],
+): PromptScenarioInfo | undefined {
+  const preset = RULE_SETTINGS_PRESETS.find((item) => item.id === scenarioId);
+  if (preset) {
+    return { label: preset.label, description: preset.description };
+  }
+  const custom = customScenarios.find((item) => item.id === scenarioId);
+  if (custom) {
+    return { label: custom.name, description: custom.description };
+  }
+  return undefined;
 }
 
 function AndroidSnapshotChooser({
