@@ -142,7 +142,7 @@ function formatStepForPrompt(step: FlowRuleStep, index: number): string[] {
     `- preKeys: ${formatStepPreKeys(step, index)}`,
     `- appId: ${step.snapshot.appId}`,
     `- appName: ${step.snapshot.appInfo?.name ?? "-"}`,
-    `- activityId: ${step.snapshot.activityId}`,
+    `- activityId: ${step.snapshot.activityId ?? "-"}`,
     `- sourceName: ${step.snapshot.sourceName}`,
   ];
 

@@ -48,7 +48,8 @@ export interface NormalizedSnapshotNode extends SnapshotNode {
 export interface RawGkdSnapshot {
   id: number;
   appId: string;
-  activityId: string;
+  /** GKD 在桌面/系统界面等场景抓的快照没有可用的顶层 Activity，此时为 null。 */
+  activityId: string | null;
   screenWidth: number;
   screenHeight: number;
   isLandscape: boolean;
@@ -76,7 +77,8 @@ export interface DeviceServerInfo {
 export interface DeviceSnapshotSummary {
   id: number;
   appId: string;
-  activityId: string;
+  /** 与 RawGkdSnapshot 一致：桌面/系统界面快照可能为 null，渲染时必须兜底。 */
+  activityId: string | null;
   screenWidth: number;
   screenHeight: number;
   isLandscape: boolean;

@@ -56,7 +56,7 @@ describe("android lite flow helpers", () => {
       snapshot: sourceSnapshot,
       ruleSettings: {
         ...DEFAULT_RULE_SETTINGS,
-        activityIds: sourceSnapshot.activityId,
+        activityIds: sourceSnapshot.activityId ?? "",
       },
       pickedNode: pickResult!.pickedNode,
       ancestors: pickResult!.ancestors,
@@ -123,7 +123,7 @@ describe("android lite flow helpers", () => {
       snapshot,
       ruleSettings: {
         ...DEFAULT_RULE_SETTINGS,
-        activityIds: snapshot.activityId,
+        activityIds: snapshot.activityId ?? "",
       },
       pickedNode: pickResult!.pickedNode,
       ancestors: pickResult!.ancestors,

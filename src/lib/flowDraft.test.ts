@@ -136,7 +136,7 @@ function buildStep(
     snapshot,
     ruleSettings: {
       ...DEFAULT_RULE_SETTINGS,
-      activityIds: snapshot.activityId,
+      activityIds: snapshot.activityId ?? "",
     },
     pickedNode: pickResult!.pickedNode,
     ancestors: pickResult!.ancestors,

@@ -243,7 +243,7 @@ describe("selector MVP flow", () => {
       snapshot,
       ruleSettings: {
         ...DEFAULT_RULE_SETTINGS,
-        activityIds: snapshot.activityId,
+        activityIds: snapshot.activityId ?? "",
       },
       pickedNode: pick!.pickedNode,
       ancestors: pick!.ancestors,
@@ -283,7 +283,7 @@ describe("selector MVP flow", () => {
       snapshot,
       ruleSettings: {
         ...DEFAULT_RULE_SETTINGS,
-        activityIds: snapshot.activityId,
+        activityIds: snapshot.activityId ?? "",
       },
       pickedNode: pick!.pickedNode,
       ancestors: pick!.ancestors,
@@ -363,7 +363,7 @@ describe("selector MVP flow", () => {
       snapshot,
       ruleSettings: {
         ...DEFAULT_RULE_SETTINGS,
-        activityIds: snapshot.activityId,
+        activityIds: snapshot.activityId ?? "",
       },
       pickedNode: pick!.pickedNode,
       ancestors: pick!.ancestors,

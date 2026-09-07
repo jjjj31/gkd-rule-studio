@@ -74,7 +74,15 @@ export async function createDeviceApiClient(input: string): Promise<DeviceApiCli
     origin,
     serverInfo,
     getSnapshots: async () => {
-      const snapshots = await postJson<DeviceSnapshotSummary[]>(origin, "getSnapshots");
+      const data: unknown = await postJson<unknown>(origin, "getSnapshots");
+      if (!Array.isArray(data)) {
+        throw new Error("设备返回的快照列表格式不正确");
+      }
+      // 过滤掉结构残缺的条目，避免后续渲染读字段时空指针
+      const snapshots = (data as DeviceSnapshotSummary[]).filter(
+        (item): item is DeviceSnapshotSummary =>
+          Boolean(item) && typeof item === "object" && typeof item.id === "number",
+      );
       return [...snapshots].sort(
         (a: DeviceSnapshotSummary, b: DeviceSnapshotSummary) => b.id - a.id,
       );
@@ -275,8 +283,8 @@ export function formatSnapshotOption(snapshot: DeviceSnapshotSummary): string {
 }
 
 export function formatServerTitle(serverInfo: DeviceServerInfo): string {
-  const device = serverInfo.device;
-  const gkd = serverInfo.gkdAppInfo;
+  const device = serverInfo.device ?? {};
+  const gkd = serverInfo.gkdAppInfo ?? {};
   const phone = [device.manufacturer, device.model].filter(Boolean).join(" ");
   return `${phone || "Android 设备"} · Android ${device.release ?? "?"} · GKD ${
     gkd.versionName ?? "?"
@@ -489,6 +497,7 @@ function formatSnapshotTime(id: number): string {
   });
 }
 
-function shortActivity(activityId: string): string {
-  return activityId.split(".").slice(-2).join(".");
+/** 取 Activity 路径最后两段用于短展示；桌面/系统界面快照的 activityId 可能为 null。 */
+function shortActivity(activityId: string | null | undefined): string {
+  return activityId?.split(".").slice(-2).join(".") ?? "未知页面";
 }

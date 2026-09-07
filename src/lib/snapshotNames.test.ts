@@ -5,6 +5,7 @@ import {
   sanitizeSnapshotFileName,
   snapshotOptionLabel,
 } from "./snapshotNames";
+import { formatSnapshotOption } from "./deviceApi";
 import type { DeviceSnapshotSummary } from "../types/gkdSnapshot";
 
 describe("snapshotNames", () => {
@@ -25,6 +26,20 @@ describe("snapshotNames", () => {
     expect(snapshotOptionLabel(snapshot, " 微信开屏 ")).toBe(
       `微信开屏（${auto}）`,
     );
+  });
+
+  // 回归：#1 黑屏。GKD 在桌面/系统界面抓的快照 activityId 为 null，
+  // 首页列表渲染 shortActivity 丢异常会把整棵 React 树卸载成黑屏。
+  it("renders snapshot labels when activityId is null", () => {
+    const snapshot: DeviceSnapshotSummary = {
+      ...summary(),
+      id: 1786809355900,
+      activityId: null,
+    };
+    const label = snapshotOptionLabel(snapshot, null);
+    expect(label).toContain("未知页面");
+    expect(formatSnapshotOption(snapshot)).toContain("未知页面");
+    expect(snapshotOptionLabel(snapshot, "桌面截图")).toContain("桌面截图");
   });
 
   it("persists and reloads names through localStorage", () => {
