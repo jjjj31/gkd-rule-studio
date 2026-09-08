@@ -1277,7 +1277,7 @@ function postJsonWithAndroidBridge(
     const previous = window.__GkdAndroidBridgeResult;
     let settled = false;
 
-    const handler = (id: string, result: { ok: boolean; status?: number; body: string; error?: string }) => {
+    const handler = (id: string, result: { ok: boolean; status?: number; body?: string; error?: string; [key: string]: unknown }) => {
       if (id !== requestId) {
         previous?.(id, result);
         return;
@@ -1286,7 +1286,7 @@ function postJsonWithAndroidBridge(
       settled = true;
       cleanup();
       onDebugLog?.(
-        `bridge:result requestId=${requestId} ok=${result.ok} status=${result.status ?? "-"} ms=${Date.now() - startedAt} responseChars=${result.body.length} error=${result.error ?? "-"}`,
+        `bridge:result requestId=${requestId} ok=${result.ok} status=${result.status ?? "-"} ms=${Date.now() - startedAt} responseChars=${result.body?.length ?? 0} error=${result.error ?? "-"}`,
       );
       if (!result.ok) {
         const errorMsg = result.error || "Android 网络请求失败";
@@ -1299,7 +1299,7 @@ function postJsonWithAndroidBridge(
         return;
       }
       try {
-        resolve(parseAiResponseBody(result.body, onDebugLog));
+        resolve(parseAiResponseBody(result.body ?? "", onDebugLog));
       } catch (cause) {
         reject(cause);
       }

@@ -9,15 +9,24 @@ import java.io.File;
 import java.io.FileNotFoundException;
 
 /**
- * 极简文件 provider：只用来把下载好的 APK 以 content:// 暴露给系统安装器。
- * URI 规则：content://com.gkdrulebuilder.android.apkprovider/<绝对路径>。
- * 不引入 androidx，安装 APK 只需 openFile 一个能力。
+ * 极简文件 provider:只用来把下载好的 APK 以 content:// 暴露给系统安装器。
+ * URI 规则:content://com.gkdrulebuilder.android.apkprovider/<绝对路径>。
+ * 不引入 androidx,安装 APK 只需 openFile 一个能力。
  */
 public class ApkFileProvider extends ContentProvider {
     public static final String AUTHORITY = "com.gkdrulebuilder.android.apkprovider";
 
+    /** 应用外部私有目录前缀,openFile 只允许此目录下的文件。 */
+    private String allowedPrefix;
+
     @Override
     public boolean onCreate() {
+        File externalDir = getContext().getExternalFilesDir(null);
+        if (externalDir != null) {
+            allowedPrefix = externalDir.getAbsolutePath();
+        } else {
+            allowedPrefix = getContext().getFilesDir().getAbsolutePath();
+        }
         return true;
     }
 
@@ -32,7 +41,15 @@ public class ApkFileProvider extends ContentProvider {
         if (path == null) {
             throw new FileNotFoundException("无文件路径");
         }
-        return ParcelFileDescriptor.open(new File(path), ParcelFileDescriptor.MODE_READ_ONLY);
+        File file = new File(path);
+        // 边界检查:只允许访问应用私有下载目录下的文件
+        if (!file.getAbsolutePath().startsWith(allowedPrefix)) {
+            throw new FileNotFoundException("访问被拒绝:" + path);
+        }
+        if (!file.exists()) {
+            throw new FileNotFoundException("文件不存在:" + path);
+        }
+        return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY);
     }
 
     @Override

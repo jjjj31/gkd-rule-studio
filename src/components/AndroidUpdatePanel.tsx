@@ -136,7 +136,7 @@ export default function AndroidUpdatePanel({ onClose }: { onClose: () => void })
               {manifest ? ` · 最新版本 ${manifest.versionName}` : ""}
             </span>
           </div>
-          {!busy && (
+          {!busy && !manifest?.forced && (
             <button
               aria-label="关闭"
               className="android-icon-button"

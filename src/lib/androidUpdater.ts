@@ -70,7 +70,7 @@ export function parseUpdateManifest(text: string): UpdateManifest {
   return {
     versionCode,
     versionName,
-    forced: obj.forced === 1 || obj.forced === true,
+    forced: obj.forced === 1,
     apkUrl,
     mirrors: mirrors.length > 0 ? mirrors : undefined,
     sha256: typeof obj.sha256 === "string" ? obj.sha256 : undefined,
@@ -122,7 +122,9 @@ function makeRequestId(prefix: string): string {
 }
 
 interface BridgeResult {
-  ok?: boolean;
+  ok: boolean;
+  status?: number;
+  body?: string;
   error?: string;
   needPermission?: boolean;
   [key: string]: unknown;

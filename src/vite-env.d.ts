@@ -25,7 +25,13 @@ interface Window {
   };
   __GkdAndroidBridgeResult?: (
     requestId: string,
-    result: any,
+    result: {
+      ok: boolean;
+      status?: number;
+      body?: string;
+      error?: string;
+      [key: string]: unknown;
+    },
   ) => void;
   __GkdUpdateProgress?: (
     requestId: string,
