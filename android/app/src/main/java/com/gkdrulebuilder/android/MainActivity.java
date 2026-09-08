@@ -6,6 +6,9 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
@@ -13,6 +16,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -21,9 +25,12 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.Window;
 import android.widget.Toast;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
+import java.io.BufferedInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -31,6 +38,7 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Iterator;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -211,6 +219,246 @@ public class MainActivity extends Activity {
             mainHandler.post(() ->
                 Toast.makeText(context, text, Toast.LENGTH_LONG).show()
             );
+        }
+
+        @JavascriptInterface
+        public void getAppUpdateInfo(String requestId) {
+            networkExecutor.execute(() -> {
+                try {
+                    PackageInfo info = context
+                        .getPackageManager()
+                        .getPackageInfo(context.getPackageName(), 0);
+                    JSONObject result = new JSONObject();
+                    result.put("ok", true);
+                    result.put("versionName", info.versionName);
+                    result.put("versionCode", info.versionCode);
+                    emitResult(requestId, result);
+                } catch (Exception cause) {
+                    emitResult(requestId, errorResult("读取版本失败：" + cause.getMessage(), -1));
+                }
+            });
+        }
+
+        private boolean canInstallPackage() {
+            if (Build.VERSION.SDK_INT < 26) return true;
+            try {
+                return context.getPackageManager().canRequestPackageInstalls();
+            } catch (Exception ignored) {
+                return true;
+            }
+        }
+
+        @JavascriptInterface
+        public void canInstallApk(String requestId) {
+            JSONObject result = new JSONObject();
+            try {
+                result.put("ok", true);
+                result.put("allowed", canInstallPackage());
+                result.put("sdk", Build.VERSION.SDK_INT);
+            } catch (Exception ignored) {
+            }
+            emitResult(requestId, result);
+        }
+
+        @JavascriptInterface
+        public void openInstallSettings() {
+            if (Build.VERSION.SDK_INT < 26) return;
+            try {
+                Intent intent = new Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:" + context.getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            } catch (Exception cause) {
+                toast("无法打开安装设置：" + cause.getMessage());
+            }
+        }
+
+        /**
+         * 依次尝试 urlsJson（JSON 数组）里的下载地址下载 APK 到应用外部私有目录，
+         * 全部失败才算失败;下载成功后校验 sha256,不匹配则报错并删除文件。
+         * 进度回调:window.__GkdUpdateProgress(requestId, {percent,received,total})。
+         */
+        @JavascriptInterface
+        public void downloadApk(
+            String requestId,
+            String urlsJson,
+            String expectedSha256,
+            String fileName
+        ) {
+            networkExecutor.execute(() -> {
+                String lastError = "没有可用的下载地址";
+                try {
+                    JSONArray urls = new JSONArray(urlsJson);
+                    if (urls.length() == 0) {
+                        emitResult(requestId, errorResult(lastError, -1));
+                        return;
+                    }
+                    final String safeName = (fileName == null || fileName.trim().isEmpty())
+                        ? "gkd-rule-studio-update.apk"
+                        : fileName.trim().replace('\\', '_').replace('/', '_');
+                    File dir = context.getExternalFilesDir(null);
+                    if (dir == null) {
+                        dir = context.getFilesDir();
+                    }
+                    final File target = new File(dir, safeName);
+                    //noinspection ResultOfMethodCallIgnored
+                    target.delete();
+                    for (int i = 0; i < urls.length(); i++) {
+                        String urlValue = urls.optString(i);
+                        try {
+                            long received = downloadFile(urlValue, target, requestId);
+                            String actualSha256 = sha256Of(target);
+                            if (
+                                expectedSha256 != null &&
+                                !expectedSha256.trim().isEmpty() &&
+                                !expectedSha256.trim().equalsIgnoreCase(actualSha256)
+                            ) {
+                                //noinspection ResultOfMethodCallIgnored
+                                target.delete();
+                                emitResult(
+                                    requestId,
+                                    errorResult("校验失败:sha256 不匹配", -1)
+                                );
+                                return;
+                            }
+                            JSONObject result = new JSONObject();
+                            result.put("ok", true);
+                            result.put("path", target.getAbsolutePath());
+                            result.put("bytes", received);
+                            result.put("sha256", actualSha256);
+                            emitResult(requestId, result);
+                            return;
+                        } catch (Exception cause) {
+                            // 网络类失败换下一个镜像;哈希不匹配已在上方直接返回
+                            lastError = cause.getMessage() == null
+                                ? "下载失败（第 " + (i + 1) + " 个地址）"
+                                : cause.getMessage();
+                        }
+                    }
+                    emitResult(requestId, errorResult(lastError, -1));
+                } catch (Exception cause) {
+                    emitResult(
+                        requestId,
+                        errorResult(cause.getMessage() == null ? "下载失败" : cause.getMessage(), -1)
+                    );
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void installApk(String requestId, String filePath) {
+            try {
+                File file = new File(filePath);
+                if (!file.exists()) {
+                    emitResult(requestId, errorResult("安装包不存在", -1));
+                    return;
+                }
+                if (!canInstallPackage()) {
+                    JSONObject result = new JSONObject();
+                    result.put("ok", false);
+                    result.put("needPermission", true);
+                    result.put("status", -1);
+                    result.put("body", "");
+                    result.put("error", "需要允许安装未知应用");
+                    emitResult(requestId, result);
+                    return;
+                }
+                Uri uri = Uri.parse(
+                    "content://" + ApkFileProvider.AUTHORITY + file.getAbsolutePath()
+                );
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setDataAndType(uri, "application/vnd.android.package-archive");
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+                JSONObject result = new JSONObject();
+                result.put("ok", true);
+                result.put("launched", true);
+                emitResult(requestId, result);
+            } catch (Exception cause) {
+                emitResult(requestId, errorResult(cause.getMessage(), -1));
+            }
+        }
+
+        /** 下载 URL 到 target（覆盖写入），边下边发进度，返回实际写入字节数。 */
+        private long downloadFile(String urlValue, File target, String requestId)
+            throws Exception {
+            HttpURLConnection connection = (HttpURLConnection) new URL(urlValue).openConnection();
+            connection.setInstanceFollowRedirects(true);
+            connection.setConnectTimeout(20000);
+            connection.setReadTimeout(60000);
+            connection.setRequestMethod("GET");
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                connection.disconnect();
+                throw new Exception("下载失败：HTTP " + status);
+            }
+            long total = Math.max(0, connection.getContentLengthLong());
+            long received = 0;
+            long lastEmitAt = 0;
+            try (
+                InputStream input = new BufferedInputStream(connection.getInputStream());
+                OutputStream output = new FileOutputStream(target)
+            ) {
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    output.write(buffer, 0, count);
+                    received += count;
+                    long now = System.currentTimeMillis();
+                    if (now - lastEmitAt >= 250 || received >= total) {
+                        lastEmitAt = now;
+                        emitProgress(requestId, total, received);
+                    }
+                }
+            } finally {
+                connection.disconnect();
+            }
+            if (total > 0 && received != total) {
+                //noinspection ResultOfMethodCallIgnored
+                target.delete();
+                throw new Exception("下载中断：已接收 " + received + "/" + total + " 字节");
+            }
+            return received;
+        }
+
+        private String sha256Of(File file) throws Exception {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (InputStream stream = new BufferedInputStream(new FileInputStream(file))) {
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = stream.read(buffer)) != -1) {
+                    digest.update(buffer, 0, count);
+                }
+            }
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest.digest()) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        }
+
+        private void emitProgress(String requestId, long total, long received) {
+            if (webView == null) return;
+            JSONObject payload = new JSONObject();
+            try {
+                payload.put("percent", total > 0 ? (int) (received * 100 / total) : -1);
+                payload.put("received", received);
+                payload.put("total", total);
+            } catch (Exception ignored) {
+            }
+            final String script = "window.__GkdUpdateProgress && window.__GkdUpdateProgress("
+                + JSONObject.quote(requestId)
+                + ","
+                + payload.toString()
+                + ")";
+            mainHandler.post(() -> {
+                if (webView != null) {
+                    webView.evaluateJavascript(script, null);
+                }
+            });
         }
 
         @JavascriptInterface

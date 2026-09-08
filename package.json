@@ -11,7 +11,8 @@
     "start": "vite preview --host 127.0.0.1 --port 5174",
     "preview": "vite preview --host 127.0.0.1 --port 5174",
     "test": "vitest run",
-    "typecheck": "tsc -b --pretty false"
+    "typecheck": "tsc -b --pretty false",
+    "publish:update": "node scripts/publish-update.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

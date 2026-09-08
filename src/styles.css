@@ -3435,3 +3435,73 @@ body {
   overflow-wrap: anywhere;
 }
 
+
+/* ---- Android 软件内更新面板 ---- */
+.android-update-body {
+  display: grid;
+  gap: 12px;
+}
+
+.android-update-body p {
+  margin: 0;
+  color: #cdd7e2;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.android-update-notes {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(139, 154, 172, 0.18);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: #c7d2de;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.android-update-error {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ff9c9c !important;
+}
+
+.android-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.android-update-meta {
+  color: #8f9cab;
+  font-size: 11px;
+}
+
+.android-progress-track {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(139, 154, 172, 0.18);
+  overflow: hidden;
+}
+
+.android-progress-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #3d7eff, #22c1a4);
+  transition: width 0.25s ease;
+}
+
+.android-progress-indeterminate {
+  width: 40%;
+  animation: android-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes android-progress-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}

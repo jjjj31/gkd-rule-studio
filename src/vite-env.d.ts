@@ -12,15 +12,24 @@ interface Window {
       bodyJson: string,
       timeoutMs: number,
     ) => void;
+    getAppUpdateInfo?: (requestId: string) => void;
+    canInstallApk?: (requestId: string) => void;
+    openInstallSettings?: () => void;
+    downloadApk?: (
+      requestId: string,
+      urlsJson: string,
+      sha256: string,
+      fileName: string,
+    ) => void;
+    installApk?: (requestId: string, filePath: string) => void;
   };
   __GkdAndroidBridgeResult?: (
     requestId: string,
-    result: {
-      ok: boolean;
-      status?: number;
-      body: string;
-      error?: string;
-    },
+    result: any,
+  ) => void;
+  __GkdUpdateProgress?: (
+    requestId: string,
+    progress: { percent: number; received: number; total: number },
   ) => void;
   __GkdAndroidBack?: () => void;
   __NetworkExtension__?: {

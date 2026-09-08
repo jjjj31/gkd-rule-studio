@@ -182,6 +182,11 @@ import {
   type InlineTestStatus,
 } from "../lib/inlineRuleTesting";
 import { nodeLabel } from "../types/gkdSnapshot";
+import {
+  fetchUpdateManifest,
+  getAppVersionInfo,
+  isUpdateAvailable,
+} from "../lib/androidUpdater";
 import type {
   DeviceSnapshotSummary,
   NodePickResult,
@@ -195,6 +200,7 @@ import type {
   SelectorCandidate,
 } from "../types/ruleDraft";
 import { ScreenshotCanvas } from "./ScreenshotCanvas";
+import AndroidUpdatePanel from "./AndroidUpdatePanel";
 
 const CUSTOM_SCENARIO_OPTION_ID = "__custom_scenario__";
 type AndroidWorkspaceTab = "scene" | "candidates" | "prompt" | "steps" | "ai";
@@ -300,6 +306,8 @@ export function AndroidLiteApp() {
   const [aiSessionManagerOpen, setAiSessionManagerOpen] = useState(false);
   const [logPageOpen, setLogPageOpen] = useState(false);
   const [testPageOpen, setTestPageOpen] = useState(false);
+  const [updatePanelOpen, setUpdatePanelOpen] = useState(false);
+  const [updateSilentChecked, setUpdateSilentChecked] = useState(false);
   const [flowPreparing, setFlowPreparing] = useState(false);
   const pushedWorkspaceHistoryRef = useRef(false);
   const aiMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
@@ -533,6 +541,39 @@ export function AndroidLiteApp() {
       setActiveTab("prompt");
     }
   }, [workspaceMode, activeTab]);
+
+  // 启动时静默检查一次更新;仅 Android 桥可用时生效。
+  useEffect(() => {
+    if (updateSilentChecked) return;
+    if (
+      typeof window === "undefined" ||
+      typeof window.GkdAndroidBridge?.getAppUpdateInfo !== "function"
+    ) {
+      setUpdateSilentChecked(true);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [info, remote] = await Promise.all([
+          getAppVersionInfo(),
+          fetchUpdateManifest(),
+        ]);
+        if (cancelled) return;
+        if (isUpdateAvailable(remote, info)) {
+          setUpdatePanelOpen(true);
+          setUpdateSilentChecked(true);
+        }
+      } catch {
+        // 静默检查失败不打扰用户,手动入口在 header。
+      } finally {
+        if (!cancelled) setUpdateSilentChecked(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [updateSilentChecked]);
 
   useEffect(() => {
     if (!aiLoading || !aiRequestStartedAt) {
@@ -2101,6 +2142,14 @@ export function AndroidLiteApp() {
             >
               <ScrollText size={16} />
             </button>
+            <button
+              aria-label="检查更新"
+              className="android-icon-button"
+              type="button"
+              onClick={() => setUpdatePanelOpen(true)}
+            >
+              <Download size={16} />
+            </button>
             <span
               className={`ai-status-dot ai-status-${aiConnectionStatus.status}`}
               title={
@@ -2456,6 +2505,9 @@ export function AndroidLiteApp() {
           onEnd={endInlineTest}
           onImport={(item) => void importInlineItem(item)}
         />
+      )}
+      {updatePanelOpen && (
+        <AndroidUpdatePanel onClose={() => setUpdatePanelOpen(false)} />
       )}
     </main>
   );
