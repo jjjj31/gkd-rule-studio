@@ -2,6 +2,7 @@
   "name": "gkd-rule-studio",
   "version": "0.1.1",
   "private": true,
+  "license": "SATA-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5174",
