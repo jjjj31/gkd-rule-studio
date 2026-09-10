@@ -1,5 +1,7 @@
 # GKD Rule Studio
 
+[![License: SATA](https://img.shields.io/badge/License-SATA-blue.svg)](LICENSE)
+
 在手机上帮 GKD 生成跳过规则的辅助工具。选一个广告按钮，自动出候选规则、测试、导入，一条龙。
 
 > 桌面版（Windows/Web）仍在但不主动维护。以下内容以 Android 版为准。
@@ -30,6 +32,10 @@ pnpm run dev              # 浏览器开发
 pnpm run build:android-assets  # 构建安卓 WebView 资源
 pnpm run package:full     # 构建 + 打包 APK
 ```
+
+## 开源协议
+
+本项目使用 [SATA 协议（Star And Thank Author License）](LICENSE)。简单来说：你可以自由使用本项目，但请给仓库点个 ⭐ Star 并感谢作者。感谢你的支持！
 
 ## 相关
 
