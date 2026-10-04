@@ -936,9 +936,6 @@ export function AndroidLiteApp() {
       pickResult,
       ruleSettings,
       scenario: scenarioInfo,
-      // 复制给外部 AI 时不内嵌节点树——完整快照信息由首页导出的
-      // Markdown + PNG 文件随消息附带，避免两份重复。
-      includeNodeTree: false,
     });
     await copyTextToClipboard(prompt);
     markCopied("rule");
@@ -957,7 +954,6 @@ export function AndroidLiteApp() {
       flowDesc,
       steps: flowSteps,
       stepScenarios: stepScenarioInfos,
-      includeNodeTrees: false,
     });
     await copyTextToClipboard(prompt);
     markCopied("flowPrompt");

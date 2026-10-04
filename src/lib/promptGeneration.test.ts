@@ -68,6 +68,9 @@ describe("prompt generation", () => {
     expect(prompt).not.toContain("候选 selector 列表");
 
     expect(prompt).toContain("输出格式");
+    // 默认必须内嵌节点树摘要（首页导出文件是补充，不替代 prompt 里的快照信息）
+    expect(prompt).toContain("节点树摘要：");
+    expect(prompt).not.toContain("本 prompt 不再内嵌节点树");
     expect(prompt).toContain("流氓广告");
     expect(prompt).toContain("shade/mask/hotArea/click_area");
     expect(prompt).toContain("candidates 数量 2-4 个");
