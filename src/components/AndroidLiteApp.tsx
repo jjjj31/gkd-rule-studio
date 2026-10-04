@@ -1746,7 +1746,7 @@ export function AndroidLiteApp() {
     const node = pickResult.pickedNode;
     const parts = [
       snapshot.sourceName || `快照 ${snapshot.id}`,
-      snapshot.activityId,
+      snapshot.activityId ?? "未知页面",
       `#${node.id} ${nodeLabel(node)}`,
     ];
     return parts.join(" / ");
@@ -5151,12 +5151,13 @@ function reconcileActivity(
   if (current.activityIds.trim() !== previousSnapshot.activityId) return current;
   return {
     ...current,
-    activityIds: nextSnapshot.activityId,
+    activityIds: nextSnapshot.activityId ?? "",
   };
 }
 
-function shortActivity(activityId: string): string {
-  return activityId.split(".").slice(-2).join(".");
+/** 取 Activity 路径最后两段用于短展示；桌面/系统界面快照的 activityId 可能为 null。 */
+function shortActivity(activityId: string | null | undefined): string {
+  return activityId?.split(".").slice(-2).join(".") ?? "未知页面";
 }
 
 function resolveConnectOrigin(input: string): string {

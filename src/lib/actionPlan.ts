@@ -112,7 +112,7 @@ export function buildActionPlan(input: {
   }
 
   if (needsActivityGuard) {
-    actionPlan.activityIds = [snapshot.activityId];
+    actionPlan.activityIds = snapshot.activityId ? [snapshot.activityId] : [];
     actionPlan.rankAdjustment += 10;
     actionPlan.riskNotes.push(
       "跳过/关闭类泛化动作默认补充当前 Activity，降低误触并减少无效扫描。",
@@ -121,11 +121,11 @@ export function buildActionPlan(input: {
 
   if (hasDynamicFullscreenContext) {
     const configuredActivityIds = ruleSettings.activityIds.trim();
-    const snapshotActivityId = snapshot.activityId.trim();
+    const snapshotActivityId = (snapshot.activityId ?? "").trim();
     actionPlan.activityIds =
       configuredActivityIds ||
       actionPlan.activityIds ||
-      // snapshot.activityId 为空串时不能退化成 [""]——那种 activityIds 永不匹配任何界面。
+      // activityId 为 null/空串时不能退化成 [""]——那种 activityIds 永不匹配任何界面。
       (snapshotActivityId ? [snapshotActivityId] : undefined);
     actionPlan.forcedTime = 10000;
     actionPlan.matchTime = 10000;
@@ -444,8 +444,8 @@ function isSmallNativeDismissControl(
   );
 }
 
-function isSplashActivity(activityId: string): boolean {
-  return activityId.toLowerCase().includes("splash");
+function isSplashActivity(activityId: string | null | undefined): boolean {
+  return (activityId ?? "").toLowerCase().includes("splash");
 }
 
 function isAppEntryAd(settings: RuleSettings): boolean {

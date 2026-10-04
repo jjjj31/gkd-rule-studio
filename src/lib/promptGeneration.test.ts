@@ -43,7 +43,7 @@ describe("prompt generation", () => {
 
     const resolved = resolveCustomScenarioSettings(scenario, nextSnapshot);
     expect(resolved).toMatchObject({
-      activityIds: nextSnapshot.activityId,
+      activityIds: nextSnapshot.activityId ?? "",
       action: "clickCenter",
       actionDelay: 2500,
       forcedTime: 10000,

@@ -56,7 +56,7 @@ export function buildHelpPrompt(input: PromptInput): string {
     "应用信息：",
     `- appId: ${snapshot.appId}`,
     `- appName: ${snapshot.appInfo?.name ?? "-"}`,
-    `- activityId: ${snapshot.activityId}`,
+    `- activityId: ${snapshot.activityId ?? "-"}`,
     `- screen: ${snapshot.screenWidth}x${snapshot.screenHeight}`,
     "",
     ...(scenario

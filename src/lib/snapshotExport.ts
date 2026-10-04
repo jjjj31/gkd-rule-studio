@@ -227,8 +227,8 @@ function mdCode(value: string): string {
 }
 
 /** Markdown 表格单元格：竖线转义，换行折叠。 */
-function mdCell(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
+function mdCell(value: string | null | undefined): string {
+  return (value ?? "").replace(/\|/g, "\\|").replace(/\s+/g, " ").trim();
 }
 
 /** 文件名放进 Markdown 链接时做 URI 编码，保证特殊字符也能解析。 */
