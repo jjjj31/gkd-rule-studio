@@ -107,23 +107,46 @@ export function buildDownloadUrls(manifest: UpdateManifest): string[] {
   return urls;
 }
 
-/** 拉取最新版 update.json 并解析。 */
+/**
+ * 清单的候选地址：直连在前，国内镜像在后。
+ * 国内网络常连不上 github.com，只给一个直连地址会让「检查更新」必然失败；
+ * APK 下载本来就有 mirrors 兜底，清单这里同样需要。
+ */
+export function buildManifestUrls(): string[] {
+  return [
+    UPDATE_MANIFEST_URL,
+    `https://ghproxy.net/${UPDATE_MANIFEST_URL}`,
+    `https://gh-proxy.com/${UPDATE_MANIFEST_URL}`,
+    `https://ghfast.top/${UPDATE_MANIFEST_URL}`,
+  ];
+}
+
+/** 拉取最新版 update.json 并解析：按候选地址依次尝试，任一成功即返回。 */
 export async function fetchUpdateManifest(): Promise<UpdateManifest> {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
-  try {
-    const response = await fetch(UPDATE_MANIFEST_URL, { signal: controller.signal });
-    if (!response.ok) {
-      throw new UpdateBridgeError(`检查更新失败:HTTP ${response.status}`);
+  let lastHttpStatus: number | null = null;
+  for (const url of buildManifestUrls()) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
+    let response: Response | null = null;
+    try {
+      response = await fetch(url, { signal: controller.signal });
+    } catch {
+      response = null; // 网络错误/超时 → 换下一个源
+    } finally {
+      window.clearTimeout(timer);
     }
-    const text = await response.text();
-    return parseUpdateManifest(text);
-  } catch (cause) {
-    if (cause instanceof UpdateBridgeError) throw cause;
-    throw new UpdateBridgeError("无法连接更新服务,请检查网络");
-  } finally {
-    window.clearTimeout(timer);
+    if (!response) continue;
+    if (!response.ok) {
+      lastHttpStatus = response.status;
+      continue;
+    }
+    // 已拿到响应体：解析失败（清单格式错误）直接抛出，不再换源。
+    return parseUpdateManifest(await response.text());
   }
+  if (lastHttpStatus !== null) {
+    throw new UpdateBridgeError(`检查更新失败:HTTP ${lastHttpStatus}`);
+  }
+  throw new UpdateBridgeError("无法连接更新服务,请检查网络");
 }
 
 function makeRequestId(prefix: string): string {

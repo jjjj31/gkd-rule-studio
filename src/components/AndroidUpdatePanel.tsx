@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, Download, ShieldAlert, X } from "lucide-react";
 import {
+  type AppVersionInfo,
   type DownloadProgress,
   type UpdateManifest,
   UpdateBridgeError,
@@ -55,12 +56,21 @@ export default function AndroidUpdatePanel({ onClose }: { onClose: () => void })
   async function checkForUpdate(): Promise<void> {
     setPhase("checking");
     setErrorMessage(null);
+    // 先单独取本机版本：这样即使随后清单拉取失败（例如国内连不上 GitHub），
+    // 面板也能显示正确的当前版本，而不是停在初始值 0.0.0。
+    let info: AppVersionInfo;
     try {
-      const [info, remote] = await Promise.all([
-        getAppVersionInfo(),
-        fetchUpdateManifest(),
-      ]);
+      info = await getAppVersionInfo();
       setCurrentName(info.versionName);
+    } catch (cause) {
+      setErrorMessage(
+        cause instanceof UpdateBridgeError ? cause.message : "检查更新失败",
+      );
+      setPhase("checkFailed");
+      return;
+    }
+    try {
+      const remote = await fetchUpdateManifest();
       if (isUpdateAvailable(remote, info)) {
         setManifest(remote);
         setPhase("available");

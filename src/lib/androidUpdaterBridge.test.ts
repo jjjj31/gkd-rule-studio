@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { downloadApk, getAppVersionInfo, installApk } from "./androidUpdater";
+import {
+  downloadApk,
+  fetchUpdateManifest,
+  getAppVersionInfo,
+  installApk,
+} from "./androidUpdater";
 
 /**
  * 回归测试：Android 注入对象（addJavascriptInterface）的方法**必须以该对象为接收者**调用。
@@ -81,5 +86,57 @@ describe("androidUpdater 桥调用必须以注入对象为接收者", () => {
         () => {},
       ),
     ).resolves.toBe("/data/x.apk");
+  });
+});
+
+describe("fetchUpdateManifest 多源兜底（国内连不上 GitHub）", () => {
+  const body = JSON.stringify({
+    versionCode: 2,
+    versionName: "1.0.0",
+    apkUrl: "https://example.com/a.apk",
+    sha256: "a".repeat(64),
+  });
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const okResponse = () => ({ ok: true, status: 200, text: async () => body });
+  const statusResponse = (status: number) => ({ ok: false, status, text: async () => "" });
+
+  it("直连成功即返回，不再试镜像", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(String(url));
+      return okResponse();
+    }) as unknown as typeof fetch;
+    const manifest = await fetchUpdateManifest();
+    expect(manifest.versionName).toBe("1.0.0");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).not.toContain("ghproxy");
+  });
+
+  it("直连网络失败时回退到镜像", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (url: string) => {
+      calls.push(String(url));
+      if (String(url).includes("ghproxy.net")) return okResponse();
+      throw new TypeError("Failed to fetch");
+    }) as unknown as typeof fetch;
+    const manifest = await fetchUpdateManifest();
+    expect(manifest.versionCode).toBe(2);
+    expect(calls.some((u) => u.includes("ghproxy.net"))).toBe(true);
+  });
+
+  it("全部网络失败时报网络错误", async () => {
+    globalThis.fetch = (async () => {
+      throw new TypeError("Failed to fetch");
+    }) as unknown as typeof fetch;
+    await expect(fetchUpdateManifest()).rejects.toThrow(/无法连接更新服务/);
+  });
+
+  it("全部返回 404 时报 HTTP 状态", async () => {
+    globalThis.fetch = (async () => statusResponse(404)) as unknown as typeof fetch;
+    await expect(fetchUpdateManifest()).rejects.toThrow(/HTTP 404/);
   });
 });
