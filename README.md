@@ -16,11 +16,13 @@
 
 **📥 一键导入本地订阅** — 测试有效的规则点一下"导入"就存进 GKD 本地规则，不用复制粘贴。（需要 GKD fork 版，官方版暂不支持）
 
+**🔄 软件内更新** — App 内直接检查新版本、下载并安装，不用去 Releases 页翻。发版由 GitHub Actions 自动完成：打 tag 即自动构建 APK 并生成更新清单。清单在国内网络下会自动尝试镜像源。
+
 **📋 一键复制求助 Prompt** — 内置结构化的求助 prompt，包含当前控件信息、节点树上下文、GKD selector 语法约束。复制到 ChatGPT / Claude / Kimi 等任何 AI 工具，拿回复粘贴回来自动提取规则。
 
 **🤖 内置 AI 直接生成** — 配置好 API Key 后在 App 里直接调 AI 生成规则，不需要来回切 App 复制粘贴。
 
-**🔒 完全离线可用** — 不依赖任何云服务。没有 API Key？基础功能照常用，选点出候选、测试导入全在本地完成。
+**🔒 基础功能离线可用** — 选点出候选、测试导入全在本地完成，没有 API Key 也能照常用。仅 AI 生成、检查更新、加载字体需要联网。
 
 **📦 安装包不到 500KB** — 一个纯 WebView + 前端代码的轻量 APK，不内置任何 AI 模型、不需要 Google Play Service。
 
@@ -56,6 +58,8 @@ App 内右上角可以切换「Beta / 正式」目标版本。正式版测试后
 
 GitHub Releases → 下载最新 APK：[前往发布页](https://github.com/jjjj31/gkd-rule-studio/releases)
 
+装好之后，App 内的「检查更新」可以直接升级新版本：自动检查 → 下载（校验 sha256）→ 拉起安装。检查更新在国内网络下会自动尝试镜像源，失败时多半是设备断网。
+
 ## 关于这个项目
 
 这个项目是我纯 vibe coding 写的，我本身没有写过 GKD 规则。核心的两块——候选规则生成算法和 AI Prompt 的注意事项——是我让 GPT 分析 GKD 规则仓库后总结出来的，AI 在这两块还是没法完善得很好。我没有精力去深入学习然后来完善，所以希望有经验的大佬来帮忙改进。
@@ -70,8 +74,13 @@ pnpm test
 pnpm run typecheck
 pnpm run dev                  # 浏览器开发
 pnpm run build:android-assets # 构建 Android WebView 资源
-cd android && gradle assembleDebug  # 打包 APK
+pnpm run package:full         # 构建资源并打包 APK（需要 JDK 17+ 与 Android SDK）
+pnpm run check:update         # 发版后校验线上更新清单是否可用
 ```
+
+发版：升级 `package.json` 的 version → `git tag vX.Y.Z && git push origin vX.Y.Z`，GitHub Actions 会自动构建并发布 APK 与更新清单（`update.json`）。
+
+> 注意：`android/debug.keystore` 是固定的签名密钥（本地与 CI 共用同一把）。App 内更新的覆盖安装依赖签名一致，**请勿删除或更换**，否则已装用户将无法再收到更新。
 
 ## 开源协议
 
