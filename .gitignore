@@ -14,6 +14,8 @@ android/.gradle
 android/build
 android/app/build
 android/app/src/main/assets
+# 机器专属：SDK 路径。CI 用 ANDROID_HOME，本地各自生成。
+android/local.properties
 
 tools/android-sdk
 tools/gradle

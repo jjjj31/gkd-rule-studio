@@ -1,0 +1,69 @@
+name: Release APK
+
+# 打 tag（v*）时构建 APK 并发布，同时生成 update.json 更新清单。
+# 关键：APK 与 update.json 必须一起发布——App 的「检查更新」请求
+# releases/latest/download/update.json，缺了这个资产就会 404。
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck and test
+        run: |
+          pnpm typecheck
+          pnpm test
+
+      - name: Build web assets into Android
+        run: pnpm exec tsc -b && pnpm exec vite build --base ./ --outDir android/app/src/main/assets --emptyOutDir
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+      - name: Build debug APK
+        working-directory: android
+        # 覆盖 gradle.properties 里机器专属的 org.gradle.java.home，改用 CI 的 JDK17。
+        run: ./gradlew assembleDebug -Dorg.gradle.java.home="$JAVA_HOME"
+
+      - name: Generate update.json
+        # --apk-name 必须与上传的资产名一致，否则清单里的下载直链会 404。
+        run: |
+          node scripts/publish-update.mjs \
+            android/app/build/outputs/apk/debug/app-debug.apk \
+            --apk-name app-debug.apk \
+            --output update.json
+          cat update.json
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            update.json
