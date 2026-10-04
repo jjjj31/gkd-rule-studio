@@ -49,3 +49,9 @@ GEMINI.md
 QODER.md
 AGENTS.md
 .github/code-review-graph.instruction.md
+
+# 工具配置 / 媒体产物（不提交）
+.ua/
+.workbuddy/
+my-video/
+docs/rule-search-design.md
