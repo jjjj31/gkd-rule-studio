@@ -120,10 +120,13 @@ export function buildActionPlan(input: {
   }
 
   if (hasDynamicFullscreenContext) {
+    const configuredActivityIds = ruleSettings.activityIds.trim();
+    const snapshotActivityId = snapshot.activityId.trim();
     actionPlan.activityIds =
-      ruleSettings.activityIds.trim() ||
+      configuredActivityIds ||
       actionPlan.activityIds ||
-      [snapshot.activityId];
+      // snapshot.activityId 为空串时不能退化成 [""]——那种 activityIds 永不匹配任何界面。
+      (snapshotActivityId ? [snapshotActivityId] : undefined);
     actionPlan.forcedTime = 10000;
     actionPlan.matchTime = 10000;
     actionPlan.riskNotes.push(

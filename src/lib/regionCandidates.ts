@@ -12,6 +12,7 @@ import type {
 } from "../types/gkdSnapshot";
 import type { RuleSettings, SelectorCandidate } from "../types/ruleDraft";
 import { pickExistingNode } from "./nodePicker";
+import { candidateDedupeKey } from "./candidateIdentity";
 import { generateSelectorCandidates } from "./selectorStrategies";
 
 /** 主入口：生成、去重、排序所有候选，供前端 CandidateList / CandidateSummary 渲染。 */
@@ -93,7 +94,7 @@ function markSameRegionCandidate(
 function dedupeCandidates(candidates: SelectorCandidate[]): SelectorCandidate[] {
   const seen = new Set<string>();
   return candidates.filter((candidate) => {
-    const key = candidate.rule.matches.join("\n");
+    const key = candidateDedupeKey(candidate);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

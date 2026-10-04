@@ -1696,6 +1696,14 @@ export function AndroidLiteApp() {
     } else if (session.mode === "flow" && session.snapshotId && client) {
       await loadFlowCanvasSnapshot(session.snapshotId, client);
     }
+    // 加载快照会经 openSnapshot → clearAiCandidateState 清空候选与 activeAiSessionId，
+    // 这里必须恢复回该 session 的候选，否则用户选中 session 后看到空候选、
+    // 生成按钮被禁用（activeAiSession 靠兜底 find 解析到同一 session，id 未变，
+    // 依赖 [activeAiSession?.id] 的 effect 不会重跑）。
+    setActiveAiSessionId(session.id);
+    setAiCandidates(session.candidates);
+    setAiGeneratedMode(session.mode);
+    setWorkspaceMode(session.mode);
     setActiveTab("ai");
   }
 

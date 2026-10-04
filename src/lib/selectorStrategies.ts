@@ -21,6 +21,7 @@ import type {
   SimpleSelector,
 } from "../types/ruleDraft";
 import { applyActionPlanToRule, buildActionPlan } from "./actionPlan";
+import { candidateDedupeKey } from "./candidateIdentity";
 import { scoreCandidate } from "./riskScoring";
 import {
   clickableSelector,
@@ -539,7 +540,7 @@ function buildCandidate(
 function dedupeCandidates(candidates: SelectorCandidate[]): SelectorCandidate[] {
   const seen = new Set<string>();
   return candidates.filter((candidate) => {
-    const key = candidate.rule.matches.join("\n");
+    const key = candidateDedupeKey(candidate);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
