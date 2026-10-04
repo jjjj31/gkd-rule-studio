@@ -60,6 +60,10 @@ export const DANGEROUS_CLICK_WORDS = [
   "hotarea",
   "splashhotarea",
   "ptgsplashhotarea",
+  // 广告 SDK 的容器/原生广告位资源名，点到即可能打开广告详情。
+  "nativead",
+  "ksad_container",
+  "ad_area",
 ];
 
 export const CONTEXT_HINT_WORDS = [

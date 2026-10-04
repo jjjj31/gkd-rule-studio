@@ -9,6 +9,7 @@ import {
   DANGEROUS_CLICK_WORDS,
   GENERIC_ACTION_TEXT,
 } from "../data/riskWords";
+import { matchAdSdkSkipSignal } from "../data/adSdkSignatures";
 import { nodeArea } from "../types/gkdSnapshot";
 import type { NormalizedSnapshotNode, ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type {
@@ -47,6 +48,7 @@ export function scoreCandidate(input: {
   addTextRiskScore(items, target, plan);
   addDynamicCountdownScore(items, plan);
   addAdSdkOverlayScore(items, target);
+  addAdSdkSignatureScore(items, target);
   addAdContextScore(items, snapshot, target);
   addParentRiskScore(items, snapshot, plan, validation);
   addComplexityScore(items, plan);
@@ -254,6 +256,22 @@ function addAdSdkOverlayScore(
     label: "广告遮罩热区",
     value: -90,
     reason: "最终点击目标像广告 SDK 遮罩/热区，可能打开广告详情",
+  });
+}
+
+function addAdSdkSignatureScore(
+  items: RiskItem[],
+  target: NormalizedSnapshotNode | null,
+): void {
+  if (!target) return;
+  // 广告遮罩/热区不是跳过按钮，交给 addAdSdkOverlayScore 扣分，不在这里加分。
+  if (isAdSdkOverlayTarget(target)) return;
+  const match = matchAdSdkSkipSignal(target);
+  if (!match) return;
+  items.push({
+    label: `${match.sdk.label}跳过控件`,
+    value: 12,
+    reason: `命中 ${match.sdk.label} SDK 的跳过控件特征 ${match.signal}`,
   });
 }
 
