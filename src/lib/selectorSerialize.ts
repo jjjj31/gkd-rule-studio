@@ -207,5 +207,17 @@ function formatCondition(condition: SelectorCondition): string {
 }
 
 function escapeSelectorString(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return (
+    value
+      // 反斜杠必须最先转义，否则会把后面插入的转义序列再转义一遍。
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      // 控制字符在 selector 字符串字面量里非法（库会报 "Expect no control character"），
+      // 必须写成反斜杠转义序列；实测库会把 \n/\r/\t 还原成真实字符参与匹配。
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t")
+      // 其余 C0 控制字符与 DEL 没有对应转义序列，直接剔除。
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+  );
 }
