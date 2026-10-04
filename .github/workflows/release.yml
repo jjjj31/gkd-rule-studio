@@ -43,6 +43,10 @@ jobs:
           java-version: "17"
 
       - uses: android-actions/setup-android@v3
+        with:
+          # 默认值是 "tools platform-tools"，但 SDK 仓库已移除 tools 包，
+          # 会导致 sdkmanager 报 "Failed to find package 'tools'" 而失败。
+          packages: "platform-tools"
 
       - name: Install Android SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
