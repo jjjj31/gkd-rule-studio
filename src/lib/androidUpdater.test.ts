@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDownloadUrls,
+  downloadApk,
   isUpdateAvailable,
   parseUpdateManifest,
 } from "./androidUpdater";
@@ -44,6 +45,20 @@ describe("parseUpdateManifest", () => {
         JSON.stringify({ versionCode: 1, versionName: "0.1.0" }),
       ),
     ).toThrow(/版本清单/);
+  });
+
+  it("forced 兼容布尔 true 与字符串形式", () => {
+    for (const value of [1, true, "1", "true"]) {
+      const manifest = parseUpdateManifest(
+        JSON.stringify({
+          versionCode: 2,
+          versionName: "0.2.0",
+          apkUrl: "u",
+          forced: value,
+        }),
+      );
+      expect(manifest.forced, String(value)).toBe(true);
+    }
   });
 
   it("非法 JSON 抛错", () => {
@@ -123,5 +138,21 @@ describe("buildDownloadUrls", () => {
       apkUrl: "https://github.com/a.apk",
     });
     expect(urls).toEqual(["https://github.com/a.apk"]);
+  });
+});
+
+describe("downloadApk 安全校验", () => {
+  it("清单缺少 sha256 时拒绝下载", async () => {
+    await expect(
+      downloadApk(
+        {
+          versionCode: 2,
+          versionName: "0.2.0",
+          forced: false,
+          apkUrl: "https://example.com/a.apk",
+        },
+        () => {},
+      ),
+    ).rejects.toThrow(/sha256/);
   });
 });

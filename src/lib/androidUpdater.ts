@@ -70,12 +70,21 @@ export function parseUpdateManifest(text: string): UpdateManifest {
   return {
     versionCode,
     versionName,
-    forced: obj.forced === 1,
+    forced: parseForced(obj.forced),
     apkUrl,
     mirrors: mirrors.length > 0 ? mirrors : undefined,
     sha256: typeof obj.sha256 === "string" ? obj.sha256 : undefined,
     notes: typeof obj.notes === "string" ? obj.notes : undefined,
   };
+}
+
+/**
+ * 解析 forced 字段。
+ * 发版脚本写的是数字 1/0，但清单可能被手工改成布尔或字符串，这里都兼容，
+ * 避免写 `true` 却被当成"非强制"。
+ */
+function parseForced(value: unknown): boolean {
+  return value === 1 || value === true || value === "1" || value === "true";
 }
 
 /** 清单是否比当前版本新(versionCode 整数比较)。 */
@@ -217,6 +226,13 @@ export function downloadApk(
   if (urls.length === 0) {
     return Promise.reject(new UpdateBridgeError("版本清单缺少下载地址"));
   }
+  // 没有 sha256 就无法校验下载到的 APK，宁可拒绝也不装一个未校验的包。
+  const sha256 = typeof manifest.sha256 === "string" ? manifest.sha256.trim() : "";
+  if (!sha256) {
+    return Promise.reject(
+      new UpdateBridgeError("版本清单缺少 sha256，拒绝安装未经校验的安装包"),
+    );
+  }
   const bridge = window.GkdAndroidBridge as { downloadApk?: unknown } | undefined;
   const fn = bridge?.downloadApk;
   if (typeof fn !== "function") {
@@ -277,7 +293,7 @@ export function downloadApk(
     ) => void)(
       requestId,
       JSON.stringify(urls),
-      manifest.sha256 ?? "",
+      sha256,
       UPDATE_APK_FILE_NAME,
     );
   });

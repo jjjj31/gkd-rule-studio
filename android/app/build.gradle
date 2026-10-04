@@ -2,6 +2,24 @@ plugins {
     id "com.android.application"
 }
 
+// 版本号单一来源：仓库根目录的 package.json。
+// 发版脚本 scripts/publish-update.mjs 也读同一个 version，并用同一公式算 versionCode，
+// 这样 APK 内版本号与 update.json 清单始终一致，不会出现"永远提示有更新"。
+def appVersionName = "0.1.0"
+def appVersionCode = 1
+try {
+    def packageJson = new groovy.json.JsonSlurper().parseText(file("../../package.json").text)
+    if (packageJson.version instanceof String && packageJson.version) {
+        appVersionName = packageJson.version
+    }
+    def parts = appVersionName.split("\\.")
+    if (parts.length >= 3 && parts.every { it ==~ /[0-9]+/ }) {
+        appVersionCode = parts[0].toInteger() * 10000 + parts[1].toInteger() * 100 + parts[2].toInteger()
+    }
+} catch (Exception ignored) {
+    // package.json 读不到时退回默认值，不让配置阶段直接失败。
+}
+
 android {
     namespace "com.gkdrulebuilder.android"
     compileSdk 35
@@ -10,7 +28,7 @@ android {
         applicationId "com.gkdrulebuilder.android"
         minSdk 23
         targetSdk 35
-        versionCode 1
-        versionName "0.1.0"
+        versionCode appVersionCode
+        versionName appVersionName
     }
 }

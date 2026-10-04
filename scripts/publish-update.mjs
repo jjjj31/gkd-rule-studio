@@ -12,12 +12,15 @@
  *   --notes <text>          发版说明(可选,可多次指定)
  *   --forced                标记为强制更新(默认可选)
  *   --output <path>         输出 update.json 的路径(默认 stdout)
- *   --apk-name <name>       覆盖 APK 在清单中的文件名(默认取路径中的文件名)
+ *   --apk-name <name>       覆盖 APK 在清单中的文件名(默认取 APK 路径的文件名)
+ *   --repo <owner/repo>     目标 GitHub 仓库(默认 jjjj31/gkd-rule-studio,
+ *                           也可用环境变量 GKD_RELEASE_REPO)
  *   --version <ver>         覆盖版本号(默认从 package.json 读取)
  *
  * 示例:
  *   node scripts/publish-update.mjs android/app/build/outputs/apk/debug/app-debug.apk --notes "修复了某个 bug"
  *   node scripts/publish-update.mjs out.apk --output release/update.json --version 0.2.0
+ *   node scripts/publish-update.mjs out.apk --repo me/my-fork --apk-name app-release.apk
  */
 
 import { createHash } from "node:crypto";
@@ -33,7 +36,8 @@ if (args.length === 0 || args[0] === "--help") {
   --notes <text>      发版说明(可多次指定,合并为数组)
   --forced            标记为强制更新
   --output <path>     输出路径(默认 stdout)
-  --apk-name <name>   覆盖 APK 文件名
+  --apk-name <name>   覆盖 APK 文件名(默认取 APK 路径的文件名)
+  --repo <owner/repo> 目标 GitHub 仓库(默认 jjjj31/gkd-rule-studio)
   --version <ver>     覆盖版本号(默认从 package.json 读取)
 `);
   process.exit(0);
@@ -43,6 +47,8 @@ if (args.length === 0 || args[0] === "--help") {
 let apkPath = "";
 let output = null;
 let versionOverride = null;
+let apkNameOverride = null;
+let repo = process.env.GKD_RELEASE_REPO || "jjjj31/gkd-rule-studio";
 let forced = false;
 const notes = [];
 
@@ -54,6 +60,10 @@ for (let i = 0; i < args.length; i++) {
     versionOverride = args[++i];
   } else if (arg === "--notes" && args[i + 1]) {
     notes.push(args[++i]);
+  } else if (arg === "--apk-name" && args[i + 1]) {
+    apkNameOverride = args[++i];
+  } else if (arg === "--repo" && args[i + 1]) {
+    repo = args[++i];
   } else if (arg === "--forced") {
     forced = true;
   } else if (!arg.startsWith("--")) {
@@ -98,17 +108,18 @@ const versionCode = versionNameToCode(versionName);
 // 计算 APK sha256
 const apkData = readFileSync(apkPath);
 const sha256 = createHash("sha256").update(apkData).digest("hex");
-const apkName = basename(apkPath);
+// 清单里的资产名必须与 GitHub Release 上传的文件名一致,否则下载直链会 404。
+// 默认取 APK 路径的文件名,可用 --apk-name 覆盖。
+const assetName = apkNameOverride || basename(apkPath);
 
 // 构造版本清单
+const downloadUrl = `https://github.com/${repo}/releases/download/v${versionName}/${assetName}`;
 const manifest = {
   versionCode,
   versionName,
   forced: forced ? 1 : 0,
-  apkUrl: `https://github.com/jjjj31/gkd-rule-studio/releases/download/v${versionName}/GKD-Rule-Studio-Android-${versionName}-debug.apk`,
-  mirrors: [
-    `https://ghproxy.net/https://github.com/jjjj31/gkd-rule-studio/releases/download/v${versionName}/GKD-Rule-Studio-Android-${versionName}-debug.apk`,
-  ],
+  apkUrl: downloadUrl,
+  mirrors: [`https://ghproxy.net/${downloadUrl}`],
   sha256,
   notes: notes.length > 0 ? notes.join("\n") : undefined,
 };
@@ -123,7 +134,8 @@ if (output) {
 }
 
 console.log(`\n版本: ${versionName} (versionCode=${versionCode})`);
-console.log(`APK: ${apkName} (${(apkData.length / 1024 / 1024).toFixed(1)} MB)`);
+console.log(`APK: ${assetName} (${(apkData.length / 1024 / 1024).toFixed(1)} MB)`);
+console.log(`下载地址: ${downloadUrl}`);
 console.log(`SHA-256: ${sha256}`);
 console.log(`强制更新: ${forced ? "是" : "否"}`);
 if (notes.length > 0) {
