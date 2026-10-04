@@ -190,7 +190,9 @@ function bridgeCall(
       }
     }
 
-    (fn as (...bridgeArgs: unknown[]) => void)(requestId, ...args);
+    // 必须带接收者调用：Android 注入对象的方法一旦解绑调用，WebView 会抛
+    // "Java bridge method can't be invoked on a non-injected object"。
+    (fn as (...bridgeArgs: unknown[]) => void).call(bridge, requestId, ...args);
   });
 }
 
@@ -290,7 +292,8 @@ export function downloadApk(
       urlsJson: string,
       sha256: string,
       fileName: string,
-    ) => void)(
+    ) => void).call(
+      bridge,
       requestId,
       JSON.stringify(urls),
       sha256,
