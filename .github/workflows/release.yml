@@ -54,7 +54,10 @@ jobs:
       - name: Build debug APK
         working-directory: android
         # 覆盖 gradle.properties 里机器专属的 org.gradle.java.home，改用 CI 的 JDK17。
-        run: ./gradlew assembleDebug -Dorg.gradle.java.home="$JAVA_HOME"
+        # chmod 兜底：Windows 上提交的 gradlew 容易丢可执行位（exit 126）。
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug -Dorg.gradle.java.home="$JAVA_HOME"
 
       - name: Generate update.json
         # --apk-name 必须与上传的资产名一致，否则清单里的下载直链会 404。
