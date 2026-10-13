@@ -137,6 +137,39 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void openExternalUrl(String url) {
+            Uri uri = Uri.parse(url);
+            String host = uri.getHost();
+            if (!"https".equals(uri.getScheme()) ||
+                !"github.com".equals(host)) return;
+            mainHandler.post(() -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+                    intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                    context.startActivity(intent);
+                } catch (Exception cause) {
+                    Toast.makeText(context, "无法打开链接", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void openDouyinSearch() {
+            mainHandler.post(() -> {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW,
+                        Uri.parse("snssdk1128://search?keyword=ooo35194"));
+                    intent.setPackage("com.ss.android.ugc.aweme");
+                    intent.addCategory(Intent.CATEGORY_BROWSABLE);
+                    context.startActivity(intent);
+                } catch (Exception cause) {
+                    copyToClipboard("ooo35194");
+                    Toast.makeText(context, "未找到抖音，抖音号已复制", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+
+        @JavascriptInterface
         public void setBackVisible(boolean visible) {
             if (!(context instanceof Activity)) return;
             mainHandler.post(() -> {

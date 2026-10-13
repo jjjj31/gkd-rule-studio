@@ -2414,6 +2414,60 @@ body {
   background: var(--cp-bg-secondary);
 }
 
+.android-support-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--cp-text-dim);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.android-support-entry:hover {
+  color: var(--cp-neon-cyan);
+}
+.android-support-dialog {
+  width: min(100%, 360px);
+}
+.android-support-dialog p {
+  margin: 0;
+  color: var(--cp-text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.android-support-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.android-support-links a,
+.android-support-links button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+}
+.android-support-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--cp-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 /* ---- Buttons ---- */
 .android-button,
 .android-import-button {

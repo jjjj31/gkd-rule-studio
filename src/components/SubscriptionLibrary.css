@@ -1,0 +1,41 @@
+.rule-library { display: grid; gap: 14px; min-width: 0; overflow-wrap: anywhere; }
+.library-entry { display: flex; width: 100%; align-items: center; gap: 12px; text-align: left; color: var(--cp-neon-cyan, var(--accent-blue)); cursor: pointer; }
+.library-entry > span { flex: 1; display: grid; gap: 6px; }
+.library-entry strong { font-size: 16px; }
+.library-heading { display: flex; gap: 12px; align-items: center; }
+.library-heading > div { min-width: 0; flex: 1; }
+.library-heading h2 { margin: 0; font-size: 20px; }
+.library-heading p { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.library-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.rule-library .android-input { width: 100%; min-width: 0; }
+.rule-library .android-button { min-height: 44px; justify-content: center; }
+.rule-library summary { cursor: pointer; padding: 8px 0; color: var(--text-main); }
+.rule-library p { margin: 0; line-height: 1.6; }
+.rule-library small, .library-group-title > span { color: var(--text-muted); }
+.library-sources[open], .library-import-history[open] { display: grid; gap: 12px; }
+.library-source { display: grid; min-width: 0; gap: 8px; border-top: 1px solid var(--border-soft); padding-top: 12px; font-size: 12px; }
+.library-source strong { font-size: 14px; }
+.library-url { font-size: 12px; overflow-wrap: anywhere; color: var(--text-muted); }
+.library-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.library-actions .android-button { flex: 1; min-width: 78px; }
+.library-search { display: flex; gap: 8px; align-items: center; color: var(--cp-neon-cyan, var(--accent-blue)); }
+.library-app-list { display: grid; gap: 10px; }
+.library-app-button { width: 100%; text-align: left; color: var(--text-main); cursor: pointer; gap: 6px; }
+.library-app-button strong { font-size: 15px; }
+.library-empty { min-height: 110px; padding: 20px; text-align: center; }
+.library-source-groups { display: grid; gap: 10px; }
+.library-source-heading { display: grid; gap: 6px; padding: 8px 2px; }
+.library-source-heading h3 { margin: 0; font-size: 14px; color: var(--cp-neon-cyan, var(--accent-blue)); }
+.library-source-heading span { font-size: 11px; color: var(--text-muted); }
+.library-group-title { display: flex; gap: 10px; justify-content: space-between; align-items: start; }
+.library-group-title h3 { margin: 0; font-size: 15px; overflow-wrap: anywhere; }
+.library-group-title > span { font-size: 11px; flex-shrink: 0; }
+.library-group-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); }
+.library-description { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rule-library .library-error { color: var(--accent-warn); font-size: 12px; overflow-wrap: anywhere; }
+.library-active-test > span { font-size: 12px; color: var(--text-muted); }
+.library-raw summary { font-size: 12px; color: var(--text-muted); }
+.library-raw pre { max-height: 300px; margin: 0; padding: 10px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-3); font-size: 11px; }
+.library-notice { display: flex; justify-content: space-between; gap: 10px; overflow-wrap: anywhere; }
+.library-notice > button { flex-shrink: 0; align-self: start; min-width: 24px; min-height: 24px; background: transparent; color: inherit; cursor: pointer; }
+.rule-library button:focus-visible, .rule-library input:focus-visible, .rule-library summary:focus-visible, .library-entry:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }

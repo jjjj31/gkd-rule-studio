@@ -19,12 +19,15 @@ import {
   KeyRound,
   ListChecks,
   Loader2,
+  Music2,
   Pencil,
   Plus,
   Plug,
   RefreshCw,
   ScrollText,
+  Search,
   Smartphone,
+  Star,
   Trash2,
   X,
 } from "lucide-react";
@@ -157,7 +160,6 @@ import {
   createEmptyTestSubscription,
   exportRawSubscription,
   markImportedAndClearBuffer,
-  summarizeTestSubscription,
   wasSelectorImported,
   type TestSubscriptionDraft,
 } from "../lib/testSubscription";
@@ -201,6 +203,10 @@ import type {
 } from "../types/ruleDraft";
 import { ScreenshotCanvas } from "./ScreenshotCanvas";
 import AndroidUpdatePanel from "./AndroidUpdatePanel";
+import { SubscriptionLibrary } from "./SubscriptionLibrary";
+import { buildLibraryTestSubscription } from "../lib/subscriptionTesting";
+import { libraryContentKey } from "../lib/subscriptionLibrary";
+import type { LibrarySelection, LibraryTest } from "../types/subscriptionLibrary";
 
 const CUSTOM_SCENARIO_OPTION_ID = "__custom_scenario__";
 type AndroidWorkspaceTab = "scene" | "candidates" | "prompt" | "steps" | "ai";
@@ -223,7 +229,10 @@ export function AndroidLiteApp() {
     readStoredTargetPackage,
   );
   const [client, setClient] = useState<DeviceApiClient | null>(null);
-  const [view, setView] = useState<"home" | "workspace">("home");
+  const clientRef = useRef<DeviceApiClient | null>(null);
+  const [view, setView] = useState<"home" | "workspace" | "library">("home");
+  const [libraryTests, setLibraryTests] = useState<LibraryTest[]>([]);
+  const libraryTestRef = useRef<LibraryTest | null>(null);
   const [snapshots, setSnapshots] = useState<DeviceSnapshotSummary[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState("");
   const [selectedSnapshotIds, setSelectedSnapshotIds] = useState<Set<number>>(
@@ -307,6 +316,7 @@ export function AndroidLiteApp() {
   const [logPageOpen, setLogPageOpen] = useState(false);
   const [testPageOpen, setTestPageOpen] = useState(false);
   const [updatePanelOpen, setUpdatePanelOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [updateSilentChecked, setUpdateSilentChecked] = useState(false);
   const [flowPreparing, setFlowPreparing] = useState(false);
   const pushedWorkspaceHistoryRef = useRef(false);
@@ -314,11 +324,7 @@ export function AndroidLiteApp() {
   const mainMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const externalAiMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const prolongedMainRef = useRef(false);
-  const syncQueueRef = useRef<{
-    running: boolean;
-    pendingState: InlineRuleTestingState | null;
-    pendingMessage: string;
-  }>({ running: false, pendingState: null, pendingMessage: "" });
+  const syncQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const activeFlowStep =
     flowSteps.find((step) => step.id === activeFlowStepId) ?? null;
   const effectiveRuleSettings =
@@ -453,8 +459,12 @@ export function AndroidLiteApp() {
     (activeAiSession.candidates.length === 0 && !activeAiSessionHasTestingItem);
 
   useEffect(() => {
-    function handlePopState(): void {
+    function handlePopState(event: PopStateEvent): void {
       if (!pushedWorkspaceHistoryRef.current) return;
+      if (event.state?.gkdRuleBuilderView === "library") {
+        setView("library");
+        return;
+      }
       pushedWorkspaceHistoryRef.current = false;
       setView("home");
       setMessage(null);
@@ -493,14 +503,14 @@ export function AndroidLiteApp() {
   }, []);
 
   useEffect(() => {
-    if (view !== "workspace" || pushedWorkspaceHistoryRef.current) return;
+    if (view === "home" || pushedWorkspaceHistoryRef.current) return;
 
     window.history.pushState(
       {
         ...(typeof window.history.state === "object" && window.history.state
           ? window.history.state
           : {}),
-        gkdRuleBuilderView: "workspace",
+        gkdRuleBuilderView: view,
       },
       "",
       window.location.href,
@@ -509,7 +519,7 @@ export function AndroidLiteApp() {
   }, [view]);
 
   useEffect(() => {
-    window.GkdAndroidBridge?.setBackVisible?.(view === "workspace");
+    window.GkdAndroidBridge?.setBackVisible?.(view !== "home");
     window.__GkdAndroidBack = () => backHome();
     return () => {
       window.__GkdAndroidBack = undefined;
@@ -591,10 +601,13 @@ export function AndroidLiteApp() {
   async function connect(): Promise<void> {
     setLoading(true);
     setMessage(null);
+    clientRef.current = null;
+    setClient(null);
     try {
       const origin = resolveConnectOrigin(deviceUrl);
       const nextClient = await createDeviceApiClient(origin);
       const nextSnapshots = await nextClient.getSnapshots();
+      clientRef.current = nextClient;
       setClient(nextClient);
       setSnapshots(nextSnapshots);
       setSelectedSnapshotId(nextSnapshots[0]?.id ? String(nextSnapshots[0].id) : "");
@@ -614,6 +627,7 @@ export function AndroidLiteApp() {
         serverInfo: nextClient.serverInfo,
         snapshotCount: nextSnapshots.length,
       });
+      if (libraryTestRef.current) void syncInlineTestsToGkd(inlineTestingRef.current);
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : "连接设备失败";
       debugLog("error", "connect:fail", msg);
@@ -1348,39 +1362,40 @@ export function AndroidLiteApp() {
     void syncInlineTestsToGkd(nextState, "已将流程加入当前测试集合并同步到 GKD 测试");
   }
 
-  async function syncInlineTestsToGkd(
-    state = inlineTestingRef.current,
+  function syncInlineTestsToGkd(
+    _state = inlineTestingRef.current,
     successMessage = "当前测试集合已同步到 GKD 测试",
-  ): Promise<void> {
-    syncQueueRef.current.pendingState = state;
-    syncQueueRef.current.pendingMessage = successMessage;
-
-    if (syncQueueRef.current.running) return;
-    syncQueueRef.current.running = true;
-
-    try {
-      while (syncQueueRef.current.pendingState) {
-        const nextState = syncQueueRef.current.pendingState;
-        const nextMessage = syncQueueRef.current.pendingMessage;
-        syncQueueRef.current.pendingState = null;
-        await runSyncToGkd(nextState, nextMessage);
-      }
-    } finally {
-      syncQueueRef.current.running = false;
-    }
+  ): Promise<boolean> {
+    // All writers use the latest complete set when their turn starts, including library groups.
+    const queued = syncQueueRef.current.catch(() => false).then(() =>
+      runSyncToGkd(inlineTestingRef.current, successMessage),
+    );
+    syncQueueRef.current = queued;
+    return queued;
   }
 
   async function runSyncToGkd(
     state: InlineRuleTestingState,
     successMessage: string,
-  ): Promise<void> {
-    if (!client) {
-      setMessage("请先连接 GKD HTTP 服务");
-      return;
+  ): Promise<boolean> {
+    const device = clientRef.current;
+    const libraryAtStart = libraryTestRef.current;
+    if (!device || !matchesTargetPackage(device.serverInfo.gkdAppInfo?.id, targetPackage)) {
+      setMessage("请先连接对应版本的 GKD HTTP 服务");
+      if (libraryAtStart && libraryTestRef.current === libraryAtStart) {
+        commitLibraryTest({ ...libraryAtStart, error: "未连接对应版本，测试变更尚未同步；请连接正确目标后同步。" });
+      }
+      return false;
     }
 
     const draft = buildActiveTestSubscription(state);
-    const summary = summarizeTestSubscription(draft);
+    const payload = buildLibraryTestSubscription(exportRawSubscription(draft),
+      libraryAtStart && ["syncing", "testing", "failed"].includes(libraryAtStart.status) ? libraryAtStart : null);
+    const summary = {
+      appCount: payload.apps.length,
+      groupCount: payload.apps.reduce((sum, app) => sum + app.groups.length, 0),
+      ruleCount: payload.apps.reduce((sum, app) => sum + app.groups.reduce((n, group) => n + group.rules.length, 0), 0),
+    };
 
     if (summary.ruleCount === 0) {
       // Still send empty subscription to clear GKD's in-memory rules.
@@ -1389,22 +1404,75 @@ export function AndroidLiteApp() {
     setLoading(true);
     setMessage(null);
     try {
-      await client.updateSubscription(exportRawSubscription(draft));
+      await device.updateSubscription(payload);
+      const stillCurrent = device === clientRef.current && libraryTestRef.current === libraryAtStart;
+      if (libraryAtStart && stillCurrent) {
+        commitLibraryTest({ ...libraryAtStart, error: undefined,
+          status: ["syncing", "failed"].includes(libraryAtStart.status) ? "testing" : libraryAtStart.status });
+      }
+      if (stillCurrent) setLibraryTests((current) => current.map((test) => ({ ...test, error: undefined })));
       showMainTransient(
-        `${successMessage}：${summary.ruleCount} 条规则`,
+        stillCurrent ? `${successMessage}：${summary.ruleCount} 条规则` : "先前连接的测试已发送；当前目标或测试已变化，请同步当前集合。",
       );
       debugLog("sync", "gkd:ok", `${summary.ruleCount} rules`, {
         ruleCount: summary.ruleCount,
         appCount: summary.appCount,
         groupCount: summary.groupCount,
       });
+      return true;
     } catch (cause) {
       const msg = cause instanceof Error ? cause.message : "导入到 GKD 失败";
       debugLog("error", "gkd:fail", msg);
       setMessage(msg);
+      if (libraryAtStart && libraryTestRef.current === libraryAtStart) {
+        commitLibraryTest({ ...libraryAtStart,
+          status: ["syncing", "testing"].includes(libraryAtStart.status) ? "failed" : libraryAtStart.status,
+          error: `同步失败：${msg}。GKD 可能仍在运行上一次测试，请重试同步。` });
+      }
+      return false;
     } finally {
       setLoading(false);
     }
+  }
+
+  function commitLibraryTest(test: LibraryTest): void {
+    libraryTestRef.current = test;
+    setLibraryTests((current) => [test, ...current.filter((item) =>
+      item.version !== test.version || libraryContentKey(item) !== libraryContentKey(test))]);
+  }
+
+  async function startLibraryTest(selection: LibrarySelection): Promise<void> {
+    if (!clientRef.current || !matchesTargetPackage(clientRef.current.serverInfo.gkdAppInfo?.id, targetPackage)) {
+      setMessage("请先连接对应版本的 GKD HTTP 服务");
+      return;
+    }
+    const previous = libraryTestRef.current;
+    if (previous && ["syncing", "testing", "failed"].includes(previous.status)) {
+      commitLibraryTest({ ...previous, status: "ended", error: undefined });
+    }
+    commitLibraryTest({ ...selection, status: "syncing" });
+    await syncInlineTestsToGkd(inlineTestingRef.current, "所选规则组已发送，请在应用中测试");
+  }
+
+  async function finishLibraryTest(status: "ended" | "valid" | "invalid"): Promise<void> {
+    const current = libraryTestRef.current;
+    if (!current) return;
+    commitLibraryTest({ ...current, status, error: undefined });
+    await syncInlineTestsToGkd(inlineTestingRef.current, "已记录结果并结束规则库测试");
+  }
+
+  function changeTargetPackage(packageId: GkdTargetPackage): void {
+    storeTargetPackage(packageId);
+    setTargetPackage(packageId);
+    clientRef.current = null;
+    setClient(null);
+    setSnapshots([]);
+    setSelectedSnapshotIds(new Set());
+    const current = libraryTestRef.current;
+    if (current && ["syncing", "testing", "failed"].includes(current.status)) {
+      commitLibraryTest({ ...current, status: "failed", error: "目标已切换，请连接后同步当前测试集合" });
+    }
+    showMainTransient(`已切换目标：${targetPackageLabel(packageId)}`);
   }
 
   function endInlineTest(itemId: string): void {
@@ -2113,14 +2181,7 @@ export function AndroidLiteApp() {
           <div className="android-header-actions">
             <TargetVersionSwitch
               targetPackage={targetPackage}
-              onChange={(packageId) => {
-                storeTargetPackage(packageId);
-                setTargetPackage(packageId);
-                setClient(null);
-                setSnapshots([]);
-                setSelectedSnapshotIds(new Set());
-                showMainTransient(`已切换目标：${targetPackageLabel(packageId)}`);
-              }}
+              onChange={changeTargetPackage}
             />
             <button
               aria-label="模型配置"
@@ -2185,6 +2246,9 @@ export function AndroidLiteApp() {
       )}
       {view === "home" && (
         <section className="android-home">
+          <button className="android-card library-entry" type="button" onClick={() => setView("library")}>
+            <Search size={24} /><span><strong>订阅规则库</strong></span><ChevronRight size={20} />
+          </button>
           <div className="android-card android-connect-card">
             <div className="android-section-title">
               <h2>HTTP 服务</h2>
@@ -2210,7 +2274,7 @@ export function AndroidLiteApp() {
               </button>
             </div>
           </div>
-          {client ? (
+          {client && (
             <AndroidSnapshotChooser
               loading={loading}
               openingId={openingId}
@@ -2230,13 +2294,19 @@ export function AndroidLiteApp() {
               onStartRename={startRenameSnapshot}
               onToggle={toggleSnapshotSelection}
             />
-          ) : (
-            <div className="android-empty android-home-empty">
-              连接成功后会在这里显示手机保存的快照。
-            </div>
           )}
+          <button className="android-support-entry" type="button" onClick={() => setSupportOpen(true)}>
+            <Star size={15} />支持作者<ChevronRight size={15} />
+          </button>
         </section>
       )}
+
+      <SubscriptionLibrary active={view === "library"}
+        client={client} targetPackage={targetPackage} loading={loading}
+        tests={libraryTests} onClose={backHome}
+        onTest={startLibraryTest} onTestResult={finishLibraryTest}
+        onSync={() => syncInlineTestsToGkd(inlineTestingRef.current)}
+      />
 
       {view === "workspace" && (
       <>
@@ -2311,7 +2381,7 @@ export function AndroidLiteApp() {
             )}
           </>
         ) : (
-          <div className="android-empty">先连接手机 HTTP 服务并打开一个快照</div>
+          <div className="android-empty">未选择快照</div>
         )}
       </section>
 
@@ -2512,6 +2582,32 @@ export function AndroidLiteApp() {
       )}
       {updatePanelOpen && (
         <AndroidUpdatePanel onClose={() => setUpdatePanelOpen(false)} />
+      )}
+      {view === "home" && supportOpen && (
+        <div className="android-dialog-backdrop" role="presentation" onClick={() => setSupportOpen(false)}>
+          <section aria-label="支持作者" aria-modal="true" className="android-dialog android-support-dialog" role="dialog" onClick={(event) => event.stopPropagation()}>
+            <div className="android-dialog-head">
+              <h2>支持作者</h2>
+              <button aria-label="关闭" className="android-icon-button" type="button" onClick={() => setSupportOpen(false)}><X size={16} /></button>
+            </div>
+            <p>如果这个工具帮到了你，欢迎在 GitHub 点个 Star，或在抖音关注我：ooo35194。</p>
+            <div className="android-support-links">
+              <a className="android-button" href="https://github.com/jjjj31/gkd-rule-studio" target="_blank" rel="noopener noreferrer" onClick={(event) => { openSupportLink(event); setSupportOpen(false); }}><Star size={16} />GitHub 仓库</a>
+              <button className="android-button" type="button" onClick={() => {
+                setSupportOpen(false);
+                if (window.GkdAndroidBridge?.openDouyinSearch) {
+                  window.GkdAndroidBridge.openDouyinSearch();
+                } else {
+                  void copyTextToClipboard("ooo35194").then(() => showMainTransient("抖音号已复制"));
+                }
+              }}><Music2 size={16} />打开抖音</button>
+            </div>
+            <button className="android-support-copy" type="button" onClick={() => {
+              void copyTextToClipboard("ooo35194").then(() => showMainTransient("抖音号已复制"));
+              setSupportOpen(false);
+            }}><Copy size={14} />复制抖音号</button>
+          </section>
+        </div>
       )}
     </main>
   );
@@ -2939,7 +3035,7 @@ function AndroidTestPage({
           })}
         </div>
       ) : (
-        <p className="android-muted">还没有正在测试或测试过的规则。</p>
+        <p className="android-muted">暂无测试记录</p>
       )}
     </section>
   );
@@ -2976,6 +3072,13 @@ function AndroidWorkspaceTabs({
       ))}
     </nav>
   );
+}
+
+function openSupportLink(event: MouseEvent<HTMLAnchorElement>): void {
+  if (window.GkdAndroidBridge?.openExternalUrl) {
+    event.preventDefault();
+    window.GkdAndroidBridge.openExternalUrl(event.currentTarget.href);
+  }
 }
 
 function TargetVersionSwitch({
@@ -3535,7 +3638,7 @@ function AndroidAiSessionManagerPage({
             })}
           </div>
         ) : (
-          <div className="android-empty">当前模式还没有 AI session。</div>
+          <div className="android-empty">暂无会话</div>
         )}
       </div>
     </section>
@@ -4472,7 +4575,7 @@ function AndroidSnapshotChooser({
           })}
         </div>
       ) : (
-        <div className="android-empty">手机上没有快照。请先在 GKD 里保存快照，然后刷新。</div>
+        <div className="android-empty">暂无快照</div>
       )}
       <div className="android-action-row">
         <button
@@ -4687,7 +4790,7 @@ function AndroidFlowEditor({
           <code>{flowPreview}</code>
         </pre>
       ) : (
-        <p className="android-muted">至少有一个步骤选中候选 selector 后才会生成流程规则。</p>
+        <p className="android-muted">尚未选择步骤规则</p>
       )}
     </div>
   );

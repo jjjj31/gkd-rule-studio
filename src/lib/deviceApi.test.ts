@@ -3,6 +3,7 @@ import { createDeviceApiClient } from "./deviceApi";
 import type { DeviceServerInfo } from "../types/gkdSnapshot";
 import type { RawSubscriptionDraft } from "./testSubscription";
 import type { AppRuleDraft } from "../types/ruleDraft";
+import type { SubscriptionApp } from "../types/subscriptionLibrary";
 
 describe("device api", () => {
   afterEach(() => {
@@ -98,6 +99,36 @@ describe("device api", () => {
       addedRules: 1,
       skippedDuplicates: 0,
     });
+  });
+
+  it("sends a complete external group without selector deduplication or field loss", async () => {
+    const bodies: unknown[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (String(input).endsWith("getServerInfo")) return jsonResponse({ device: {}, gkdAppInfo: { id: "li.songe.gkd.debug", name: "GKD" } });
+      bodies.push(JSON.parse(String(init?.body)));
+      return jsonResponse({ ok: true, action: "append", appId: "com.demo", addedGroups: 1, addedRules: 2, skippedDuplicates: 0 });
+    });
+    const client = await createDeviceApiClient("http://127.0.0.1:8888");
+    const app: SubscriptionApp = { id: "com.demo", name: "Demo", groups: [{
+      key: 9, name: "流程", actionCdKey: 0, unknownField: { keep: true },
+      rules: [{ key: 0, anyMatches: "A" }, { key: 1, preKeys: [0], matches: "A", actionCd: 5000 }],
+    }] };
+    await client.appendLocalRules(app, { dedupe: false });
+    expect(bodies).toEqual([{ app, dedupe: false }]);
+  });
+
+  it("rejects incomplete write responses without claiming a successful import", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("getServerInfo")
+      ? jsonResponse({ device: {} }) : jsonResponse({ ok: true }));
+    const client = await createDeviceApiClient("http://127.0.0.1:8888");
+    await expect(client.appendLocalRules({ id: "com.demo", name: "Demo", groups: [] })).rejects.toThrow("核对");
+  });
+
+  it("accepts a complete response when the serializer omits default success fields", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => String(input).endsWith("getServerInfo")
+      ? jsonResponse({ device: {} }) : jsonResponse({ appId: "com.demo", addedGroups: 1, addedRules: 2, skippedDuplicates: 0 }));
+    const client = await createDeviceApiClient("http://127.0.0.1:8888");
+    await expect(client.appendLocalRules({ id: "com.demo", name: "Demo", groups: [] })).resolves.toMatchObject({ ok: true, action: "append", addedRules: 2 });
   });
 });
 

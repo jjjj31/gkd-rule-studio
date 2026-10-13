@@ -3,6 +3,8 @@
 interface Window {
   GkdAndroidBridge?: {
     copyToClipboard?: (text: string) => void;
+    openExternalUrl?: (url: string) => void;
+    openDouyinSearch?: () => void;
     setBackVisible?: (visible: boolean) => void;
     saveFile?: (fileName: string, mimeType: string, base64: string) => void;
     postJson?: (

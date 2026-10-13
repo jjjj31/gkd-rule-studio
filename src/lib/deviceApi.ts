@@ -11,6 +11,7 @@ import type {
 } from "../types/gkdSnapshot";
 import type { AppRuleDraft } from "../types/ruleDraft";
 import type { RawSubscriptionDraft } from "./testSubscription";
+import type { LibraryTestSubscription, SubscriptionApp } from "../types/subscriptionLibrary";
 import { enhancedFetch, extensionFetch, hasNetworkExtension, fetchWithTimeout } from "./networkExtension";
 import { normalizeSnapshot } from "./snapshotNormalize";
 
@@ -56,8 +57,8 @@ export interface DeviceApiClient {
   getScreenshot: (id: number) => Promise<ArrayBuffer>;
   captureSnapshot: () => Promise<RawGkdSnapshot>;
   loadSnapshot: (id: number) => Promise<ParsedGkdSnapshot>;
-  updateSubscription: (subscription: RawSubscriptionDraft) => Promise<void>;
-  appendLocalRules: (app: AppRuleDraft) => Promise<LocalRulesAppendResponse>;
+  updateSubscription: (subscription: RawSubscriptionDraft | LibraryTestSubscription) => Promise<void>;
+  appendLocalRules: (app: AppRuleDraft | SubscriptionApp, options?: { dedupe?: boolean }) => Promise<LocalRulesAppendResponse>;
 }
 
 /**
@@ -102,11 +103,17 @@ export async function createDeviceApiClient(input: string): Promise<DeviceApiCli
     updateSubscription: async (subscription) => {
       await postJson(origin, "updateSubscription", subscription);
     },
-    appendLocalRules: async (app) => {
-      return postJson<LocalRulesAppendResponse>(origin, "localRules/append", {
+    appendLocalRules: async (app, options = {}) => {
+      const result = await postJson<LocalRulesAppendResponse>(origin, "localRules/append", {
         app,
-        dedupe: true,
+        dedupe: options.dedupe ?? true,
       });
+      if (!result || (result.ok !== undefined && result.ok !== true) ||
+        (result.action !== undefined && result.action !== "append") || result.appId !== app.id ||
+        ![result.addedGroups, result.addedRules, result.skippedDuplicates].every((count) => Number.isSafeInteger(count) && count >= 0)) {
+        throw new Error("GKD 返回的导入结果不完整，请在 GKD 核对是否已写入后再重试");
+      }
+      return { ...result, ok: true, action: "append" };
     },
     loadSnapshot: async (id) => {
       const [snapshot, screenshot] = await Promise.all([

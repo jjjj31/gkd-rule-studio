@@ -99,7 +99,7 @@ export async function enhancedFetch(
   try {
     return await fetchWithTimeout(input, init, options.timeout);
   } catch (cause) {
-    if (!hasNetworkExtension()) throw cause;
+    if (init.signal?.aborted || !hasNetworkExtension()) throw cause;
     return extensionFetch(input, init, options);
   }
 }
