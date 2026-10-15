@@ -1,0 +1,39 @@
+.app-sdk-panel { display: grid; gap: 14px; min-width: 0; overflow-wrap: anywhere; }
+.app-sdk-panel .android-input { width: 100%; min-width: 0; }
+.app-sdk-panel .android-button { min-height: 44px; justify-content: center; }
+.app-sdk-panel summary { cursor: pointer; padding: 8px 0; color: var(--text-main); }
+.app-sdk-panel small { color: var(--text-muted); }
+.app-sdk-panel p { margin: 0; line-height: 1.6; }
+.app-sdk-panel .library-heading { display: flex; gap: 12px; align-items: center; }
+.app-sdk-panel .library-heading > div { min-width: 0; flex: 1; }
+.app-sdk-panel .library-heading h2 { margin: 0; font-size: 20px; }
+.app-sdk-panel .library-heading p { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
+.app-sdk-panel .library-search { display: flex; gap: 8px; align-items: center; color: var(--cp-neon-cyan, var(--accent-blue)); }
+.app-sdk-panel .library-app-list { display: grid; gap: 10px; }
+.app-sdk-panel .library-app-button { width: 100%; text-align: left; color: var(--text-main); cursor: pointer; gap: 6px; }
+.app-sdk-panel .library-app-button strong { font-size: 15px; }
+.app-sdk-panel .library-empty { min-height: 110px; padding: 20px; text-align: center; }
+.app-sdk-panel .library-url { font-size: 12px; overflow-wrap: anywhere; color: var(--text-muted); }
+.app-sdk-panel .library-notice { display: flex; justify-content: space-between; gap: 10px; overflow-wrap: anywhere; }
+.app-sdk-panel .library-notice > button { flex-shrink: 0; align-self: start; min-width: 24px; min-height: 24px; background: transparent; color: inherit; cursor: pointer; }
+.app-sdk-panel .library-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.app-sdk-panel .library-actions .android-button { flex: 1; min-width: 78px; }
+.app-sdk-panel button:focus-visible, .app-sdk-panel input:focus-visible, .app-sdk-panel summary:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
+.ad-sdk-import { display: grid; gap: 10px; }
+.ad-sdk-file-input { display: none; }
+.ad-sdk-meta { display: grid; gap: 6px; font-size: 12px; }
+.ad-sdk-detail { display: grid; gap: 6px; border-top: 1px solid var(--border-soft); padding-top: 6px; }
+.ad-sdk-detail summary { font-size: 13px; }
+.ad-sdk-detail summary small { margin-left: 4px; }
+.ad-sdk-evidence { display: grid; gap: 6px; margin: 0; padding: 0 0 6px 18px; font-size: 12px; }
+.ad-sdk-evidence li { line-height: 1.6; overflow-wrap: anywhere; }
+.ad-sdk-evidence code { background: var(--surface-3); padding: 1px 4px; font-size: 11px; overflow-wrap: anywhere; }
+.ad-sdk-hint { display: block; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
+
+.ad-sdk-summary { display: grid; gap: 12px; }
+.ad-sdk-block { display: grid; gap: 6px; min-width: 0; }
+.ad-sdk-block > strong { font-size: 14px; color: var(--cp-neon-cyan, var(--accent-blue)); }
+
+.ad-sdk-spin { animation: ad-sdk-spin 1s linear infinite; }
+@keyframes ad-sdk-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

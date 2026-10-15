@@ -8,6 +8,12 @@ import type { NormalizedSnapshotNode } from "../types/gkdSnapshot";
 import JSON5 from "json5";
 import type { AppRuleDraft, RuleDraft } from "../types/ruleDraft";
 import type { FlowDraftInput, FlowRuleStep } from "../types/flowDraft";
+import type { AppSdkProfile } from "../types/appSdkProfile";
+import {
+  findAppSdkProfile,
+  formatAdSdkContextLines,
+  resolveAdSdkContext,
+} from "./adSdkContext";
 import { formatRuleSettingsLines } from "./helpPrompt";
 
 interface BuildableFlowStep extends FlowRuleStep {
@@ -92,7 +98,13 @@ export function buildFlowHelpPrompt(input: FlowDraftInput): string {
 
   input.steps.forEach((step, index) => {
     lines.push(
-      ...formatStepForPrompt(step, index, includeNodeTrees, input.stepScenarios?.[step.id]),
+      ...formatStepForPrompt(
+        step,
+        index,
+        includeNodeTrees,
+        input.stepScenarios?.[step.id],
+        input.adSdkProfiles,
+      ),
       "",
     );
   });
@@ -148,9 +160,17 @@ function formatStepForPrompt(
   index: number,
   includeTree: boolean,
   scenario?: { label: string; description?: string },
+  adSdkProfiles?: readonly AppSdkProfile[] | null,
 ): string[] {
   const pickResult = step.pickResult;
   const stepTitle = step.title.trim() || `步骤 ${index + 1}`;
+  const adSdkLines = formatAdSdkContextLines(
+    resolveAdSdkContext(
+      step.snapshot,
+      findAppSdkProfile(adSdkProfiles, step.snapshot.appId),
+    ),
+    { indent: "  " },
+  );
   const lines = [
     `步骤 ${index + 1}：${stepTitle}`,
     `- note: ${step.note.trim() || "-"}`,
@@ -160,6 +180,7 @@ function formatStepForPrompt(
     `- appName: ${step.snapshot.appInfo?.name ?? "-"}`,
     `- activityId: ${step.snapshot.activityId ?? "-"}`,
     `- sourceName: ${step.snapshot.sourceName}`,
+    ...adSdkLines,
     ...(scenario
       ? [
           `- 场景: ${scenario.label}${scenario.description ? `（${scenario.description}）` : ""}`,

@@ -20,6 +20,7 @@ import {
   ListChecks,
   Loader2,
   Music2,
+  PackageSearch,
   Pencil,
   Plus,
   Plug,
@@ -106,6 +107,7 @@ import {
   stringifyFlowRuleDraft,
 } from "../lib/flowDraft";
 import { buildHelpPrompt } from "../lib/helpPrompt";
+import { loadAppSdkProfiles } from "../lib/libCheckerImport";
 import {
   buildAiBatchFeedbackMessages,
   buildExternalFeedbackPrompt,
@@ -204,6 +206,7 @@ import type {
 import { ScreenshotCanvas } from "./ScreenshotCanvas";
 import AndroidUpdatePanel from "./AndroidUpdatePanel";
 import { SubscriptionLibrary } from "./SubscriptionLibrary";
+import { AdSdkWorkspaceSummary, AppSdkPanel } from "./AppSdkPanel";
 import { buildLibraryTestSubscription } from "../lib/subscriptionTesting";
 import { libraryContentKey } from "../lib/subscriptionLibrary";
 import type { LibrarySelection, LibraryTest } from "../types/subscriptionLibrary";
@@ -230,7 +233,9 @@ export function AndroidLiteApp() {
   );
   const [client, setClient] = useState<DeviceApiClient | null>(null);
   const clientRef = useRef<DeviceApiClient | null>(null);
-  const [view, setView] = useState<"home" | "workspace" | "library">("home");
+  const [view, setView] = useState<"home" | "workspace" | "library" | "sdk">(
+    "home",
+  );
   const [libraryTests, setLibraryTests] = useState<LibraryTest[]>([]);
   const libraryTestRef = useRef<LibraryTest | null>(null);
   const [snapshots, setSnapshots] = useState<DeviceSnapshotSummary[]>([]);
@@ -282,6 +287,8 @@ export function AndroidLiteApp() {
   const [snapshotMemory, setSnapshotMemory] = useState<
     Record<string, SnapshotWorkspaceMemory>
   >(loadSnapshotWorkspaceMemory);
+  const [appSdkState, setAppSdkState] = useState(() => loadAppSdkProfiles());
+  const appSdkProfiles = appSdkState.profiles;
   const [aiProfileStore, setAiProfileStore] =
     useState<AiModelProfileStore>(loadAiProfileStore);
   const [aiConfig, setAiConfig] = useState<AiModelConfig>(loadAiConfig);
@@ -383,16 +390,18 @@ export function AndroidLiteApp() {
       flowDesc,
       steps: flowSteps,
       stepScenarios: stepScenarioInfos,
+      adSdkProfiles: appSdkProfiles,
     });
-  }, [flowName, flowDesc, flowSteps, stepScenarioInfos]);
+  }, [flowName, flowDesc, flowSteps, stepScenarioInfos, appSdkProfiles]);
   const singleAiPrompt = useMemo(() => {
     return buildHelpPrompt({
       snapshot,
       pickResult,
       ruleSettings,
       scenario: scenarioInfo,
+      adSdkProfiles: appSdkProfiles,
     });
-  }, [snapshot, pickResult, ruleSettings, scenarioInfo]);
+  }, [snapshot, pickResult, ruleSettings, scenarioInfo, appSdkProfiles]);
   const selectedSnapshotList = useMemo(
     () => snapshots.filter((item) => selectedSnapshotIds.has(item.id)),
     [snapshots, selectedSnapshotIds],
@@ -950,6 +959,7 @@ export function AndroidLiteApp() {
       pickResult,
       ruleSettings,
       scenario: scenarioInfo,
+      adSdkProfiles: appSdkProfiles,
     });
     await copyTextToClipboard(prompt);
     markCopied("rule");
@@ -968,6 +978,7 @@ export function AndroidLiteApp() {
       flowDesc,
       steps: flowSteps,
       stepScenarios: stepScenarioInfos,
+      adSdkProfiles: appSdkProfiles,
     });
     await copyTextToClipboard(prompt);
     markCopied("flowPrompt");
@@ -2249,6 +2260,9 @@ export function AndroidLiteApp() {
           <button className="android-card library-entry" type="button" onClick={() => setView("library")}>
             <Search size={24} /><span><strong>订阅规则库</strong></span><ChevronRight size={20} />
           </button>
+          <button className="android-card library-entry" type="button" onClick={() => setView("sdk")}>
+            <PackageSearch size={24} /><span><strong>SDK 信息</strong></span><ChevronRight size={20} />
+          </button>
           <div className="android-card android-connect-card">
             <div className="android-section-title">
               <h2>HTTP 服务</h2>
@@ -2306,6 +2320,16 @@ export function AndroidLiteApp() {
         tests={libraryTests} onClose={backHome}
         onTest={startLibraryTest} onTestResult={finishLibraryTest}
         onSync={() => syncInlineTestsToGkd(inlineTestingRef.current)}
+      />
+
+      <AppSdkPanel
+        active={view === "sdk"}
+        loadError={appSdkState.error}
+        profiles={appSdkProfiles}
+        onClose={backHome}
+        onProfilesChange={(profiles) =>
+          setAppSdkState({ profiles, error: undefined })
+        }
       />
 
       {view === "workspace" && (
@@ -2384,6 +2408,8 @@ export function AndroidLiteApp() {
           <div className="android-empty">未选择快照</div>
         )}
       </section>
+
+      <AdSdkWorkspaceSummary profiles={appSdkProfiles} snapshot={snapshot} />
 
       <AndroidWorkspaceTabs
         activeTab={activeTab}

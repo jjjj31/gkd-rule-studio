@@ -7,6 +7,7 @@ import type {
   RuleSettings,
   SelectorCandidate,
 } from "./ruleDraft";
+import type { AppSdkProfile } from "./appSdkProfile";
 
 export interface FlowRuleStep {
   id: string;
@@ -33,4 +34,9 @@ export interface FlowDraftInput {
   includeNodeTrees?: boolean;
   /** 按步骤 id 提供场景名称/说明（预设或自定义场景），未提供的步骤只输出参数值。 */
   stepScenarios?: Record<string, PromptScenarioInfo | undefined>;
+  /**
+   * 已导入的 LibChecker 应用 SDK 档案。每一步只按自己的 appId 精确关联，
+   * 多应用流程不会互相泄漏背景；不传时 prompt 与原来完全一致。
+   */
+  adSdkProfiles?: readonly AppSdkProfile[] | null;
 }

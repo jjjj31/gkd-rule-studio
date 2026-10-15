@@ -2,6 +2,7 @@ package com.gkdrulebuilder.android;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentValues;
@@ -19,6 +20,8 @@ import android.os.Looper;
 import android.provider.MediaStore;
 import android.provider.Settings;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -50,7 +53,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class MainActivity extends Activity {
+    /** WebView 文件选择的请求码；结果在 onActivityResult 里交回 input 元素。 */
+    private static final int FILE_CHOOSER_REQUEST_CODE = 1001;
+
     private WebView webView;
+    private ValueCallback<Uri[]> filePathCallback;
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
@@ -82,6 +89,16 @@ public class MainActivity extends Activity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
         webView.setWebViewClient(new WebViewClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(
+                WebView view,
+                ValueCallback<Uri[]> callback,
+                FileChooserParams params
+            ) {
+                return startFileChooser(callback, params);
+            }
+        });
         webView.addJavascriptInterface(new AndroidBridge(this, webView), "GkdAndroidBridge");
         webView.loadUrl("file:///android_asset/index.html#android");
         if (getActionBar() != null) {
@@ -108,6 +125,68 @@ public class MainActivity extends Activity {
             return;
         }
         super.onBackPressed();
+    }
+
+    /**
+     * 打开系统文件选择器供 WebView 的 input[type=file] 使用。
+     *
+     * 用宽松的通配 MIME 而不是照搬 accept：LibChecker 的 .lcapps 是未知扩展名，
+     * 系统可能只把它标成 application/octet-stream，收紧 MIME 会让文件在部分
+     * 选择器里不可见。格式校验由前端按内容完成，这里不申请任何存储权限。
+     */
+    private boolean startFileChooser(
+        ValueCallback<Uri[]> callback,
+        WebChromeClient.FileChooserParams params
+    ) {
+        // 上一次选择还没结束就再次触发时，先结束旧回调，避免 input 卡住。
+        if (filePathCallback != null) {
+            filePathCallback.onReceiveValue(null);
+            filePathCallback = null;
+        }
+        filePathCallback = callback;
+
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        if (params != null && params.getMode() == WebChromeClient.FileChooserParams.MODE_OPEN_MULTIPLE) {
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+        }
+
+        try {
+            startActivityForResult(intent, FILE_CHOOSER_REQUEST_CODE);
+            return true;
+        } catch (ActivityNotFoundException cause) {
+            filePathCallback = null;
+            callback.onReceiveValue(null);
+            Toast.makeText(this, "未找到可用的文件选择器", Toast.LENGTH_SHORT).show();
+            return false;
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == FILE_CHOOSER_REQUEST_CODE) {
+            if (filePathCallback == null) return;
+            Uri[] results = null;
+            if (resultCode == Activity.RESULT_OK) {
+                // 取消时 data 可能为 null 或不含 data；parseResult 统一处理多选与单选。
+                results = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+            }
+            filePathCallback.onReceiveValue(results);
+            filePathCallback = null;
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    protected void onDestroy() {
+        // Activity 销毁时结束未完成的文件选择，避免 WebView 的 input 一直等待。
+        if (filePathCallback != null) {
+            filePathCallback.onReceiveValue(null);
+            filePathCallback = null;
+        }
+        super.onDestroy();
     }
 
     public static class AndroidBridge {
