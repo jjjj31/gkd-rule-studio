@@ -1,53 +1,34 @@
 # GKD Rule Studio
 
-[![GitHub release](https://img.shields.io/github/v/release/jjjj31/gkd-rule-studio?label=release)](https://github.com/jjjj31/gkd-rule-studio/releases)
-[![GitHub stars](https://img.shields.io/github/stars/jjjj31/gkd-rule-studio?style=flat)](https://github.com/jjjj31/gkd-rule-studio/stargazers)
 [![License: SATA](https://img.shields.io/badge/License-SATA-blue.svg)](LICENSE)
 
-在手机上帮 [GKD](https://github.com/gkd-kit/gkd) 生成跳过规则的辅助工具。连上 GKD HTTP 服务，在截图上拖动选目标控件，自动出候选规则 → 测试 → 导入，一条龙。不连接设备时，也可以从订阅里找现成规则，或者浏览、导入 LibChecker 导出的应用 SDK 信息。
-
-<p align="center">
-  <img src="docs/images/hero.png" alt="GKD Rule Studio 界面预览：首页、规则生成工作区、订阅规则库" />
-</p>
+在手机上帮 GKD 生成跳过规则的辅助工具。连上 GKD HTTP 服务，在截图上拖动选目标控件，自动出候选规则 → 测试 → 导入，一条龙。
 
 > 桌面版（Windows/Web）仍在但不主动维护。以下内容以 Android 版为准。
->
-> 截图使用模拟 GKD 数据和合成的广告画面，仅用于演示界面。
 
 ## 亮点
 
-**📚 订阅规则库** — 不连设备也能用。添加 GKD 订阅链接后按应用名搜索，逐组查看规则、复制 JSON5 粘贴到 GKD，或连上 Beta 版直接导入。订阅缓存在本地，断网也能继续搜。
+**🧠 AI 定制场景** — 用自然语言描述你的场景（比如"进首页后 5 秒弹出的新人红包"），复制 prompt 给 AI，AI 返回 JSON5 格式的场景配置，粘贴回来就能用。8 种内置预设不够？自己造。
 
-**⚡ 一键生成规则** — 截图画布上拖动放大镜定位控件，松手瞬间出候选规则。15 种选择器策略自动打分排序，不用写一行 GKD selector。
+**⚡ 一键生成规则** — 截图画布上拖动放大镜定位控件，松手瞬间出候选规则。14 种选择器策略自动打分排序，不用写一行 GKD selector。
 
 **🧪 同时测试多条规则** — 同一控件可以加多个候选同时测试，在手机上触发一次就能对比哪条命中最准。测试管理页统一查看所有测试状态。
 
-**📥 一键导入本地订阅** — 测试有效的规则点一下「导入」就存进 GKD 本地规则，不用复制粘贴。（需要 GKD fork 版，官方版暂不支持）
+**📥 一键导入本地订阅** — 测试有效的规则点一下"导入"就存进 GKD 本地规则，不用复制粘贴。（需要 GKD fork 版，官方版暂不支持）
 
-**🔍 识别应用里的广告 SDK** — 用 LibChecker 导出应用信息后导入，生成器按已有签名表匹配应用包含的穿山甲、优量汇、快手等广告 SDK；工作区同时显示应用清单和当前页面的 SDK 特征，并一起带进求助 prompt 和内置 AI。
+**🔍 识别应用里的广告 SDK** — 用 LibChecker 导出应用信息后导入，生成器按已有签名表匹配应用包含的穿山甲、优量汇等广告 SDK；工作区同时显示应用清单和当前页面的 SDK 特征，并一起带进求助 prompt 和内置 AI。
 
-**🧠 AI 定制场景** — 用自然语言描述你的场景（比如"进首页后 5 秒弹出的新人红包"），复制 prompt 给 AI，AI 返回 JSON5 格式的场景配置，粘贴回来就能用。9 种内置预设不够？自己造。
+**🔄 软件内更新** — App 内直接检查新版本、下载并安装，不用去 Releases 页翻。发版由 GitHub Actions 自动完成：打 tag 即自动构建 APK 并生成更新清单。清单在国内网络下会自动尝试镜像源。
 
 **📋 一键复制求助 Prompt** — 内置结构化的求助 prompt，包含当前控件信息、节点树上下文、GKD selector 语法约束。复制到 ChatGPT / Claude / Kimi 等任何 AI 工具，拿回复粘贴回来自动提取规则。
 
 **🤖 内置 AI 直接生成** — 配置好 API Key 后在 App 里直接调 AI 生成规则，不需要来回切 App 复制粘贴。
 
-**🔄 软件内更新** — App 内直接检查新版本、下载并安装，不用去 Releases 页翻。发版由 GitHub Actions 自动完成：打 tag 即自动构建 APK 并生成更新清单。清单在国内网络下会自动尝试镜像源。
+**🔒 基础功能离线可用** — 选点出候选、测试导入全在本地完成，没有 API Key 也能照常用。仅 AI 生成、检查更新、加载字体需要联网。
 
-**🔒 基础功能离线可用** — 选点出候选、测试导入、缓存过的订阅全在本地完成，没有 API Key 也能照常用。仅 AI 生成、检查更新、首次下载订阅需要联网。
-
-**📦 轻量安装包** — 一个纯 WebView + 前端代码的轻量 APK（当前版本不到 500 KB），不内置任何 AI 模型、不需要 Google Play Service。
+**📦 轻量安装包** — 一个纯 WebView + 前端代码的轻量 APK，不内置任何 AI 模型、不需要 Google Play Service。
 
 ## 快速开始
-
-### 想直接找现成规则
-
-1. 下载 APK、安装（不需要连接设备）
-2. 首页打开「订阅规则库」→「管理订阅来源」，粘贴一个 GKD 订阅文件链接
-3. 输入软件名或包名，进入应用后逐组浏览规则
-4. 点「复制」得到 JSON5，粘到 GKD → 本地订阅 → 应用规则的添加位置；或连上 GKD Beta 版直接「导入」
-
-### 想自己生成规则
 
 1. 下载 APK、安装
 2. 打开 GKD → 侧边栏 → HTTP 服务 → 启动
@@ -59,13 +40,9 @@
 
 多步骤操作：勾选多张快照进入工作区，在「步骤」标签页编排顺序，适合"点红包 → 返回"这种连续操作。
 
-## 三种用法
+## 什么时候用什么方式
 
-### 1. 从订阅里找现成规则
-
-<p align="center">
-  <img src="docs/images/library.png" width="340" alt="订阅规则库：按应用浏览规则组，支持测试、复制、导入" />
-</p>
+### 从订阅里找现成规则
 
 1. 首页打开「订阅规则库」，在「管理订阅来源」添加用于 GKD 的订阅文件链接，可添加多个来源。
 2. 输入软件名或包名，进入应用后按来源查看规则组原名称和说明，逐组选取需要的功能。
@@ -76,23 +53,7 @@
 
 规格与实施进度见 [Spec #3](https://github.com/jjjj31/gkd-rule-studio/issues/3)。
 
-### 2. 自己生成规则
-
-<p align="center">
-  <img src="docs/images/workspace.png" width="340" alt="工作区：在截图上拖动选中跳过按钮，自动生成候选规则" />
-</p>
-
-- **简单的广告**：直接用自动生成的规则就行，候选列表里排前面的通常够用
-- **流氓一点的广告**：复制 Prompt 发给 AI（ChatGPT、Claude 等），把 AI 回复贴回来提取规则
-- **AI 也搞不定的**：去 [GKD Discussions](https://github.com/orgs/gkd-kit/discussions) 向大佬求助
-
-画布上会有两种颜色的框：**蓝色**是实际命中的节点，**绿色**是规则匹配到的节点。
-
-### 3. 让 AI 知道应用里有哪些广告 SDK
-
-<p align="center">
-  <img src="docs/images/sdk.png" width="340" alt="SDK 信息面板：导入 LibChecker 应用信息，匹配广告 SDK" />
-</p>
+### 让 AI 知道应用里有哪些广告 SDK
 
 1. 用 [LibChecker](https://github.com/LibChecker/LibChecker) 导出应用信息（`.lcapps`），把文件放到手机上。
 2. 首页打开「SDK 信息」，导入该文件。生成器按现有签名表匹配每个应用包含的广告 SDK，结果保存在本地，重启和断网都还在，也可以按应用删除。
@@ -101,11 +62,19 @@
 
 不导入也能正常用；导入信息不会提高候选评分，也不会自动生成规则。规格与实施进度见 [Spec #8](https://github.com/jjjj31/gkd-rule-studio/issues/8)。
 
+### 自己生成规则
+
+- **简单的广告**：直接用自动生成的规则就行，候选列表里排前面的通常够用
+- **流氓一点的广告**：复制 Prompt 发给 AI（ChatGPT、Claude 等），把 AI 回复贴回来提取规则
+- **AI 也搞不定的**：去 [GKD Discussions](https://github.com/orgs/gkd-kit/discussions) 向大佬求助
+
+画布上会有两种颜色的框：**蓝色**是实际命中的节点，**绿色**是规则匹配到的节点。
+
 ## GKD 版本说明
 
 官方 GKD 的 HTTP 服务只支持导入"内存订阅"（临时生效），不支持直接写入本地规则。Rule Studio 默认连接 **GKD Debug/Beta 版**（包名 `li.songe.gkd.debug`），它额外提供了 `localRules/append` API，可以一键把规则存进本地。
 
-> 我 fork 了一个支持本地规则导入的 GKD 版本：[点击跳转](https://github.com/jjjj31/gkd)
+> 我 fork 了一个支持本地规则导入的 GKD 版本：[[点击跳转](https://github.com/jjjj31/gkd)]()
 
 App 内右上角可以切换「Beta / 正式」目标版本。正式版测试后只能复制 JSON5 手动粘贴到 GKD。
 
@@ -137,8 +106,6 @@ pnpm run check:update         # 发版后校验线上更新清单是否可用
 
 > 注意：`android/debug.keystore` 是固定的签名密钥（本地与 CI 共用同一把）。App 内更新的覆盖安装依赖签名一致，**请勿删除或更换**，否则已装用户将无法再收到更新。
 
-README 里的截图由 `scripts/generate-readme-screenshots.py` 用模拟 GKD 接口生成，可重复运行。
-
 ## 开源协议
 
 本项目使用 [SATA 协议（Star And Thank Author License）](LICENSE)。简单来说：你可以自由使用本项目，但请给仓库点个 ⭐ Star 并感谢作者。感谢你的支持！
@@ -147,4 +114,3 @@ README 里的截图由 `scripts/generate-readme-screenshots.py` 用模拟 GKD �
 
 - [GKD 搞快点](https://github.com/gkd-kit/gkd) — 广告跳过工具
 - [GKD 订阅模板](https://github.com/gkd-kit/subscription) — 官方规则订阅
-- [LibChecker](https://github.com/LibChecker/LibChecker) — 应用 SDK 信息导出
