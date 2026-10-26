@@ -29,7 +29,7 @@ import {
   exactSelector,
   serializePlan,
 } from "./selectorSerialize";
-import { validateSelectorPlan } from "./selectorMatcher";
+import { validateAppRuleAgainstSnapshot } from "./selectorMatcher";
 
 interface CandidateSeed {
   strategyName: MvpStrategyName;
@@ -493,7 +493,6 @@ function buildCandidate(
   seed: CandidateSeed,
   index: number,
 ): SelectorCandidate {
-  const validation = validateSelectorPlan(context.snapshot, seed.plan);
   const baseRule = createRuleDraft(
     seed.plan,
     context.ruleSettings,
@@ -503,11 +502,29 @@ function buildCandidate(
     snapshot: context.snapshot,
     pickedNode: context.pickedNode,
     plan: seed.plan,
-    validation,
+    validation: validateAppRuleAgainstSnapshot(context.snapshot, {
+      id: context.snapshot.appId,
+      name: context.snapshot.appInfo?.name ?? context.snapshot.appId,
+      groups: [
+        {
+          key: 0,
+          name: context.ruleSettings.groupName.trim() || seed.groupName,
+          ...(context.ruleSettings.activityIds.trim()
+            ? { activityIds: context.ruleSettings.activityIds.trim() }
+            : {}),
+          rules: [{ key: 0, matches: serializePlan(seed.plan) }],
+        },
+      ],
+    })[0],
     strategyName: seed.strategyName,
     ruleSettings: context.ruleSettings,
   });
   const rule = applyActionPlanToRule(baseRule, actionPlan);
+  const validation = validateAppRuleAgainstSnapshot(context.snapshot, {
+    id: context.snapshot.appId,
+    name: context.snapshot.appInfo?.name ?? context.snapshot.appId,
+    groups: [{ key: 0, name: context.ruleSettings.groupName.trim() || seed.groupName, rules: [rule] }],
+  })[0];
   const risk = scoreCandidate({
     baseScore: seed.baseScore,
     snapshot: context.snapshot,

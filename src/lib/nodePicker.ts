@@ -12,6 +12,66 @@ import type {
 } from "../types/gkdSnapshot";
 import { nodeArea } from "../types/gkdSnapshot";
 
+export interface NodeSelectionOption {
+  node: NormalizedSnapshotNode;
+  label: string;
+  typeLabel: string;
+  role: "picked" | "clickable-ancestor" | "overlap";
+  clickable: boolean;
+  boundsLabel: string;
+}
+
+/** 把选点、可点祖先和同点节点整理成可读、可直接切换的目标。 */
+export function getNodeSelectionOptions(
+  snapshot: ParsedGkdSnapshot,
+  pickResult: NodePickResult,
+): NodeSelectionOption[] {
+  const nodes: Array<{
+    node: NormalizedSnapshotNode;
+    role: NodeSelectionOption["role"];
+  }> = [{ node: pickResult.pickedNode, role: "picked" }];
+
+  if (
+    pickResult.clickableAncestor &&
+    pickResult.clickableAncestor.id !== pickResult.pickedNode.id
+  ) {
+    nodes.push({ node: pickResult.clickableAncestor, role: "clickable-ancestor" });
+  }
+
+  const seen = new Set(nodes.map(({ node }) => node.id));
+  const overlappingNodes = snapshot.nodes
+    .filter((node) => {
+      return (
+        !seen.has(node.id) &&
+        isVisibleNode(node) &&
+        containsPoint(node, pickResult.point) &&
+        hasUsefulSignal(node)
+      );
+    })
+    .sort((a, b) => {
+      if (a.attr.clickable !== b.attr.clickable) {
+        return Number(b.attr.clickable) - Number(a.attr.clickable);
+      }
+      return b.attr.depth - a.attr.depth;
+    });
+
+  overlappingNodes.forEach((node) => {
+    seen.add(node.id);
+    nodes.push({ node, role: "overlap" });
+  });
+
+  return nodes
+    .filter(({ node }) => !isWholeScreenNode(snapshot, node))
+    .map(({ node, role }) => ({
+      node,
+      label: selectionLabel(node),
+      typeLabel: node.attr.name.split(".").pop() || node.attr.name,
+      role,
+      clickable: node.attr.clickable,
+      boundsLabel: formatNodeBounds(node),
+    }));
+}
+
 /**
  * 从截图的屏幕坐标 → 找到命中的节点。
  * 内部调用 findNodesByPoint 做三层过滤（子节点覆盖父节点、同级去重、面积排序）。
@@ -255,4 +315,41 @@ function normalizedSize(node: NormalizedSnapshotNode): {
     width: right - left,
     height: bottom - top,
   };
+}
+
+function selectionLabel(node: NormalizedSnapshotNode): string {
+  return (
+    node.attr.text ||
+    node.attr.desc ||
+    node.attr.vid ||
+    (node.attr.id && node.attr.id.split("/").pop()) ||
+    node.attr.name.split(".").pop() ||
+    node.attr.name
+  );
+}
+
+function formatNodeBounds(node: NormalizedSnapshotNode): string {
+  const { left, top, right, bottom } = normalizedBounds(node);
+  return `${left},${top} · ${right - left}×${bottom - top}`;
+}
+
+function isWholeScreenNode(
+  snapshot: ParsedGkdSnapshot,
+  node: NormalizedSnapshotNode,
+): boolean {
+  const { left, top, right, bottom } = normalizedBounds(node);
+  return (
+    (right - left) * (bottom - top) >=
+    snapshot.screenWidth * snapshot.screenHeight * 0.95
+  );
+}
+
+function hasUsefulSignal(node: NormalizedSnapshotNode): boolean {
+  return Boolean(
+    node.attr.id ||
+      node.attr.vid ||
+      node.attr.text ||
+      node.attr.desc ||
+      node.attr.clickable,
+  );
 }

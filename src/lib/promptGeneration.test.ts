@@ -4,6 +4,7 @@ import {
   resolveCustomScenarioSettings,
 } from "./customScenario";
 import { buildHelpPrompt } from "./helpPrompt";
+import { formatAuthoringFeedbackPrompt, classifyAuthoringFeedback } from "./authoringFeedback";
 import { pickNodeAtPoint } from "./nodePicker";
 import { normalizeSnapshot } from "./snapshotNormalize";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
@@ -14,6 +15,26 @@ import type {
 } from "../types/gkdSnapshot";
 
 describe("prompt generation", () => {
+  it("separates UI-observed failure from static evidence in the public AI feedback prompt", () => {
+    const prompt = formatAuthoringFeedbackPrompt({
+      description: classifyAuthoringFeedback({
+      result: "scope-or-timing-pending",
+      note: "我看到页面没有变化",
+      snapshotId: 9,
+      appId: "com.demo",
+      staticValidation: "unsatisfied",
+      diagnostics: ["当前 Activity 不匹配"],
+      knownLimitations: ["没有设备运行日志"],
+      }),
+      staticValidation: "unsatisfied",
+    });
+    expect(prompt).toContain('"staticValidation": "unsatisfied"');
+    expect(prompt).toContain("当前 Activity 不匹配");
+    expect(prompt).toContain("没有设备运行日志");
+    expect(prompt).toContain("user 备注");
+    expect(prompt).not.toContain("根因是");
+  });
+
   it("keeps custom scenario current activity dynamic and imports action fields", () => {
     const oldSnapshot = buildSnapshot("com.demo.OldActivity");
     const nextSnapshot = buildSnapshot("com.demo.NewActivity");

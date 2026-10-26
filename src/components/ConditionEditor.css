@@ -1,0 +1,165 @@
+.condition-editor {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(134, 191, 255, 0.28);
+  border-radius: 10px;
+  background: rgba(10, 15, 21, 0.58);
+  color: var(--text-main);
+}
+
+.condition-editor > header,
+.condition-editor-header-actions,
+.condition-editor-actions,
+.condition-editor-field-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.condition-editor > header > div {
+  display: grid;
+  gap: 3px;
+}
+
+.condition-editor strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.condition-editor span,
+.condition-editor p,
+.condition-editor legend,
+.condition-editor label > span {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.condition-editor button,
+.condition-editor input,
+.condition-editor select {
+  min-height: 34px;
+  border: 1px solid rgba(139, 154, 172, 0.24);
+  border-radius: 7px;
+  background: rgba(25, 34, 46, 0.92);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 12px;
+}
+
+.condition-editor button {
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.condition-editor button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.condition-editor button:focus-visible,
+.condition-editor input:focus-visible,
+.condition-editor select:focus-visible {
+  border-color: rgba(134, 191, 255, 0.72);
+  outline: 2px solid rgba(134, 191, 255, 0.2);
+}
+
+.condition-editor input,
+.condition-editor select {
+  box-sizing: border-box;
+  padding: 0 8px;
+}
+
+.condition-editor-fields {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid rgba(139, 154, 172, 0.16);
+  border-radius: 8px;
+}
+
+.condition-editor-fields > label,
+.condition-editor-relation > label,
+.condition-editor-node-picker {
+  display: grid;
+  gap: 4px;
+}
+
+.condition-editor-condition {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) minmax(72px, auto) minmax(100px, 1fr) auto;
+  gap: 5px;
+  min-width: 0;
+}
+
+.condition-editor-condition input {
+  min-width: 0;
+}
+
+.condition-editor-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.condition-editor-toggle input {
+  min-height: auto;
+}
+
+.condition-editor-relation {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px dashed rgba(139, 154, 172, 0.24);
+  border-radius: 8px;
+}
+
+.condition-editor-validation {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-radius: 7px;
+  background: rgba(45, 92, 145, 0.16);
+}
+
+.condition-editor-validation strong {
+  color: var(--accent-green);
+}
+
+.condition-editor-json,
+.condition-editor-advanced {
+  gap: 8px;
+}
+
+.condition-editor pre {
+  max-height: 300px;
+  overflow: auto;
+  margin: 0;
+  padding: 9px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--text-main);
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .condition-editor-condition {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .condition-editor-condition input {
+    grid-column: 1 / -1;
+  }
+}
+.condition-editor-execution dl { display: grid; gap: 6px; margin: 8px 0; }
+.condition-editor-execution dl > div { display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.condition-editor-execution dd { margin: 0; overflow-wrap: anywhere; }

@@ -1,0 +1,9 @@
+.rule-authoring-panel { display: grid; gap: 8px; margin: 10px 0; padding: 12px; border: 1px solid var(--border, #7775); border-radius: 12px; overflow-wrap: anywhere; }
+.rule-authoring-panel p, .rule-authoring-panel ul { margin: 0; }
+.rule-authoring-panel small { opacity: .75; }
+.rule-authoring-panel summary { cursor: pointer; padding: 6px 0; }
+.rule-authoring-panel button, .rule-authoring-panel input, .rule-authoring-panel select { min-height: 44px; max-width: 100%; }
+.rule-authoring-panel label { display: grid; gap: 4px; }
+.rule-authoring-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.rule-authoring-error { color: var(--danger, #d35b5b); }
+.rule-authoring-panel[hidden] { display: none; }

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { normalizeSnapshot } from "./snapshotNormalize";
-import { validateAiCandidateAgainstSnapshot } from "./selectorMatcher";
+import {
+  validateAiCandidateAgainstSnapshot,
+  validateAppRuleAgainstSnapshot,
+} from "./selectorMatcher";
 import type { AiRuleCandidate } from "./aiModel";
+import type { AppRuleDraft } from "../types/ruleDraft";
 import type {
   NormalizedSnapshotNode,
   ParsedGkdSnapshot,
@@ -131,7 +135,332 @@ function run(snap: ParsedGkdSnapshot, matches: string[]) {
   return validateAiCandidateAgainstSnapshot(makeCandidate(matches), snap);
 }
 
+function makeApp(matches: string[], extra: Partial<AppRuleDraft["groups"][number]> = {}): AppRuleDraft {
+  return {
+    id: "com.demo",
+    name: "Demo",
+    groups: [{ key: 1, name: "g", rules: [{ key: 1, matches }], ...extra }],
+  };
+}
+
+function appWithRule(
+  rule: Partial<AppRuleDraft["groups"][number]["rules"][number]>,
+  group: Partial<AppRuleDraft["groups"][number]> = {},
+): AppRuleDraft {
+  return {
+    id: "com.demo",
+    name: "Demo",
+    groups: [
+      {
+        key: 1,
+        name: "g",
+        ...group,
+        rules: [{ key: 1, matches: [], ...rule }],
+      },
+    ],
+  };
+}
+
 describe("selectorMatcher AI 路径（@gkd-kit/selector）", () => {
+  it("matches 全部成立时只点击最后一项，前项作为支持节点", () => {
+    const values = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      makeApp([`[text="P"]`, `[text="A"]`]),
+    );
+
+    expect(values).toHaveLength(1);
+    expect(ids(values[0].clickNodes)).toEqual([6]);
+    expect(ids(values[0].supportNodes)).toEqual([11]);
+    expect(values[0]).toMatchObject({ status: "satisfied", hitCount: 1 });
+  });
+
+  it("显式 @ 决定点击目标，同一选择器链的其他节点作为支持节点", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      makeApp([`LinearLayout @FrameLayout TextView[text="ChainEnd"]`]),
+    );
+
+    expect(value).toMatchObject({ status: "satisfied", hitCount: 1 });
+    expect(ids(value.clickNodes)).toEqual([16]);
+    expect(ids(value.supportNodes).sort()).toEqual([15, 17]);
+  });
+
+  it("非法必需表达式不会由其他合法表达式部分成功", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      makeApp([`TextView[text="跳过"]`, `not a selector ???`]),
+    );
+
+    expect(value).toMatchObject({ status: "invalid", hitCount: 0 });
+    expect(value.clickNodes).toEqual([]);
+    expect(value.unparsedMatches).toEqual([`not a selector ???`]);
+  });
+
+  it("无法确认的版本条件明确标记为 partial", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      appWithRule({
+        matches: [`[text="A"]`],
+        versionName: { include: "1.2" },
+      } as Partial<AppRuleDraft["groups"][number]["rules"][number]>),
+    );
+
+    expect(value).toMatchObject({ status: "partial", hitCount: 0 });
+    expect(value.diagnostics?.[0]).toContain("版本范围条件");
+  });
+
+  it("继承的组版本码范围保留原文并标记 partial", () => {
+    const app = appWithRule(
+      { matches: [`[text="A"]`] },
+      { versionCodes: [1, 2, 3] },
+    );
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      app,
+    );
+
+    expect(value).toMatchObject({ status: "partial", hitCount: 0 });
+    expect(value.diagnostics?.[0]).toContain("版本范围条件");
+    expect(app.groups[0].versionCodes).toEqual([1, 2, 3]);
+  });
+
+  it("规则级排除版本名保留原文并标记 partial", () => {
+    const app = appWithRule({
+      matches: [`[text="A"]`],
+      excludeVersionNames: ["1.0", "1.1"],
+    });
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      app,
+    );
+
+    expect(value).toMatchObject({ status: "partial", hitCount: 0 });
+    expect(value.diagnostics?.[0]).toContain("版本范围条件");
+    expect(app.groups[0].rules[0].excludeVersionNames).toEqual(["1.0", "1.1"]);
+  });
+
+  it("禁用组和规则不贡献可执行目标", () => {
+    const disabledGroup = appWithRule(
+      { matches: [`[text="A"]`] },
+      { enable: false },
+    );
+    const disabledRule = appWithRule({ matches: [`[text="A"]`], enable: false });
+
+    const [groupValue] = validateAppRuleAgainstSnapshot(buildFixture(), disabledGroup);
+    const [ruleValue] = validateAppRuleAgainstSnapshot(buildFixture(), disabledRule);
+
+    expect(groupValue).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+    expect(ruleValue).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+    expect(ruleValue.diagnostics?.[0]).toContain("enable");
+  });
+
+  it("无法识别的 enable 值明确标记 partial，不当作启用", () => {
+    const app = appWithRule({ matches: [`[text="A"]`] });
+    (app.groups[0] as unknown as Record<string, unknown>).enable = "false";
+
+    const [value] = validateAppRuleAgainstSnapshot(buildFixture(), app);
+
+    expect(value).toMatchObject({ status: "partial", hitCount: 0 });
+    expect(value.diagnostics?.[0]).toContain("enable");
+  });
+
+  it("AI 多规则聚合时 partial 不暴露部分点击目标", () => {
+    const app = appWithRule({ matches: [`[text="A"]`] });
+    app.groups[0].rules.push({
+      key: 2,
+      matches: [`[text="P"]`],
+      versionName: { include: "1.2" },
+    } as AppRuleDraft["groups"][number]["rules"][number]);
+
+    const value = validateAiCandidateAgainstSnapshot(
+      { ...makeCandidate([]), app },
+      buildFixture(),
+    );
+
+    expect(value).toMatchObject({ status: "partial", hitCount: 0 });
+    expect(value.clickNodes).toEqual([]);
+  });
+
+  it("独立规则 A 命中、B 不命中时保留 A 的点击目标", () => {
+    const app = appWithRule({ matches: [`[text="A"]`] });
+    app.groups[0].rules.push({ key: 2, matches: [`[text="不存在"]`] });
+
+    const value = validateAiCandidateAgainstSnapshot(
+      { ...makeCandidate([]), app },
+      buildFixture(),
+    );
+
+    expect(value).toMatchObject({ status: "satisfied", hitCount: 1 });
+    expect(ids(value.clickNodes)).toEqual([6]);
+  });
+
+  it("同一规则的 matches 没有全部成立时不能借独立规则聚合绕过 AND", () => {
+    const app = appWithRule({ matches: [`[text="A"]`, `[text="不存在"]`] });
+
+    const value = validateAiCandidateAgainstSnapshot(
+      { ...makeCandidate([]), app },
+      buildFixture(),
+    );
+
+    expect(value).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+    expect(value.clickNodes).toEqual([]);
+  });
+
+  it("规则组 key 不参与规则去重，每条规则都有独立验证结果", () => {
+    const app = appWithRule({ matches: [`[text="A"]`] });
+    app.groups.push({
+      key: 1,
+      name: "another",
+      rules: [{ key: 0, matches: [`[text="P"]`] }],
+    });
+
+    const values = validateAppRuleAgainstSnapshot(buildFixture(), app);
+
+    expect(values.map((value) => ids(value.clickNodes))).toEqual([[6], [11]]);
+    expect(values.every((value) => value.status === "satisfied")).toBe(true);
+  });
+
+  it("空 App 规则给出明确的 invalid 结果", () => {
+    const [value] = validateAppRuleAgainstSnapshot(buildFixture(), {
+      id: "com.demo",
+      name: "Demo",
+      groups: [],
+    });
+
+    expect(value).toMatchObject({ status: "invalid", hitCount: 0 });
+    expect(value.diagnostics?.[0]).toContain("不包含任何规则");
+  });
+
+  it("缺少任一必需上下文时不把末项目标显示为可执行", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      makeApp([`[text="不存在"]`, `[text="A"]`]),
+    );
+
+    expect(value).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+    expect(ids(value.clickNodes)).toEqual([]);
+    expect(value.diagnostics?.[0]).toContain("必需上下文未命中");
+  });
+
+  it("末项目标缺失时即使上下文存在也不可执行", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      makeApp([`[text="P"]`, `[text="不存在"]`]),
+    );
+
+    expect(value).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+    expect(ids(value.clickNodes)).toEqual([]);
+    expect(ids(value.supportNodes)).toEqual([11]);
+  });
+
+  it("anyMatches 任一分支命中即可，但点击目标仍是 matches 末项", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      appWithRule({ matches: [`[text="A"]`], anyMatches: [`[text="P"]`, `[text="不存在"]`] }),
+    );
+
+    expect(value).toMatchObject({ status: "satisfied", hitCount: 1 });
+    expect(ids(value.clickNodes)).toEqual([6]);
+  });
+
+  it("anyMatches 全部不命中时否决规则", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      appWithRule({ matches: [`[text="A"]`], anyMatches: [`[text="不存在"]`] }),
+    );
+
+    expect(value).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+    expect(ids(value.clickNodes)).toEqual([]);
+  });
+
+  it("anyMatches 同时有合法命中与非法分支时不暴露可执行目标", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      appWithRule({
+        matches: [`[text="A"]`],
+        anyMatches: [`[text="P"]`, `not a selector ???`],
+      }),
+    );
+
+    expect(value).toMatchObject({ status: "partial", hitCount: 0 });
+    expect(value.clickNodes).toEqual([]);
+    expect(value.unparsedMatches).toEqual([`not a selector ???`]);
+  });
+
+  it("excludeMatches 任一命中即否决规则", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      appWithRule({ matches: [`[text="A"]`], excludeMatches: [`[text="P"]`] }),
+    );
+
+    expect(value).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+    expect(value.excludedMatches).toEqual([`[text="P"]`]);
+  });
+
+  it("排除条件无法完整验证时不暴露可执行目标", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      appWithRule({
+        matches: [`[text="A"]`],
+        excludeMatches: [`not a selector ???`],
+      }),
+    );
+
+    expect(value).toMatchObject({ status: "partial", hitCount: 0 });
+    expect(value.clickNodes).toEqual([]);
+  });
+
+  it("excludeAllMatches 只有全部命中时才否决规则", () => {
+    const snap = buildFixture();
+    const [partialHit] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({
+        matches: [`[text="A"]`],
+        excludeAllMatches: [`[text="P"]`, `[text="不存在"]`],
+      }),
+    );
+    const [allHit] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({
+        matches: [`[text="A"]`],
+        excludeAllMatches: [`[text="P"]`, `[text="Q"]`],
+      }),
+    );
+
+    expect(partialHit).toMatchObject({ status: "satisfied", hitCount: 1 });
+    expect(allHit).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+  });
+
+  it("规则组 activityIds 被继承，规则空数组可覆盖为全部界面", () => {
+    const snap = buildFixture();
+    const [inherited] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`] }, { activityIds: ".OtherActivity" }),
+    );
+    const [overridden] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule(
+        { matches: [`[text="A"]`], activityIds: [] },
+        { activityIds: ".OtherActivity" },
+      ),
+    );
+
+    expect(inherited.status).toBe("unsatisfied");
+    expect(overridden).toMatchObject({ status: "satisfied", hitCount: 1 });
+  });
+
+  it("excludeActivityIds 从规则组继承并优先于 activityIds", () => {
+    const [value] = validateAppRuleAgainstSnapshot(
+      buildFixture(),
+      appWithRule(
+        { matches: [`[text="A"]`], activityIds: ".MainActivity" },
+        { excludeActivityIds: ".MainActivity" },
+      ),
+    );
+
+    expect(value).toMatchObject({ status: "unsatisfied", hitCount: 0 });
+    expect(value.diagnostics?.[0]).toContain("Activity 被排除");
+  });
   it("*[text=...] 通配符按任意类型命中", () => {
     const snap = buildFixture();
     const v = run(snap, [`*[text="跳过"]`]);
@@ -212,10 +541,11 @@ describe("selectorMatcher AI 路径（@gkd-kit/selector）", () => {
     expect(ids(v.clickNodes)).toEqual([17]);
   });
 
-  it("E2E：合法 + 非法混合，合法命中、非法进 unparsedMatches", () => {
+  it("E2E：合法 + 非法混合时整条规则不可执行", () => {
     const snap = buildFixture();
     const v = run(snap, [`TextView[text="跳过"]`, `*(text 乱码垃圾字符串)`]);
-    expect(ids(v.clickNodes)).toEqual([2]);
+    expect(v.clickNodes).toEqual([]);
+    expect(v.status).toBe("invalid");
     expect(v.unparsedMatches).toEqual([`*(text 乱码垃圾字符串)`]);
   });
 

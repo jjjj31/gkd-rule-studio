@@ -90,6 +90,8 @@ clazzList.forEach((v) => {
 
 export interface MatchResult {
   clickIds: number[];
+  /** 选择器链中作为上下文参与匹配的节点，不含最终点击目标。 */
+  supportIds: number[];
   unparsed: boolean;
   unparsedReason?: string;
 }
@@ -193,21 +195,30 @@ export function matchGkdSelectorString(
     const transform = buildTransform(snapshot);
     const root = snapshot.nodes.find((n) => n.pid < 0) ?? snapshot.nodes[0];
     if (!root) {
-      return { clickIds: [], unparsed: true, unparsedReason: "empty-snapshot" };
+      return {
+        clickIds: [],
+        supportIds: [],
+        unparsed: true,
+        unparsedReason: "empty-snapshot",
+      };
     }
     const results = transform.querySelectorAllContextArray(root, ast.value, matchOption);
     const seen = new Set<number>();
     const clickIds: number[] = [];
+    const supportIds = new Set<number>();
     for (const r of results as Array<QueryResult<NormalizedSnapshotNode>>) {
       const target = (r as { target: NormalizedSnapshotNode | null | undefined }).target;
       if (target && !seen.has(target.id)) {
         seen.add(target.id);
         clickIds.push(target.id);
       }
+      for (const context of r.context.toArray()) {
+        if (context.id !== target?.id) supportIds.add(context.id);
+      }
     }
-    return { clickIds, unparsed: false };
+    return { clickIds, supportIds: [...supportIds], unparsed: false };
   } catch (e) {
     const msg = (e as Error)?.message ?? String(e);
-    return { clickIds: [], unparsed: true, unparsedReason: msg };
+    return { clickIds: [], supportIds: [], unparsed: true, unparsedReason: msg };
   }
 }

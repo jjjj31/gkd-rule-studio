@@ -9,6 +9,12 @@
 import JSON5 from "json5";
 import type { AppRuleDraft, RuleDraft } from "../types/ruleDraft";
 import { enhancedFetch } from "./networkExtension";
+import {
+  classifyAuthoringFeedback,
+  formatAuthoringFeedbackPrompt,
+  normalizeAuthoringFeedbackResult,
+  type AuthoringFeedbackCategory,
+} from "./authoringFeedback";
 
 export type AiMode = "single" | "flow";
 
@@ -99,14 +105,28 @@ export interface BuildAiFeedbackMessagesInput {
   originalPrompt: string;
   candidate: AiRuleCandidate;
   result: AiFeedbackResult | "flow-note";
+  category?: AuthoringFeedbackCategory;
   note: string;
   imageUrl?: string;
+  snapshotId?: number | string;
+  appId?: string;
+  staticValidation?: "unsatisfied" | "partial" | "satisfied" | "unknown";
+  diagnostics?: string[];
+  limitations?: string[];
+  knownLimitations?: string[];
 }
 
 export interface AiCandidateFeedback {
   candidate: AiRuleCandidate;
   result: Exclude<AiFeedbackResult, "success"> | "flow-note";
+  /** 精确分类；提供时优先于 legacy result，result 仅保留兼容。 */
+  category?: AuthoringFeedbackCategory;
   note: string;
+  snapshotId?: number | string;
+  appId?: string;
+  staticValidation?: "unsatisfied" | "partial" | "satisfied" | "unknown";
+  diagnostics?: string[];
+  knownLimitations?: string[];
 }
 
 export interface BuildAiBatchFeedbackMessagesInput {
@@ -465,9 +485,30 @@ export function buildAiFeedbackMessages({
   originalPrompt,
   candidate,
   result,
+  category,
   note,
   imageUrl,
+  snapshotId,
+  appId,
+  staticValidation,
+  diagnostics,
+  limitations,
+  knownLimitations,
 }: BuildAiFeedbackMessagesInput): AiChatMessage[] {
+  const feedback = formatAuthoringFeedbackPrompt({
+    description: classifyAuthoringFeedback({
+      result,
+      category,
+      note,
+      staticValidation,
+      diagnostics,
+      limitations,
+      knownLimitations,
+      snapshotId,
+      appId,
+    }),
+    staticValidation,
+  });
   const userText = [
     mode === "flow"
       ? "用户测试了一个流程规则候选，请根据反馈修正并重新给出 1-3 个候选。"
@@ -481,7 +522,8 @@ export function buildAiFeedbackMessages({
     JSON5.stringify(candidate, null, 2),
     "",
     "测试结果：",
-    String(result),
+    normalizeAuthoringFeedbackResult(category ?? result),
+    feedback,
     "",
     "用户补充说明：",
     note.trim() || "-",
@@ -524,8 +566,12 @@ export function buildAiBatchFeedbackMessages({
       feedbacks.map((feedback) => ({
         candidateId: feedback.candidate.id,
         title: feedback.candidate.title,
-        result: feedback.result,
+        result: normalizeAuthoringFeedbackResult(feedback.category ?? feedback.result),
         note: feedback.note.trim() || "-",
+        summary: formatAuthoringFeedbackPrompt({
+          description: classifyAuthoringFeedback(feedback),
+          staticValidation: feedback.staticValidation,
+        }),
         candidate: feedback.candidate,
       })),
       null,
@@ -788,13 +834,6 @@ function hasImageContent(content: AiChatMessageContent): boolean {
   );
 }
 
-const FEEDBACK_RESULT_LABELS: Record<string, string> = {
-  "not-triggered": "未触发（规则没生效）",
-  "triggered-no-close": "触发了但广告没关闭",
-  mistouch: "误触到广告或其它按钮",
-  other: "其他问题",
-};
-
 /**
  * 外部 AI 精简反馈文本：粘回同一个对话时用。
  * 不重发原始 prompt、不重发规则 JSON——上文里都有了，只给测试结论。
@@ -805,13 +844,18 @@ export function buildExternalFeedbackPrompt(
 ): string {
   const lines = feedbacks.map((feedback) => {
     const note = feedback.note.trim();
-    if (flowMode || feedback.result === "flow-note") {
-      return `- ${feedback.candidate.title}：${note || "（无补充说明）"}`;
-    }
-    const label = FEEDBACK_RESULT_LABELS[feedback.result] ?? String(feedback.result);
-    return note
-      ? `- ${feedback.candidate.title}：${label}。补充：${note}`
-      : `- ${feedback.candidate.title}：${label}`;
+    const description = classifyAuthoringFeedback(feedback);
+    const label = feedback.result === "flow-note" ? "流程备注" : description.label;
+    const details = formatAuthoringFeedbackPrompt({
+      description,
+      staticValidation: feedback.staticValidation,
+    });
+    return [
+      `- ${feedback.candidate.title}：${label}。修复建议：${description.repairHint}`,
+      note && note !== description.note ? `补充：${note}` : "",
+      JSON5.stringify(feedback.candidate, null, 2),
+      details,
+    ].filter(Boolean).join("\n");
   });
   return [
     flowMode
@@ -1139,8 +1183,14 @@ function normalizeRuleDraft(value: unknown): RuleDraft {
   if (!isRecord(value)) {
     throw new Error("AI 返回 rule 必须是对象");
   }
-  const matches = normalizeMatches(value.matches);
-  if (matches.length === 0) {
+  const matches = normalizeRuleMatches(value.matches, "matches");
+  const anyMatches = normalizeRuleMatches(value.anyMatches, "anyMatches");
+  const excludeMatches = normalizeRuleMatches(value.excludeMatches, "excludeMatches");
+  const excludeAllMatches = normalizeRuleMatches(
+    value.excludeAllMatches,
+    "excludeAllMatches",
+  );
+  if (matches.length === 0 && anyMatches.length === 0) {
     throw new Error("AI 返回 rule 缺少 matches");
   }
 
@@ -1148,13 +1198,19 @@ function normalizeRuleDraft(value: unknown): RuleDraft {
     ...value,
     key: typeof value.key === "number" ? value.key : 0,
     matches,
+    ...(anyMatches.length > 0 ? { anyMatches } : {}),
+    ...(excludeMatches.length > 0 ? { excludeMatches } : {}),
+    ...(excludeAllMatches.length > 0 ? { excludeAllMatches } : {}),
   } as RuleDraft;
 }
 
-function normalizeMatches(value: unknown): string[] {
+function normalizeRuleMatches(value: unknown, field: string): string[] {
+  if (value === undefined || value === null) return [];
   if (typeof value === "string") return [value];
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is string => typeof item === "string");
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    throw new Error(`AI 返回 rule.${field} 必须是选择器文字或全字符串数组`);
+  }
+  return value;
 }
 
 const AI_MAX_RETRIES = 2;

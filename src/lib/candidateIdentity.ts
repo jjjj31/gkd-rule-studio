@@ -1,4 +1,8 @@
-import type { SelectorCandidate } from "../types/ruleDraft";
+import type { AppRuleDraft, SelectorCandidate } from "../types/ruleDraft";
+
+export function ruleContentKey(app: AppRuleDraft): string {
+  return JSON.stringify(app);
+}
 
 /**
  * 候选去重 key。
@@ -10,8 +14,7 @@ import type { SelectorCandidate } from "../types/ruleDraft";
 export function candidateDedupeKey(candidate: SelectorCandidate): string {
   const { rule, actionPlan } = candidate;
   return JSON.stringify({
-    matches: rule.matches,
-    activityIds: rule.activityIds ?? null,
+    rule,
     action: actionPlan.action ?? null,
     actionDelay: actionPlan.actionDelay ?? null,
     actionMaximum: actionPlan.actionMaximum ?? null,

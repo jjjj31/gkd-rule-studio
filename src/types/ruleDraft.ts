@@ -112,7 +112,21 @@ export interface RuleDraft {
   name?: string;
   preKeys?: number[];
   activityIds?: string | string[];
+  excludeActivityIds?: string | string[];
   matches: string[];
+  /** 官方规则可选分支：任一命中即满足该分支，但与 matches 同时存在时仍点击 matches 末项。 */
+  anyMatches?: string[];
+  /** 任一命中即否决本规则。 */
+  excludeMatches?: string[];
+  /** 全部命中才否决本规则。 */
+  excludeAllMatches?: string[];
+  enable?: boolean;
+  versionCodes?: number[];
+  excludeVersionCodes?: number[];
+  versionNames?: string[];
+  excludeVersionNames?: string[];
+  versionCode?: unknown;
+  versionName?: unknown;
   fastQuery?: boolean;
   action?: string;
   actionDelay?: number;
@@ -156,7 +170,15 @@ export interface AppRuleDraft {
     name: string;
     desc?: string;
     fastQuery?: boolean;
+    enable?: boolean;
     activityIds?: string | string[];
+    excludeActivityIds?: string | string[];
+    versionCodes?: number[];
+    excludeVersionCodes?: number[];
+    versionNames?: string[];
+    excludeVersionNames?: string[];
+    versionCode?: unknown;
+    versionName?: unknown;
     matchTime?: number;
     actionMaximum?: number;
     actionCd?: number;
@@ -171,6 +193,16 @@ export interface SelectorValidation {
   hitCount: number;
   clickNodes: NormalizedSnapshotNode[];
   supportNodes: NormalizedSnapshotNode[];
+  /**
+   * 规则层静态验证状态。旧调用方构造的结果可省略此字段。
+   * satisfied：规则条件完整满足；unsatisfied：条件明确不满足；
+   * invalid：存在非法/不可解析或范围条件不满足；partial：结果无法完整验证。
+   */
+  status?: "satisfied" | "unsatisfied" | "invalid" | "partial";
+  /** 可选诊断；不依赖 Node 端专属类型，以保证现有测试夹具和调用方兼容。 */
+  diagnostics?: string[];
+  /** 当前快照中使规则被排除的选择器；仅用于诊断，不算点击目标。 */
+  excludedMatches?: string[];
   /**
    * AI 路径专用：本工具无法解析、无法预览的 matches 字符串。
    * 来自 AI 候选的 matches 列表解析失败时，原文进这里，前端不画框并显示警示。

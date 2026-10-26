@@ -69,7 +69,11 @@ export function selectFallbackCandidates(
     const key = candidate.rule.matches.join("\n");
     if (seen.has(key)) return false;
     seen.add(key);
-    return candidate.validation.hitCount > 0 && candidate.risk.finalScore >= 70;
+    return (
+      candidate.validation.hitCount > 0 &&
+      (candidate.validation.status ?? "satisfied") === "satisfied" &&
+      candidate.risk.finalScore >= 70
+    );
   });
 }
 

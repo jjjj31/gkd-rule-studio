@@ -23,6 +23,11 @@ import {
   upsertAiProfile,
 } from "./aiModel";
 import type { AppRuleDraft } from "../types/ruleDraft";
+import { toCandidateFeedback, type FailureFeedbackDraft } from "../components/FailureFeedbackPanel";
+import {
+  classifyAuthoringFeedback,
+  formatAuthoringFeedbackPrompt,
+} from "./authoringFeedback";
 
 describe("ai model helpers", () => {
   it("stores multiple AI model profiles and switches the active profile", () => {
@@ -207,6 +212,57 @@ describe("ai model helpers", () => {
     );
   });
 
+  it("keeps official anyMatches rules that do not declare matches", () => {
+    const parsed = parseAiCandidates(JSON.stringify({
+      candidates: [{
+        id: "a",
+        title: "A",
+        summary: "test",
+        risk: "low",
+        app: {
+          id: "com.demo",
+          name: "Demo",
+          groups: [{
+            key: 0,
+            name: "g",
+            rules: [{ key: 0, anyMatches: ['[text="A"]'] }],
+          }],
+        },
+      }],
+    }));
+
+    expect(parsed[0].app.groups[0].rules[0]).toMatchObject({
+      matches: [],
+      anyMatches: ['[text="A"]'],
+    });
+  });
+
+  it("rejects malformed exclusion fields instead of silently weakening the rule", () => {
+    const candidate = {
+      id: "a",
+      title: "A",
+      summary: "test",
+      risk: "low",
+      app: {
+        id: "com.demo",
+        name: "Demo",
+        groups: [{
+          key: 0,
+          name: "g",
+          rules: [{
+            key: 0,
+            matches: ['[text="A"]'],
+            excludeMatches: { text: "B" },
+          }],
+        }],
+      },
+    };
+
+    expect(() => parseAiCandidates(JSON.stringify({ candidates: [candidate] }))).toThrow(
+      "excludeMatches",
+    );
+  });
+
   it("extracts content from OpenAI-compatible fallback response shapes", () => {
     expect(
       extractAiResponseContent({
@@ -328,7 +384,125 @@ describe("ai model helpers", () => {
     expect(text).toContain("测试版 B");
   });
 
-  it("builds a lean external feedback prompt without resending context or rule json", () => {
+  it("carries snapshot, app, known limits, evidence and repair advice in feedback prompts", () => {
+    const app = appDraft();
+    const messages = buildAiFeedbackMessages({
+      mode: "single",
+      originalPrompt: "原始单步 prompt",
+      candidate: {
+        id: "a",
+        title: "测试版 A",
+        summary: "",
+        risk: "",
+        app,
+      },
+      result: "triggered-no-close",
+      note: "我观察到点击后广告仍在",
+      snapshotId: 42,
+      appId: "com.demo",
+      knownLimitations: ["未取得 GKD 运行日志"],
+    });
+    const text = messages.map((message) => message.content).join("\n");
+    expect(text).toContain("testing feedback (structured)");
+    expect(text).toContain('"snapshotId": 42');
+    expect(text).toContain('"appId": "com.demo"');
+    expect(text).toContain("user-observation");
+    expect(text).toContain("用户观察");
+    expect(text).toContain("未取得 GKD 运行日志");
+    expect(text).toContain("检查动作和目标");
+    expect(text).toContain("不要因为规则内容不同就宣布修正版有效");
+  });
+
+  it("normalizes new feedback categories in batch and external prompts", () => {
+    const formatted = formatAuthoringFeedbackPrompt({
+      description: classifyAuthoringFeedback({
+        result: "node-unavailable",
+        note: "快照里的按钮已经消失",
+        snapshotId: "s-42",
+        appId: "com.demo",
+      }),
+    });
+    expect(formatted).toContain(
+      "node-unavailable",
+    );
+    expect(formatted).toContain(
+      "节点不可用",
+    );
+  });
+
+  it("prefers a precise category when a feedback object keeps a legacy result", () => {
+    const app = appDraft();
+    const feedback = {
+      candidate: { id: "a", title: "测试版 A", summary: "", risk: "", app },
+      result: "other" as const,
+      category: "node-unavailable" as const,
+      note: "按钮已消失",
+    };
+    const batch = buildAiBatchFeedbackMessages({
+      mode: "single",
+      originalPrompt: "原始 prompt",
+      feedbacks: [feedback],
+    }).map((message) => message.content).join("\n");
+    const external = buildExternalFeedbackPrompt([feedback], false);
+    expect(batch).toContain('"result": "node-unavailable"');
+    expect(external).toContain("节点不可用");
+  });
+
+  it("maps structured panel feedback through to the batch prompt", () => {
+    const draft: FailureFeedbackDraft = {
+      result: "node-unavailable",
+      note: "按钮已消失",
+      snapshotId: "snapshot-42",
+      appId: "com.demo",
+      staticValidation: "partial",
+      diagnostics: ["目标节点不在当前快照中"],
+      knownLimitations: ["没有设备运行日志"],
+    };
+    const feedback = toCandidateFeedback(
+      { id: "a", title: "测试版 A", summary: "", risk: "", app: appDraft() },
+      draft,
+    );
+    const batchPrompt = buildAiBatchFeedbackMessages({
+      mode: "single",
+      originalPrompt: "原始 prompt",
+      feedbacks: [feedback],
+    }).map((message) => message.content).join("\n");
+
+    expect(feedback).toMatchObject({
+      result: "other",
+      category: "node-unavailable",
+      note: "按钮已消失",
+      snapshotId: "snapshot-42",
+      appId: "com.demo",
+      staticValidation: "partial",
+      diagnostics: ["目标节点不在当前快照中"],
+      knownLimitations: ["没有设备运行日志"],
+    });
+    expect(batchPrompt).toContain('"snapshotId": "snapshot-42"');
+    expect(batchPrompt).toContain('"appId": "com.demo"');
+    expect(batchPrompt).toContain('"staticValidation": "partial"');
+    expect(batchPrompt).toContain("目标节点不在当前快照中");
+    expect(batchPrompt).toContain("没有设备运行日志");
+  });
+
+  it("keeps legacy feedback calls valid without structured extras", () => {
+    const messages = buildAiFeedbackMessages({
+      mode: "single",
+      originalPrompt: "legacy prompt",
+      candidate: {
+        id: "legacy",
+        title: "旧候选",
+        summary: "",
+        risk: "",
+        app: appDraft(),
+      },
+      result: "not-triggered",
+      note: "",
+    });
+    expect(messages.map((message) => message.content).join("\n")).toContain("not-triggered");
+  });
+
+  it("builds a structured external feedback prompt without resending context", () => {
     const app = appDraft();
     const prompt = buildExternalFeedbackPrompt(
       [
@@ -351,9 +525,53 @@ describe("ai model helpers", () => {
     expect(prompt).toContain("点了没反应");
     expect(prompt).toContain("测试版 B");
     expect(prompt).toContain("误触");
-    // 精简版不重发原始规则 JSON / 节点树，避免同会话冗余
-    expect(prompt).not.toContain(app.groups[0].rules[0].matches[0] as string);
-    expect(prompt).not.toContain("groups");
+    expect(prompt).toContain(app.groups[0].rules[0].matches[0] as string);
+    expect(prompt).toContain("testing feedback (structured)");
+  });
+
+  it("keeps metadata for regular and flow feedback in external prompts", () => {
+    const app = appDraft();
+    const prompt = buildExternalFeedbackPrompt([
+      {
+        candidate: { id: "a", title: "测试版 A", summary: "", risk: "", app },
+        result: "other",
+        category: "static-unsatisfied",
+        note: "规则没有命中",
+        snapshotId: "snapshot-42",
+        appId: "com.demo",
+        staticValidation: "unsatisfied",
+        diagnostics: ["当前 Activity 不匹配"],
+        knownLimitations: ["没有设备运行日志"],
+      },
+      {
+        candidate: { id: "b", title: "测试版 B", summary: "", risk: "", app },
+        result: "flow-note",
+        note: "流程停在第二步",
+        snapshotId: "snapshot-43",
+        appId: "com.demo",
+        staticValidation: "partial",
+        diagnostics: ["第二步目标缺失"],
+        knownLimitations: ["未取得流程日志"],
+      },
+    ], false);
+
+    for (const expected of [
+      '\"snapshotId\": \"snapshot-42\"',
+      '\"snapshotId\": \"snapshot-43\"',
+      '\"appId\": \"com.demo\"',
+      '\"staticValidation\": \"unsatisfied\"',
+      '\"staticValidation\": \"partial\"',
+      "当前 Activity 不匹配",
+      "第二步目标缺失",
+      "没有设备运行日志",
+      "未取得流程日志",
+      app.groups[0].rules[0].matches[0] as string,
+    ]) {
+      expect(prompt).toContain(expected);
+    }
+    expect(prompt).toContain("测试版 B：流程备注");
+    expect(prompt).toContain("唯一一个 ```json5 代码块");
+    expect(prompt).toContain("{ candidates: [...] }");
   });
 
   it("compacts direct AI prompts while preserving a bounded target node tree excerpt", () => {

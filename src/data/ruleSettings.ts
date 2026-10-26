@@ -2,6 +2,12 @@
 import type { ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type { RuleSettings } from "../types/ruleDraft";
 
+export const RULE_ACTION_NAMES: Record<string, string> = {
+  click: "点击", clickNode: "点击节点", clickCenter: "点击中心坐标",
+  longClick: "长按", longClickNode: "长按节点", longClickCenter: "长按中心坐标",
+  back: "返回", swipe: "滑动", none: "仅匹配",
+};
+
 export const DEFAULT_RULE_SETTINGS: RuleSettings = {
   groupName: "开屏广告",
   activityIds: "",

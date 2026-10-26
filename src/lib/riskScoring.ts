@@ -40,6 +40,14 @@ export function scoreCandidate(input: {
     },
   ];
 
+  if (validation.status && validation.status !== "satisfied") {
+    items.push({
+      label: "规则不可执行",
+      value: -100,
+      reason: "必需条件不满足、结果不完整或包含非法选择器",
+    });
+  }
+
   const target = validation.clickNodes[0] ?? null;
   addHitCountScore(items, validation.hitCount);
   addActivityScore(items, rule.activityIds, Boolean(allowNoActivityIds));

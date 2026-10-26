@@ -79,6 +79,8 @@ import {
   shouldShowSnapshotOpeningState,
 } from "../lib/androidLiteFlow";
 import { getCandidateGuidance } from "../lib/candidateGuidance";
+import { describeRulePreview } from "../lib/authoringPreview";
+import { ruleContentKey } from "../lib/candidateIdentity";
 import { copyTextToClipboard } from "../lib/clipboard";
 import {
   debugLog,
@@ -141,7 +143,7 @@ import {
   loadConnectionStatus,
   categorizeAiError,
 } from "../lib/aiModel";
-import { pickNodeAtPoint } from "../lib/nodePicker";
+import { pickExistingNode, pickNodeAtPoint } from "../lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../lib/regionCandidates";
 import { normalizeSnapshot } from "../lib/snapshotNormalize";
 import { buildSnapshotExport, saveExportedFile } from "../lib/snapshotExport";
@@ -193,6 +195,7 @@ import {
 } from "../lib/androidUpdater";
 import type {
   DeviceSnapshotSummary,
+  NormalizedSnapshotNode,
   NodePickResult,
   NodePoint,
   ParsedGkdSnapshot,
@@ -204,6 +207,11 @@ import type {
   SelectorCandidate,
 } from "../types/ruleDraft";
 import { ScreenshotCanvas } from "./ScreenshotCanvas";
+import { RulePreviewPanel } from "./RulePreviewPanel";
+import { NodeSelectionPanel } from "./NodeSelectionPanel";
+import { ConditionEditor } from "./ConditionEditor";
+import { MultiSnapshotValidationPanel } from "./MultiSnapshotValidationPanel";
+import { FailureFeedbackPanel, toCandidateFeedback, type FailureFeedbackDraft } from "./FailureFeedbackPanel";
 import AndroidUpdatePanel from "./AndroidUpdatePanel";
 import { SubscriptionLibrary } from "./SubscriptionLibrary";
 import { AdSdkWorkspaceSummary, AppSdkPanel } from "./AppSdkPanel";
@@ -219,6 +227,7 @@ const SNAPSHOT_MEMORY_STORAGE_KEY = "gkd-rule-studio-snapshot-memory";
 
 interface SnapshotWorkspaceMemory {
   point: NodePoint | null;
+  nodeId?: number;
   selectedCandidateId: string | null;
 }
 
@@ -268,6 +277,13 @@ export function AndroidLiteApp() {
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(
     null,
   );
+  const [candidateEdits, setCandidateEdits] = useState<Record<string, SelectorCandidate[]>>({});
+  const [editingCandidate, setEditingCandidate] = useState<{
+    context: string; candidate: SelectorCandidate;
+  } | null>(null);
+  const [editingPreview, setEditingPreview] = useState<SelectorCandidate | null>(null);
+  const [failureFeedback, setFailureFeedback] = useState<{ context: string; value: FailureFeedbackDraft } | null>(null);
+  const [feedbackCopyState, setFeedbackCopyState] = useState<{ context: string; value: "copied" | "failed" } | null>(null);
   const [selectedAiCandidateId, setSelectedAiCandidateId] = useState<
     string | null
   >(null);
@@ -339,7 +355,7 @@ export function AndroidLiteApp() {
       ? activeFlowStep?.ruleSettings ?? ruleSettings
       : ruleSettings;
 
-  const candidates = useMemo(() => {
+  const generatedCandidates = useMemo(() => {
     if (!snapshot || !pickResult) return [];
     return generateRegionSelectorCandidates({
       snapshot,
@@ -347,7 +363,14 @@ export function AndroidLiteApp() {
       pickResult,
     });
   }, [snapshot, pickResult, effectiveRuleSettings]);
+  const candidateContext = `${snapshot?.id}|${pickResult?.pickedNode.id}|${JSON.stringify(effectiveRuleSettings)}`;
+  const candidates = useMemo(() => [
+    ...(candidateEdits[candidateContext] ?? []), ...generatedCandidates,
+  ], [candidateEdits, candidateContext, generatedCandidates]);
+  const currentEditorCandidate = editingCandidate?.context === candidateContext
+    ? editingCandidate.candidate : null;
   const selectedCandidate = useMemo(() => {
+    if (currentEditorCandidate) return editingPreview;
     // 当 AI 候选被选中时，不要让普通候选回退到 candidates[0]，
     // 否则画布会同时显示普通候选的命中框而不是 AI 候选的。
     if (selectedCandidateId === null && selectedAiCandidateId !== null) {
@@ -358,7 +381,7 @@ export function AndroidLiteApp() {
       candidates[0] ??
       null
     );
-  }, [candidates, selectedCandidateId, selectedAiCandidateId]);
+  }, [candidates, selectedCandidateId, selectedAiCandidateId, currentEditorCandidate, editingPreview]);
   const selectedAiCandidate = selectedAiCandidateId
     ? (aiCandidates.find((c) => c.id === selectedAiCandidateId) ??
       externalAiCandidates.find((c) => c.id === selectedAiCandidateId) ??
@@ -368,6 +391,30 @@ export function AndroidLiteApp() {
     if (!selectedAiCandidate || !snapshot) return null;
     return validateAiCandidateAgainstSnapshot(selectedAiCandidate, snapshot);
   }, [selectedAiCandidate, snapshot]);
+  const activeRuleDraft = useMemo(() => {
+    if (selectedAiCandidate) return selectedAiCandidate.app;
+    if (!snapshot || !selectedCandidate) return null;
+    return createAppRuleDraft(snapshot, selectedCandidate,
+      currentEditorCandidate ? [] : selectFallbackCandidates(selectedCandidate, candidates));
+  }, [snapshot, selectedCandidate, selectedAiCandidate, candidates, currentEditorCandidate]);
+  const sampleRuleDraft = useMemo(() => activeRuleDraft ?? (snapshot && currentEditorCandidate
+    ? createAppRuleDraft(snapshot, currentEditorCandidate, []) : null),
+  [activeRuleDraft, snapshot, currentEditorCandidate]);
+  const activeRuleValidation = useMemo(() => {
+    if (!snapshot || !activeRuleDraft) return null;
+    return validateAiCandidateAgainstSnapshot({ id: "preview", title: "", summary: "", risk: "",
+      app: activeRuleDraft }, snapshot);
+  }, [snapshot, activeRuleDraft]);
+  const failureContext = `${snapshot?.id}|${activeRuleDraft ? ruleContentKey(activeRuleDraft) : ""}`;
+  const currentFailureFeedback: FailureFeedbackDraft = failureFeedback?.context === failureContext
+    ? failureFeedback.value : {
+      result: "not-triggered", note: "", snapshotId: snapshot?.id,
+      appId: activeRuleDraft?.id,
+      staticValidation: activeRuleValidation?.status === "invalid" ? "unknown" : activeRuleValidation?.status,
+      diagnostics: activeRuleValidation?.diagnostics,
+      knownLimitations: snapshot && activeRuleDraft && activeRuleValidation
+        ? describeRulePreview(activeRuleDraft, snapshot, activeRuleValidation).unknowns : [],
+    };
   const customScenarioEditorOpen = scenarioId === CUSTOM_SCENARIO_OPTION_ID;
   const scenarioInfo = useMemo(
     () => resolvePromptScenarioInfo(scenarioId, customScenarios),
@@ -757,14 +804,16 @@ export function AndroidLiteApp() {
         ...current,
         [String(previousSnapshot.id)]: {
           point: pickResult?.point ?? null,
+          nodeId: pickResult?.pickedNode.id,
           selectedCandidateId,
         },
       }));
     }
     const remembered = snapshotMemory[String(nextSnapshot.id)] ?? null;
-    const rememberedPick = remembered?.point
-      ? pickNodeAtPoint(nextSnapshot, remembered.point)
-      : null;
+    const rememberedNode = remembered?.nodeId === undefined ? undefined
+      : nextSnapshot.nodeById.get(remembered.nodeId);
+    const rememberedPick = rememberedNode ? pickExistingNode(nextSnapshot, rememberedNode)
+      : remembered?.point ? pickNodeAtPoint(nextSnapshot, remembered.point) : null;
     setSnapshot((previous) => {
       if (previous) URL.revokeObjectURL(previous.screenshotUrl);
       return nextSnapshot;
@@ -788,9 +837,12 @@ export function AndroidLiteApp() {
     });
   }
 
-  function handlePointSelected(point: NodePoint): void {
+  function handlePointSelected(point: NodePoint, explicitNode?: NormalizedSnapshotNode): void {
     if (!snapshot) return;
-    const nextPick = pickNodeAtPoint(snapshot, point);
+    setEditingCandidate(null);
+    setEditingPreview(null);
+    const nextPick = explicitNode ? { ...pickExistingNode(snapshot, explicitNode), point }
+      : pickNodeAtPoint(snapshot, point);
     setPickResult(nextPick);
     if (!nextPick) {
       setSelectedCandidateId(null);
@@ -840,6 +892,7 @@ export function AndroidLiteApp() {
       ...current,
       [String(snapshot.id)]: {
         point,
+        nodeId: nextPick.pickedNode.id,
         selectedCandidateId: nextSelectedCandidate?.id ?? null,
       },
     }));
@@ -1282,6 +1335,8 @@ export function AndroidLiteApp() {
   }
 
   function handleCandidateSelect(candidate: SelectorCandidate): void {
+    setEditingCandidate(null);
+    setEditingPreview(null);
     setSelectedCandidateId(candidate.id);
     setSelectedAiCandidateId(null);
     if (snapshot) {
@@ -1289,6 +1344,7 @@ export function AndroidLiteApp() {
         ...current,
         [String(snapshot.id)]: {
           point: pickResult?.point ?? current[String(snapshot.id)]?.point ?? null,
+          nodeId: pickResult?.pickedNode.id ?? current[String(snapshot.id)]?.nodeId,
           selectedCandidateId: candidate.id,
         },
       }));
@@ -1300,6 +1356,8 @@ export function AndroidLiteApp() {
   }
 
   function handleAiCandidateSelect(candidateId: string): void {
+    setEditingCandidate(null);
+    setEditingPreview(null);
     setSelectedAiCandidateId(candidateId);
     setSelectedCandidateId(null);
   }
@@ -1325,7 +1383,7 @@ export function AndroidLiteApp() {
       mode: workspaceMode,
       snapshotId: snapshot.id,
       controlKey: controlKeyForPick(snapshot, pickResult),
-      sourceKey: candidate.rule.matches.join("\n"),
+      sourceKey: ruleContentKey(draft),
       title: humanStrategyTitle(candidate.strategyName),
       summary: candidate.title,
       appName: formatSnapshotAppName(snapshot),
@@ -1976,6 +2034,24 @@ export function AndroidLiteApp() {
     void syncInlineTestsToGkd(nextState, `${candidate.title} 已加入当前测试集合`);
   }
 
+  function enrichCurrentFeedback(feedbacks: AiCandidateFeedback[]): AiCandidateFeedback[] {
+    return feedbacks.map((feedback) => {
+      const sourceSession = aiCandidates.includes(feedback.candidate) ? activeAiSession
+        : externalAiCandidates.includes(feedback.candidate) ? externalAiSession : null;
+      const snapshotId = feedback.snapshotId ?? sourceSession?.snapshotId ?? snapshot?.id;
+      if (!snapshot || String(snapshotId) !== String(snapshot.id)
+        || feedback.candidate.app.id !== snapshot.appId) {
+        return { ...feedback, snapshotId, appId: feedback.candidate.app.id,
+          staticValidation: "unknown", knownLimitations: ["当前工作区快照不属于该反馈会话，未重新验证。"] };
+      }
+      const validation = validateAiCandidateAgainstSnapshot(feedback.candidate, snapshot);
+      return { ...feedback, snapshotId: snapshot.id, appId: snapshot.appId,
+        staticValidation: validation.status === "invalid" ? "unknown" : validation.status,
+        diagnostics: validation.diagnostics,
+        knownLimitations: describeRulePreview(feedback.candidate.app, snapshot, validation).unknowns };
+    });
+  }
+
   async function copyAiFeedbackPrompt(
     feedbacks: AiCandidateFeedback[],
     modeOverride?: "single" | "flow" | null,
@@ -1987,7 +2063,7 @@ export function AndroidLiteApp() {
     const mode = modeOverride ?? aiGeneratedMode ?? workspaceMode;
     setExternalAiMessage(null);
     try {
-      await copyTextToClipboard(buildExternalFeedbackPrompt(feedbacks, mode === "flow"));
+      await copyTextToClipboard(buildExternalFeedbackPrompt(enrichCurrentFeedback(feedbacks), mode === "flow"));
       showExternalAiTransient("已复制测试反馈 prompt，可粘贴给外部 AI 修正规则");
       appendAiDebugLog(`feedback:copied mode=${mode} count=${feedbacks.length}`);
     } catch (cause) {
@@ -2009,7 +2085,7 @@ export function AndroidLiteApp() {
       const messages = buildAiBatchFeedbackMessages({
         mode,
         originalPrompt: session?.originalPrompt ?? (mode === "flow" ? flowPrompt : singleAiPrompt),
-        feedbacks,
+        feedbacks: enrichCurrentFeedback(feedbacks),
       });
       appendAiDebugLog(`feedback:start mode=${mode} count=${feedbacks.length}`);
       const nextCandidates = await requestAiCandidatesWithTextFallback({
@@ -2388,12 +2464,50 @@ export function AndroidLiteApp() {
             <ScreenshotCanvas
               interactionMode="dragMagnifier"
               pickResult={pickResult}
-              selectedCandidate={selectedCandidate}
-              aiValidation={aiValidation}
+              selectedCandidate={selectedCandidate && activeRuleValidation
+                ? { ...selectedCandidate, validation: activeRuleValidation } : null}
+              aiValidation={activeRuleValidation ?? aiValidation}
               snapshot={snapshot}
               onPointSelected={handlePointSelected}
             />
-            <TargetSummary pickResult={pickResult} selectedCandidate={selectedCandidate} />
+            <NodeSelectionPanel snapshot={snapshot} pickResult={pickResult}
+              clickNodes={activeRuleValidation?.clickNodes ?? []}
+              onChooseSnapshot={backHome}
+              onSelectNode={(node) => handlePointSelected(pickResult?.point ?? {
+                x: (node.attr.left + node.attr.right) / 2,
+                y: (node.attr.top + node.attr.bottom) / 2,
+              }, node)}
+            />
+            {activeRuleDraft && activeRuleValidation && <RulePreviewPanel
+              app={activeRuleDraft} snapshot={snapshot} validation={activeRuleValidation}
+            />}
+            {sampleRuleDraft && <details className="rule-authoring-panel" hidden={!activeRuleDraft}>
+              <summary>多快照验证</summary>
+              <MultiSnapshotValidationPanel key={sampleRuleDraft.id}
+                app={sampleRuleDraft} snapshot={snapshot} availableSnapshots={snapshots}
+                loadSnapshot={client && matchesTargetPackage(client.serverInfo.gkdAppInfo.id, targetPackage)
+                  ? client.loadSnapshot : undefined}
+              />
+            </details>}
+            {activeRuleDraft && <details className="rule-authoring-panel">
+              <summary>反馈与修复</summary>
+              <FailureFeedbackPanel feedback={currentFailureFeedback}
+                onFeedbackChange={(value) => setFailureFeedback({ context: failureContext, value })}
+                copyState={feedbackCopyState?.context === failureContext ? feedbackCopyState.value : "idle"}
+                sendState={aiLoading ? "sending" : "idle"}
+                onCopyPrompt={() => {
+                  const candidate = selectedAiCandidate ?? { id: selectedCandidate?.id ?? "current-rule",
+                    title: selectedCandidate?.title ?? "当前规则", summary: "", risk: "", app: activeRuleDraft };
+                  void copyTextToClipboard(buildExternalFeedbackPrompt(
+                    enrichCurrentFeedback([toCandidateFeedback(candidate, currentFailureFeedback)]), workspaceMode === "flow",
+                  )).then(() => setFeedbackCopyState({ context: failureContext, value: "copied" }),
+                    () => setFeedbackCopyState({ context: failureContext, value: "failed" }));
+                }}
+                onSendFeedback={selectedAiCandidate && activeAiSession && aiCandidates.includes(selectedAiCandidate) ? () => {
+                  void sendAiFeedback([toCandidateFeedback(selectedAiCandidate, currentFailureFeedback)]);
+                } : null}
+              />
+            </details>}
             {workspaceMode === "flow" && (
               <AndroidFlowStepRail
                 activeStepId={activeFlowStepId}
@@ -2439,6 +2553,21 @@ export function AndroidLiteApp() {
             <div className="android-section-title">
               <h2>候选 selector</h2>
             </div>
+            {snapshot && currentEditorCandidate ? <ConditionEditor
+              snapshot={snapshot} candidate={currentEditorCandidate}
+              onPreview={setEditingPreview}
+              onCancel={() => { setEditingCandidate(null); setEditingPreview(null); }}
+              onApply={(candidate) => {
+                const nextCandidates = [candidate, ...candidates.filter((item) => item.id !== candidate.id)];
+                setCandidateEdits((current) => ({ ...current, [candidateContext]: [candidate,
+                  ...(current[candidateContext] ?? []).filter((item) => item.id !== candidate.id)] }));
+                setSelectedCandidateId(candidate.id);
+                setSelectedAiCandidateId(null);
+                setEditingCandidate(null);
+                setEditingPreview(null);
+                syncActiveFlowStep({ candidates: nextCandidates, selectedCandidate: candidate });
+              }}
+            /> : null}
             <CandidateSummary
               candidates={candidates}
               importedSelectorKeys={new Set(testSubscription.importedSelectors)}
@@ -2454,6 +2583,11 @@ export function AndroidLiteApp() {
               onMarkTest={markInlineTestResult}
               onSelect={handleCandidateSelect}
               onStartTest={(candidate) => void startCandidateInlineTest(candidate)}
+              onEdit={(candidate) => {
+                handleCandidateSelect(candidate);
+                setEditingPreview(candidate);
+                setEditingCandidate({ context: candidateContext, candidate });
+              }}
             />
           </div>
         )}
@@ -4061,7 +4195,6 @@ function AndroidAiBatchFeedbackPanel({
         type="button"
         onClick={() => {
           onSubmit(selectedFeedbacks);
-          setDrafts({});
         }}
       >
         {loading ? <RefreshCw className="spin" size={16} /> : <ClipboardCopy size={16} />}
@@ -4837,6 +4970,7 @@ function CandidateSummary({
   onEndTest,
   onMarkTest,
   onImport,
+  onEdit,
 }: {
   candidates: SelectorCandidate[];
   selectedId: string | null;
@@ -4855,6 +4989,7 @@ function CandidateSummary({
     status: Exclude<InlineTestStatus, "idle" | "testing">,
   ) => void;
   onImport: (item: InlineRuleTestItem) => void;
+  onEdit: (candidate: SelectorCandidate) => void;
 }) {
   const [detailCandidateId, setDetailCandidateId] = useState<string | null>(null);
   const [copiedCandidateId, setCopiedCandidateId] = useState<string | null>(null);
@@ -4869,13 +5004,15 @@ function CandidateSummary({
         const guidance = getCandidateGuidance(candidate, index);
         const displayIndex = selectorDisplayIndex(candidates, candidate);
         const imported = importedSelectorKeys.has(candidate.rule.matches.join("\n"));
+        const candidateApp = snapshot ? createAppRuleDraft(snapshot, candidate,
+          selectFallbackCandidates(candidate, candidates)) : null;
         const testItem = findInlineTestItem(
           inlineTesting,
           "offline-selector",
           mode,
           snapshotId,
           controlKey,
-          candidate.rule.matches.join("\n"),
+          candidateApp ? ruleContentKey(candidateApp) : candidate.rule.matches.join("\n"),
         );
 
         const showDetails = detailCandidateId === candidate.id;
@@ -4920,8 +5057,16 @@ function CandidateSummary({
               <span className="android-candidate-strategy">
                 {humanStrategyTitle(candidate.strategyName)}
               </span>
-              <code>{candidate.rule.matches.join(" && ")}</code>
+              <span>{snapshot
+                ? describeRulePreview(createAppRuleDraft(snapshot, candidate,
+                    selectFallbackCandidates(candidate, candidates)), snapshot,
+                    candidate.validation).summaries.join(" / ")
+                : candidate.title}</span>
               <div className="android-candidate-actions">
+                <button className="android-candidate-detail" type="button"
+                  onClick={(event) => { event.stopPropagation(); onEdit(candidate); }}>
+                  编辑条件
+                </button>
                 <button
                   className="android-candidate-detail"
                   type="button"
@@ -4952,7 +5097,7 @@ function CandidateSummary({
                   <strong>{guidance.label}</strong>
                   <span>{guidance.reason}</span>
                 </span>
-                {imported && <span className="candidate-imported-badge">导入过</span>}
+                {imported && <span className="candidate-imported-badge">相同选择器导入过</span>}
                 <span className="android-candidate-heading">
                   <span className="candidate-index-badge">#{displayIndex}</span>
                   <span className={`status-badge ${candidate.risk.level}`}>
@@ -5231,27 +5376,6 @@ function formatAiOperationStatus(operation: AiOperation, elapsedSeconds: number)
   if (operation === "test") return `正在测试连接，已等待 ${seconds}`;
   if (operation === "feedback") return `正在发送测试反馈并等待模型修正，已等待 ${seconds}`;
   return `模型正在生成规则候选，已等待 ${seconds}，长 prompt 可能需要 1-2 分钟`;
-}
-
-function TargetSummary({
-  pickResult,
-  selectedCandidate,
-}: {
-  pickResult: NodePickResult | null;
-  selectedCandidate: SelectorCandidate | null;
-}) {
-  if (!pickResult) {
-    return null;
-  }
-
-  return (
-    <div className="android-target-summary">
-      <strong>已选 #{pickResult.pickedNode.id} {nodeLabel(pickResult.pickedNode)}</strong>
-      {selectedCandidate && (
-        <span>候选：{selectedCandidate.rule.matches.join(" && ")}</span>
-      )}
-    </div>
-  );
 }
 
 function RuntimeSummary({ settings }: { settings: RuleSettings }) {

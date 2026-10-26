@@ -1,0 +1,292 @@
+{
+  "scope": "browser fixture; not Android device acceptance",
+  "viewport": {
+    "width": 412,
+    "height": 915,
+    "pixelRatio": 1
+  },
+  "fixture": "http://127.0.0.1:8770",
+  "snapshots": [
+    {
+      "id": 3001,
+      "appId": "com.fixture.video",
+      "activityId": "com.fixture.video.MainActivity",
+      "screenWidth": 1080,
+      "screenHeight": 2400,
+      "isLandscape": false,
+      "appInfo": {
+        "id": "com.fixture.video",
+        "name": "规则验收样本",
+        "versionCode": 7,
+        "versionName": "7.0"
+      },
+      "appName": "规则验收样本"
+    },
+    {
+      "id": 3002,
+      "appId": "com.fixture.video",
+      "activityId": "com.fixture.video.MainActivity",
+      "screenWidth": 1080,
+      "screenHeight": 2400,
+      "isLandscape": false,
+      "appInfo": {
+        "id": "com.fixture.video",
+        "name": "规则验收样本",
+        "versionCode": 7,
+        "versionName": "7.0"
+      },
+      "appName": "规则验收样本"
+    },
+    {
+      "id": 3003,
+      "appId": "com.fixture.video",
+      "activityId": "com.fixture.video.OtherActivity",
+      "screenWidth": 1080,
+      "screenHeight": 2400,
+      "isLandscape": false,
+      "appInfo": {
+        "id": "com.fixture.video",
+        "name": "规则验收样本",
+        "versionCode": 7,
+        "versionName": "7.0"
+      },
+      "appName": "规则验收样本"
+    }
+  ],
+  "checks": [
+    {
+      "id": "home",
+      "title": "首页设备连接入口可用",
+      "status": "passed",
+      "detail": "观察到 HTTP 服务输入框和连接按钮"
+    },
+    {
+      "id": "connect",
+      "title": "外部 fixture 连接并返回三张快照",
+      "status": "passed",
+      "detail": "getServerInfo 与 getSnapshots 均实际请求"
+    },
+    {
+      "id": "workspace",
+      "title": "勾选快照后进入真实截图工作区",
+      "status": "passed",
+      "detail": "打开 fixture 快照 3001"
+    },
+    {
+      "id": "pointer",
+      "title": "实际 pointer 在截图选中节点并打开选择面板",
+      "status": "passed",
+      "detail": "视口坐标 (278,437)；['可点击', '760,1580 · 270×200']"
+    },
+    {
+      "id": "node-list",
+      "title": "节点列表可切换目标并更新范围标签",
+      "status": "passed",
+      "detail": "真实拖拽命中关闭文字、可点父节点与广告热区；列表显示范围与“点击目标”，切换后 is-picked 同步更新"
+    },
+    {
+      "id": "summary",
+      "title": "规则摘要与点击范围同时可见",
+      "status": "passed",
+      "detail": "当前快照命中 1 个点击目标"
+    },
+    {
+      "id": "candidate-details",
+      "title": "候选详情可查看 selector 与复制 JSON5 路径",
+      "status": "passed",
+      "detail": "候选卡保持简短；详情可复制，并捕获到含 matches/groups 的完整 AppRule JSON5"
+    },
+    {
+      "id": "send-failure",
+      "title": "fixture 拒绝测试订阅时显示真实错误",
+      "status": "passed",
+      "detail": "设备接口错误: updateSubscription 503"
+    },
+    {
+      "id": "test-identity",
+      "title": "重试后发送完整测试订阅身份",
+      "status": "passed",
+      "detail": "fixture 收到 id=0、完整 subscription 与规则"
+    },
+    {
+      "id": "condition-cancel",
+      "title": "编辑条件输入可验证，取消后保留原候选",
+      "status": "passed",
+      "detail": "条件改为不存在文字后显示未命中；取消后编辑器卸载"
+    },
+    {
+      "id": "condition-apply",
+      "title": "应用编辑后的规则并更新候选摘要",
+      "status": "passed",
+      "detail": "修改原条件值且应用按钮可用，应用后编辑器卸载"
+    },
+    {
+      "id": "multi-snapshot-add",
+      "title": "规则可加入当前快照正例并逐张验证",
+      "status": "passed",
+      "detail": "details 展开并显示一张正例结果"
+    },
+    {
+      "id": "edit-cancel-preserves-selection",
+      "title": "取消非首选候选编辑后恢复被编辑候选",
+      "status": "passed",
+      "detail": "第二张候选卡进入编辑后取消，候选仍保持激活，已有正例样例未丢失"
+    },
+    {
+      "id": "multi-snapshot",
+      "title": "同 app 正反例逐张展示",
+      "status": "passed",
+      "detail": "正例 #3003 与无关闭节点的反例 #3002 均显示“符合预期”"
+    },
+    {
+      "id": "multi-snapshot-editing",
+      "title": "编辑零命中时保留正反例且取消后恢复规则",
+      "status": "passed",
+      "detail": "已有 2 项时编辑为不存在值：应用禁用、正例重算失败但两项保留；取消后两项按原规则恢复通过"
+    },
+    {
+      "id": "feedback",
+      "title": "反馈与修复面板可展开并保留修复证据",
+      "status": "passed",
+      "detail": "外部剪贴板 seam 捕获到当前规则、close_region 条件、节点不可用分类与修复限制；按钮进入“已复制 prompt”"
+    },
+    {
+      "id": "mobile-layout",
+      "title": "移动端视口无横向溢出",
+      "status": "passed",
+      "detail": "412×915"
+    }
+  ],
+  "requests": [
+    {
+      "path": "/api/getServerInfo",
+      "body": {}
+    },
+    {
+      "path": "/api/getSnapshots",
+      "body": {}
+    },
+    {
+      "path": "/api/getSnapshot",
+      "body": {
+        "id": 3003
+      }
+    },
+    {
+      "path": "/api/getScreenshot",
+      "body": {
+        "id": 3003
+      }
+    },
+    {
+      "path": "/api/updateSubscription",
+      "body": {
+        "id": 0,
+        "name": "GKD Rule Studio 测试订阅",
+        "version": 1,
+        "author": "local",
+        "apps": [
+          {
+            "id": "com.fixture.video",
+            "name": "规则验收样本",
+            "groups": [
+              {
+                "key": 0,
+                "name": "开屏广告",
+                "matchTime": 30000,
+                "actionMaximum": 1,
+                "resetMatch": "app",
+                "rules": [
+                  {
+                    "key": 0,
+                    "matches": [
+                      "[vid=\"close_region\"]"
+                    ],
+                    "name": "精确 vid",
+                    "fastQuery": true,
+                    "activityIds": [
+                      "com.fixture.video.OtherActivity"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "/api/updateSubscription",
+      "body": {
+        "id": 0,
+        "name": "GKD Rule Studio 测试订阅",
+        "version": 1,
+        "author": "local",
+        "apps": []
+      }
+    },
+    {
+      "path": "/api/updateSubscription",
+      "body": {
+        "id": 0,
+        "name": "GKD Rule Studio 测试订阅",
+        "version": 1,
+        "author": "local",
+        "apps": [
+          {
+            "id": "com.fixture.video",
+            "name": "规则验收样本",
+            "groups": [
+              {
+                "key": 0,
+                "name": "开屏广告",
+                "matchTime": 30000,
+                "actionMaximum": 1,
+                "resetMatch": "app",
+                "rules": [
+                  {
+                    "key": 0,
+                    "matches": [
+                      "[vid=\"close_region\"]"
+                    ],
+                    "name": "精确 vid",
+                    "fastQuery": true,
+                    "activityIds": [
+                      "com.fixture.video.OtherActivity"
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "path": "/api/getSnapshot",
+      "body": {
+        "id": 3002
+      }
+    },
+    {
+      "path": "/api/getScreenshot",
+      "body": {
+        "id": 3002
+      }
+    }
+  ],
+  "subscriptionUpdates": 2,
+  "screenshot": "docs/verification/rule-authoring-browser-checks.png",
+  "findings": [
+    {
+      "id": "multi-snapshot-async-response-dropped",
+      "status": "closed",
+      "observed": "Previously getSnapshot/getScreenshot succeeded but React StrictMode discarded the second snapshot response.",
+      "closed_evidence": "MultiSnapshotValidationPanel now uses runRef updated only when appKey changes; fixture #3003 plus #3002 rendered as two passing samples in this run.",
+      "check_ids": [
+        "multi-snapshot",
+        "multi-snapshot-editing"
+      ]
+    }
+  ]
+}

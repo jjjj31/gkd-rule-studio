@@ -88,6 +88,45 @@ describe("selector MVP flow", () => {
     expect(candidates[0].validation.hitCount).toBeGreaterThanOrEqual(1);
   });
 
+  it("candidate validation uses the final rule and inherited Activity scope", () => {
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 1 })),
+      node(
+        1,
+        0,
+        attr({
+          id: "com.demo:id/cancel",
+          vid: "cancel",
+          name: "android.widget.Button",
+          text: "取消",
+          clickable: true,
+          index: 0,
+        }),
+      ),
+    ]);
+    const pick = pickNodeAtPoint(snapshot, { x: 100, y: 100 });
+    const candidates = generateSelectorCandidates({
+      snapshot,
+      ruleSettings: {
+        ...DEFAULT_RULE_SETTINGS,
+        activityIds: ".OtherActivity",
+      },
+      pickedNode: pick!.pickedNode,
+      ancestors: pick!.ancestors,
+      siblings: pick!.siblings,
+      clickableAncestor: pick!.clickableAncestor,
+      nearbyTextNodes: pick!.nearbyTextNodes,
+    });
+    const candidate = candidates.find((item) => item.strategyName === "exactVid");
+
+    expect(candidate).toBeDefined();
+    expect(candidate?.validation).toMatchObject({
+      status: "unsatisfied",
+      hitCount: 0,
+    });
+    expect(candidate?.risk.level).toBe("high");
+  });
+
   it("generates a parent-click selector when child text is not clickable", () => {
     const snapshot = buildSnapshot([
       node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 1 })),
