@@ -48,7 +48,21 @@ git diff codex/release-preparation..codex/android-mcp --stat
 
 ## 检查结果
 
-自动检查结果正在整理；本次不执行实机验收。
+| 分支 | 前端测试 | Java 单测 | 类型检查 / Web / APK |
+| --- | --- | --- | --- |
+| `codex/release-preparation` | 32 文件 / 298 项通过 | 5 项通过 | 全部通过 |
+| `codex/sdk-detection` | 35 文件 / 348 项通过 | 10 项通过 | 全部通过 |
+| `codex/android-mcp` | 39 文件 / 362 项通过 | 6 项通过 | 全部通过 |
+
+发行分支 Windows 构建入口 5 项自检通过。独立子 agent 复核未发现功能交叉依赖或误删。APK 的 DEX、资源与 Manifest 权限检查符合各分支范围；三份包签名一致。完整 hash、权限与验证代码版本见 [结构化检查结果](branch-split-checks-2026-11-03.json)。
+
+发行内部包：`android/app/build/outputs/apk/debug/app-debug.apk`，版本 `0.2.0/200`，SHA-256：
+
+```text
+55e533b604e88685123635cf4cf8955eafc4971d03ef41bd85f6e0ce9650a347
+```
+
+原根目录旧 `node_modules` 在安装时遇到 EACCES，已原样保留到被忽略的 `.scratch/branch-split-2026-11-03/previous-node_modules/`，恢复说明在同级 `.note.md`。未改 ACL；根目录已按发行锁文件重新离线安装，测试和 APK 构建通过。
 
 ## 待用户验收
 

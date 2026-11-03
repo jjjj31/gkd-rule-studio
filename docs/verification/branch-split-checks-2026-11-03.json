@@ -1,0 +1,76 @@
+{
+  "date": "2026-11-03",
+  "snapshot_commit": "5449ba091b0177b8107d251768d6e0f6efb290b5",
+  "scope": "Local split verification only; no device installation, deployment, push or publication. Final documentation-only changes preserve tested code.",
+  "branches": [
+    {
+      "branch": "codex/release-preparation",
+      "tested_code_commit": "f8249960424a072d6f7e5ddbd70d43f425969d53",
+      "typescript_test_files": 32,
+      "typescript_tests": 298,
+      "typecheck": "passed",
+      "web_build": "passed",
+      "java_tests": 5,
+      "java_failures": 0,
+      "apk_build": "passed",
+      "apk_sha256": "55e533b604e88685123635cf4cf8955eafc4971d03ef41bd85f6e0ce9650a347",
+      "apk_bytes": 968022,
+      "certificate_sha256": "c6aa24ff1596424f69368353c964393e15d17c873670f9611cfaa2579d691c64",
+      "sdk_scanner_present": false,
+      "mcp_server_present": false,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ],
+      "user_device_test": "pending"
+    },
+    {
+      "branch": "codex/sdk-detection",
+      "tested_code_commit": "b9abb639444a04d873b4c8773ce8ef01487d0e3d",
+      "typescript_test_files": 35,
+      "typescript_tests": 348,
+      "typecheck": "passed",
+      "web_build": "passed",
+      "java_tests": 10,
+      "java_failures": 0,
+      "apk_build": "passed",
+      "apk_sha256": "90df9758e946c6694142ab4f614632c01b6ed434299f9750a32a610e881652a6",
+      "apk_bytes": 836935,
+      "certificate_sha256": "c6aa24ff1596424f69368353c964393e15d17c873670f9611cfaa2579d691c64",
+      "sdk_scanner_present": true,
+      "mcp_server_present": false,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.REQUEST_INSTALL_PACKAGES",
+        "android.permission.QUERY_ALL_PACKAGES"
+      ],
+      "user_device_test": "pending"
+    },
+    {
+      "branch": "codex/android-mcp",
+      "tested_code_commit": "2401fbc32713571b47c945c88492d64d69473600",
+      "typescript_test_files": 39,
+      "typescript_tests": 362,
+      "typecheck": "passed",
+      "web_build": "passed",
+      "java_tests": 6,
+      "java_failures": 0,
+      "apk_build": "passed",
+      "apk_sha256": "fa23622f8cc29f33b8fda252e65efb17d392b7e0118581890897cf7789afd976",
+      "apk_bytes": 1219124,
+      "certificate_sha256": "c6aa24ff1596424f69368353c964393e15d17c873670f9611cfaa2579d691c64",
+      "sdk_scanner_present": false,
+      "mcp_server_present": true,
+      "permissions": [
+        "android.permission.INTERNET",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ],
+      "user_device_test": "pending"
+    }
+  ],
+  "independent_isolation_review": "passed",
+  "release_build_wrapper_checks": 5
+}
