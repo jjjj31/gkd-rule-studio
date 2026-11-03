@@ -9,6 +9,7 @@ import type {
   ParsedGkdSnapshot,
 } from "../types/gkdSnapshot";
 import type { PromptScenarioInfo, RuleSettings } from "../types/ruleDraft";
+import { AI_RULE_OUTPUT_CONTRACT, AI_RULE_OUTPUT_EXAMPLE } from "./aiRuleContract";
 
 interface PromptInput {
   snapshot: ParsedGkdSnapshot | null;
@@ -52,6 +53,11 @@ export function buildHelpPrompt(input: PromptInput): string {
     "5. 测试版应覆盖：A=保守方案(高置信稳定 selector)，B=同框节点/父节点/真实按钮层验证，C=调整 actionDelay/actionCd/actionMaximum 等执行参数；如有 WebView/遮罩证据才加 D=广告容器兜底。",
     "6. 代码块之后附上“测试反馈格式”，要求用户反馈测试版编号、是否触发、是否关闭、是否误触、失败页面等信息。",
     "7. 不要输出节点树复述、不要输出无关长解释。不要加多个代码块——只允许一个 ```json5 块。",
+    "",
+    AI_RULE_OUTPUT_CONTRACT,
+    "",
+    "完整 JSON5 示例（只学习字段结构，不要照抄 appId/selector）：",
+    AI_RULE_OUTPUT_EXAMPLE,
     "",
     "应用信息：",
     `- appId: ${snapshot.appId}`,

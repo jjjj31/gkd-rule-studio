@@ -17,6 +17,10 @@ import { normalizeSnapshot } from "./snapshotNormalize";
 import { getGkdChannel, matchesTargetChannel, targetChannelLabel, type GkdTargetChannel } from "./gkdTarget";
 import { prepareSelectorEngine } from "./selectorAdapter";
 import { screenshotMimeType } from "./screenshotFormat";
+import {
+  formatGkdRuleValidationIssues,
+  validateAppRuleDraft,
+} from "./gkdRuleValidation";
 
 interface RpcError {
   message: string;
@@ -108,6 +112,18 @@ export async function createDeviceApiClient(input: string, targetChannel?: GkdTa
       return postJson<RawGkdSnapshot>(origin, "captureSnapshot");
     },
     updateSubscription: async (subscription) => {
+      for (const app of subscription.apps) {
+        const validation = validateAppRuleDraft(app, {
+          strict: false,
+          // 订阅同步会同时覆盖测试规则；先拦截字段类型错误。
+          validateSelectors: false,
+        });
+        if (!validation.valid) {
+          throw new Error(
+            `本地规则校验失败（${app.id || "未知应用"}）：${formatGkdRuleValidationIssues(validation)}`,
+          );
+        }
+      }
       await postJson(origin, "updateSubscription", subscription);
     },
     appendLocalRules: async (app) => {
@@ -115,10 +131,29 @@ export async function createDeviceApiClient(input: string, targetChannel?: GkdTa
       if (channel !== "beta" || !(major > 1 || (major === 1 && minor >= 13))) {
         throw new Error("直接导入需要官方 GKD 1.13 测试版，请使用复制手动添加或切换测试版路径");
       }
-      if (!app.groups.length) throw new Error("没有可导入的规则组");
+      const appId = typeof app?.id === "string" ? app.id.trim() : "";
+      if (!appId) {
+        throw new Error("规则缺少有效的应用包名 id，请删除旧测试记录后重新生成");
+      }
+      if (!Array.isArray(app.groups) || app.groups.length === 0) {
+        throw new Error("没有可导入的规则组");
+      }
+      const validation = validateAppRuleDraft(app, {
+        strict: false,
+        // selector 的实际解析依赖目标版本；这里先拦截字段值类型错误。
+        validateSelectors: false,
+      });
+      if (!validation.valid) {
+        throw new Error(
+          `本地规则校验失败：${formatGkdRuleValidationIssues(validation)}`,
+        );
+      }
+      // GKD accepts a single group and takes the app ID from the route, so avoid
+      // requiring a redundant root id in the serialized source.
+      const appendSource = app.groups.length === 1 ? app.groups[0] : app;
       // Append is not idempotent: choose one transport and never retry after a lost response.
       const response = await (hasNetworkExtension() ? postWithExtension : postWithFetch)(origin, "appendRules", {
-        subsId: -2, groupType: 2, appId: app.id, source: JSON.stringify(app),
+        subsId: -2, groupType: 2, appId, source: JSON.stringify(appendSource),
       });
       await assertJsonRpcOk(response, "appendRules");
       const result: unknown = await response.json();
@@ -127,7 +162,7 @@ export async function createDeviceApiClient(input: string, targetChannel?: GkdTa
         || group.rules.length !== app.groups[index].rules.length)) {
         throw new Error("GKD 返回的导入结果不完整，请在 GKD 核对是否已写入后再重试");
       }
-      return { ok: true, action: "append", appId: app.id, appName: app.name,
+      return { ok: true, action: "append", appId, appName: app.name,
         addedGroups: result.length, addedRules: result.reduce((count, group) => count + group.rules.length, 0),
         skippedDuplicates: 0 };
     },

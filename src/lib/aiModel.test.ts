@@ -263,6 +263,50 @@ describe("ai model helpers", () => {
     );
   });
 
+  it("rejects matchRoot selector strings with the exact field path", () => {
+    expect(() => parseAiCandidates(JSON.stringify({
+      candidates: [{
+        id: "a",
+        title: "A",
+        summary: "test",
+        risk: "low",
+        app: {
+          id: "com.demo",
+          name: "Demo",
+          groups: [{
+            key: 0,
+            name: "g",
+            rules: [{
+              key: 0,
+              matches: ['[vid="skip"]'],
+              matchRoot: "content_container",
+            }],
+          }],
+        },
+      }],
+    }))).toThrow("rules[0].matchRoot");
+  });
+
+  it("rejects unparsable AI selectors before creating candidates", () => {
+    expect(() => parseAiCandidates(JSON.stringify({
+      candidates: [{
+        id: "a",
+        title: "A",
+        summary: "test",
+        risk: "low",
+        app: {
+          id: "com.demo",
+          name: "Demo",
+          groups: [{
+            key: 0,
+            name: "g",
+            rules: [{ key: 0, matches: ["not a selector ???"] }],
+          }],
+        },
+      }],
+    }))).toThrow("选择器语法错误");
+  });
+
   it("extracts content from OpenAI-compatible fallback response shapes", () => {
     expect(
       extractAiResponseContent({

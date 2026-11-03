@@ -63,6 +63,18 @@ const KtSelector = Selector as unknown as {
     parse: (source: string) => Selector;
   };
 };
+
+/** 只用本地解析器检查语法/类型，不要求当前有快照。 */
+export function validateGkdSelectorSyntax(expression: string): string | null {
+  try {
+    const ast = KtSelector.Companion.parseAst(expression);
+    const { typeInfo } = ensureGlobals();
+    ast.value.checkType(typeInfo.globalType);
+    return null;
+  } catch (cause) {
+    return cause instanceof Error ? cause.message : String(cause);
+  }
+}
 const KtTransform = Transform as unknown as {
   Companion: {
     multiplatformBuild: <T>(

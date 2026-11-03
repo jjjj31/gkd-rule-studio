@@ -44,6 +44,42 @@ describe("device api", () => {
     expect(updateCall?.init?.body).toBe(JSON.stringify(subscription));
   });
 
+  it("rejects boolean field type errors before syncing a subscription", async () => {
+    const calls: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      calls.push(String(input));
+      if (String(input).endsWith("/api/getServerInfo")) {
+        return jsonResponse({
+          device: {},
+          gkdAppInfo: { id: "li.songe.gkd", name: "GKD", versionName: "1.13.0-beta-2" },
+        } satisfies DeviceServerInfo);
+      }
+      return jsonResponse({ message: "ok" });
+    });
+
+    const client = await createDeviceApiClient("http://127.0.0.1:8888", "beta");
+    await expect(client.updateSubscription({
+      id: 0,
+      name: "test",
+      version: 1,
+      author: "local",
+      apps: [{
+        id: "com.demo",
+        name: "Demo",
+        groups: [{
+          key: 0,
+          name: "g",
+          rules: [{
+            key: 0,
+            matches: ['[vid="skip"]'],
+            matchRoot: "content_container",
+          }],
+        }],
+      }],
+    } as unknown as RawSubscriptionDraft)).rejects.toThrow("rules[0].matchRoot");
+    expect(calls.some((url) => url.endsWith("/api/updateSubscription"))).toBe(false);
+  });
+
   const app: AppRuleDraft = { id: "com.demo", name: "Demo", groups: [{
     key: 7, name: "关闭广告", rules: [{ key: 10, matches: ['[text="关闭"]'] }],
   }] };
@@ -59,7 +95,7 @@ describe("device api", () => {
     expect(await client.appendLocalRules(app)).toEqual({ ok: true, action: "append", appId: "com.demo",
       appName: "Demo", addedGroups: 1, addedRules: 1, skippedDuplicates: 0 });
     expect(calls[1]).toEqual({ url: "http://127.0.0.1:8888/api/appendRules",
-      body: { subsId: -2, groupType: 2, appId: "com.demo", source: JSON.stringify(app) } });
+      body: { subsId: -2, groupType: 2, appId: "com.demo", source: JSON.stringify(app.groups[0]) } });
   });
 
   it("keeps external references, default switches and unknown fields intact", async () => {
@@ -75,8 +111,31 @@ describe("device api", () => {
     });
     const client = await createDeviceApiClient("http://127.0.0.1:8888", "beta");
     await client.appendLocalRules(external);
-    expect(JSON.parse(String(body.source))).toEqual(external);
+    expect(JSON.parse(String(body.source))).toEqual(external.groups[0]);
     expect(body).not.toHaveProperty("dedupe");
+  });
+
+  it("rejects a missing root app id before writing", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch").mockImplementation(async () => jsonResponse(betaInfo));
+    const client = await createDeviceApiClient("http://device:8888", "beta");
+    await expect(client.appendLocalRules({ ...app, id: "" })).rejects.toThrow("应用包名 id");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a complete app source when appending multiple groups", async () => {
+    const multiGroup: AppRuleDraft = { ...app, groups: [
+      app.groups[0],
+      { key: 8, name: "弹窗广告", rules: [{ key: 11, matches: ['[text="跳过"]'] }] },
+    ] };
+    let body: Record<string, unknown> = {};
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (String(input).endsWith("getServerInfo")) return jsonResponse(betaInfo);
+      body = JSON.parse(String(init?.body));
+      return jsonResponse(multiGroup.groups);
+    });
+    const client = await createDeviceApiClient("http://device:8888", "beta");
+    await client.appendLocalRules(multiGroup);
+    expect(JSON.parse(String(body.source))).toEqual(multiGroup);
   });
 
   it("rejects a mismatched release channel or fork before loading or writing", async () => {

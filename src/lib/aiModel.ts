@@ -15,6 +15,12 @@ import {
   normalizeAuthoringFeedbackResult,
   type AuthoringFeedbackCategory,
 } from "./authoringFeedback";
+import {
+  assertValidAppRuleDraft,
+  validateAppRuleDraft,
+  formatGkdRuleValidationIssues,
+} from "./gkdRuleValidation";
+import { AI_RULE_OUTPUT_CONTRACT, AI_RULE_OUTPUT_EXAMPLE } from "./aiRuleContract";
 
 export type AiMode = "single" | "flow";
 
@@ -944,6 +950,8 @@ function buildSystemPrompt(mode: AiMode): string {
     "title 必须使用“测试版 A / 测试版 B / 测试版 C”这种互不重复的短名称；禁止使用“粘贴规则”“规则1”“方案”等泛称。",
     "app 必须是 GKD 应用规则对象：{ id, name, groups }，groups[].rules[].matches 必须是字符串数组。",
     "summary 说明验证思路；risk 说明误触风险。",
+    AI_RULE_OUTPUT_CONTRACT,
+    `完整 JSON5 示例（只学习字段结构，不要照抄 appId/selector）：\n${AI_RULE_OUTPUT_EXAMPLE}`,
     "诊断矩阵：测试版 A 使用本地最高分/最短稳定 selector 的保守方案；测试版 B 验证同框节点、父节点或真实按钮层；测试版 C 优先调整 actionDelay/actionCd/actionMaximum/matchRoot 等执行参数；测试版 D 仅在上下文有 WebView、广告容器、遮罩或热区证据时生成兜底方案。",
     "不同候选必须覆盖不同失败原因，不能只是重复同一个 matches 或只改规则名称。",
     "不要生成下载、安装、打开、浏览、查看详情等正向 CTA 点击规则。",
@@ -1042,13 +1050,18 @@ function normalizeAiCandidatePayload(
   }
 
   if (isAppDraftLike(parsed)) {
+    const app = normalizeAppDraft(parsed);
+    assertValidAppRuleDraft(app, "AI 返回的 app", {
+      strict: true,
+      validateSelectors: true,
+    });
     return [
       {
         id: "pasted-rule-1",
         title: "粘贴规则 1",
         summary: "从 AI 粘贴内容提取",
         risk: "请先加入测试区验证",
-        app: normalizeAppDraft(parsed),
+        app,
       },
     ];
   }
@@ -1089,7 +1102,7 @@ function normalizeCandidate(value: unknown, index: number): AiRuleCandidate {
     throw new Error("AI 返回候选缺少 app");
   }
 
-  return {
+  const candidate = {
     id: typeof value.id === "string" && value.id.trim() ? value.id.trim() : `ai-${index + 1}`,
     title:
       typeof value.title === "string" && value.title.trim()
@@ -1099,6 +1112,16 @@ function normalizeCandidate(value: unknown, index: number): AiRuleCandidate {
     risk: typeof value.risk === "string" ? value.risk : "",
     app: normalizeAppDraft(value.app),
   };
+  const validation = validateAppRuleDraft(candidate.app, {
+    strict: true,
+    validateSelectors: true,
+  });
+  if (!validation.valid) {
+    throw new Error(
+      `AI 返回候选 ${index + 1} 的 app 不合法：${formatGkdRuleValidationIssues(validation)}`,
+    );
+  }
+  return candidate;
 }
 
 function normalizeAiProfileStore(
