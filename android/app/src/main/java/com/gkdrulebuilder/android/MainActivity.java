@@ -27,6 +27,7 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.view.MenuItem;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.widget.Toast;
 import org.json.JSONArray;
@@ -58,11 +59,13 @@ public class MainActivity extends Activity {
 
     private WebView webView;
     private ValueCallback<Uri[]> filePathCallback;
+    private AndroidBridge androidBridge;
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        FeedbackDiagnostics.install(this);
 
         Window window = getWindow();
         window.getDecorView().setSystemUiVisibility(
@@ -99,7 +102,8 @@ public class MainActivity extends Activity {
                 return startFileChooser(callback, params);
             }
         });
-        webView.addJavascriptInterface(new AndroidBridge(this, webView), "GkdAndroidBridge");
+        androidBridge = new AndroidBridge(this, webView);
+        webView.addJavascriptInterface(androidBridge, "GkdAndroidBridge");
         webView.loadUrl("file:///android_asset/index.html#android");
         if (getActionBar() != null) {
             getActionBar().hide();
@@ -130,9 +134,9 @@ public class MainActivity extends Activity {
     /**
      * 打开系统文件选择器供 WebView 的 input[type=file] 使用。
      *
-     * 用宽松的通配 MIME 而不是照搬 accept：LibChecker 的 .lcapps 是未知扩展名，
-     * 系统可能只把它标成 application/octet-stream，收紧 MIME 会让文件在部分
-     * 选择器里不可见。格式校验由前端按内容完成，这里不申请任何存储权限。
+     * 用宽松的通配 MIME 而不是照搬 accept：系统可能把用户选择的文件标成
+     * application/octet-stream，收紧 MIME 会让文件在部分选择器里不可见。
+     * 格式校验由前端按内容完成，这里不申请任何存储权限。
      */
     private boolean startFileChooser(
         ValueCallback<Uri[]> callback,
@@ -186,6 +190,19 @@ public class MainActivity extends Activity {
             filePathCallback.onReceiveValue(null);
             filePathCallback = null;
         }
+        if (androidBridge != null) {
+            androidBridge.close();
+            androidBridge = null;
+        }
+        if (webView != null) {
+            // Release the WebView and its bridge when the activity exits.
+            webView.removeJavascriptInterface("GkdAndroidBridge");
+            if (webView.getParent() instanceof ViewGroup) {
+                ((ViewGroup) webView.getParent()).removeView(webView);
+            }
+            webView.destroy();
+            webView = null;
+        }
         super.onDestroy();
     }
 
@@ -204,6 +221,16 @@ public class MainActivity extends Activity {
         AndroidBridge(Context context, WebView webView) {
             this.context = context;
             this.webView = webView;
+        }
+
+        void close() {
+            networkExecutor.shutdownNow();
+            timeoutExecutor.shutdownNow();
+        }
+
+        @JavascriptInterface
+        public String getFeedbackDiagnostics() {
+            return FeedbackDiagnostics.getDiagnosticsJson(context);
         }
 
         @JavascriptInterface
@@ -744,5 +771,6 @@ public class MainActivity extends Activity {
                 webView.evaluateJavascript(script, null);
             });
         }
+
     }
 }

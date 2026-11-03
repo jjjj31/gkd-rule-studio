@@ -14,6 +14,9 @@ import type { RawSubscriptionDraft } from "./testSubscription";
 import type { LibraryTestSubscription, SubscriptionApp } from "../types/subscriptionLibrary";
 import { enhancedFetch, extensionFetch, hasNetworkExtension, fetchWithTimeout } from "./networkExtension";
 import { normalizeSnapshot } from "./snapshotNormalize";
+import { getGkdChannel, matchesTargetChannel, targetChannelLabel, type GkdTargetChannel } from "./gkdTarget";
+import { prepareSelectorEngine } from "./selectorAdapter";
+import { screenshotMimeType } from "./screenshotFormat";
 
 interface RpcError {
   message: string;
@@ -58,7 +61,7 @@ export interface DeviceApiClient {
   captureSnapshot: () => Promise<RawGkdSnapshot>;
   loadSnapshot: (id: number) => Promise<ParsedGkdSnapshot>;
   updateSubscription: (subscription: RawSubscriptionDraft | LibraryTestSubscription) => Promise<void>;
-  appendLocalRules: (app: AppRuleDraft | SubscriptionApp, options?: { dedupe?: boolean }) => Promise<LocalRulesAppendResponse>;
+  appendLocalRules: (app: AppRuleDraft | SubscriptionApp) => Promise<LocalRulesAppendResponse>;
 }
 
 /**
@@ -67,9 +70,13 @@ export interface DeviceApiClient {
  * input 可以是 "192.168.1.5:8888" 或 "http://192.168.1.5:8888" 等形式。
  * 返回的 DeviceApiClient.origin 是规范化后的完整 URL。
  */
-export async function createDeviceApiClient(input: string): Promise<DeviceApiClient> {
+export async function createDeviceApiClient(input: string, targetChannel?: GkdTargetChannel): Promise<DeviceApiClient> {
   const origin = normalizeDeviceOrigin(input);
   const serverInfo = await postJson<DeviceServerInfo>(origin, "getServerInfo");
+  if (targetChannel && !matchesTargetChannel(serverInfo.gkdAppInfo, targetChannel)) {
+    throw new Error(`请选择对应版本：当前目标为 ${targetChannelLabel(targetChannel)}，连接到 ${serverInfo.gkdAppInfo?.versionName ?? "未知版本"}（${serverInfo.gkdAppInfo?.id ?? "未知包名"}）`);
+  }
+  const channel = targetChannel ?? getGkdChannel(serverInfo.gkdAppInfo);
 
   const client: DeviceApiClient = {
     origin,
@@ -103,31 +110,43 @@ export async function createDeviceApiClient(input: string): Promise<DeviceApiCli
     updateSubscription: async (subscription) => {
       await postJson(origin, "updateSubscription", subscription);
     },
-    appendLocalRules: async (app, options = {}) => {
-      const result = await postJson<LocalRulesAppendResponse>(origin, "localRules/append", {
-        app,
-        dedupe: options.dedupe ?? true,
+    appendLocalRules: async (app) => {
+      const [major, minor] = (serverInfo.gkdAppInfo?.versionName ?? "").replace(/^v/, "").split(".").map(Number);
+      if (channel !== "beta" || !(major > 1 || (major === 1 && minor >= 13))) {
+        throw new Error("直接导入需要官方 GKD 1.13 测试版，请使用复制手动添加或切换测试版路径");
+      }
+      if (!app.groups.length) throw new Error("没有可导入的规则组");
+      // Append is not idempotent: choose one transport and never retry after a lost response.
+      const response = await (hasNetworkExtension() ? postWithExtension : postWithFetch)(origin, "appendRules", {
+        subsId: -2, groupType: 2, appId: app.id, source: JSON.stringify(app),
       });
-      if (!result || (result.ok !== undefined && result.ok !== true) ||
-        (result.action !== undefined && result.action !== "append") || result.appId !== app.id ||
-        ![result.addedGroups, result.addedRules, result.skippedDuplicates].every((count) => Number.isSafeInteger(count) && count >= 0)) {
+      await assertJsonRpcOk(response, "appendRules");
+      const result: unknown = await response.json();
+      if (!Array.isArray(result) || result.length !== app.groups.length || result.some((group, index) =>
+        !group || !Number.isSafeInteger(group.key) || !Array.isArray(group.rules)
+        || group.rules.length !== app.groups[index].rules.length)) {
         throw new Error("GKD 返回的导入结果不完整，请在 GKD 核对是否已写入后再重试");
       }
-      return { ...result, ok: true, action: "append" };
+      return { ok: true, action: "append", appId: app.id, appName: app.name,
+        addedGroups: result.length, addedRules: result.reduce((count, group) => count + group.rules.length, 0),
+        skippedDuplicates: 0 };
     },
     loadSnapshot: async (id) => {
+      if (channel) await prepareSelectorEngine(channel);
       const [snapshot, screenshot] = await Promise.all([
         client.getSnapshot(id),
         client.getScreenshot(id),
       ]);
       const screenshotUrl = URL.createObjectURL(
-        new Blob([screenshot], { type: "image/png" }),
+        new Blob([screenshot], { type: screenshotMimeType(new Uint8Array(screenshot)) }),
       );
-      return normalizeSnapshot(
+      const parsed = normalizeSnapshot(
         snapshot,
         screenshotUrl,
         `设备快照 ${formatSnapshotTime(snapshot.id)}`,
       );
+      parsed.gkdChannel = channel ?? undefined;
+      return parsed;
     },
   };
 
@@ -482,7 +501,7 @@ async function assertJsonRpcOk(response: Response, name: string): Promise<void> 
 
   const clone = response.clone();
   const value = (await clone.json().catch(() => null)) as RpcError | null;
-  if (value?.__error) {
+  if (value?.__error || (value && "code" in value && "message" in value)) {
     throw new Error(value.message || `设备接口错误: ${name}`);
   }
 }

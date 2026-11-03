@@ -2,6 +2,8 @@ import { Component, StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { debugLog } from "./lib/debugLog";
+import { loadAiConfig, loadAiProfileStore } from "./lib/aiModel";
+import { UserFeedbackPanel } from "./components/UserFeedbackPanel";
 import "./styles.css";
 
 /**
@@ -11,9 +13,9 @@ import "./styles.css";
  */
 class RenderErrorBoundary extends Component<
   { children: ReactNode },
-  { error: Error | null }
+  { error: Error | null; feedbackOpen: boolean }
 > {
-  state: { error: Error | null } = { error: null };
+  state: { error: Error | null; feedbackOpen: boolean } = { error: null, feedbackOpen: false };
 
   static getDerivedStateFromError(error: Error): { error: Error } {
     return { error };
@@ -79,12 +81,29 @@ class RenderErrorBoundary extends Component<
           >
             重新加载
           </button>
+          <button type="button" className="android-button" onClick={() => this.setState({ feedbackOpen: true })}>反馈问题</button>
+          {this.state.feedbackOpen && <UserFeedbackPanel snapshot={null} ruleText="" page="界面错误页"
+            errors={String(this.state.error.stack || this.state.error.message).slice(-4000)}
+            secrets={configuredFeedbackSecrets()} onClose={() => this.setState({ feedbackOpen: false })} />}
         </div>
       );
     }
     return this.props.children;
   }
 }
+
+function configuredFeedbackSecrets(): string[] {
+  try { return [loadAiConfig().apiKey, ...loadAiProfileStore().profiles.map((profile) => profile.config.apiKey)].filter(Boolean); }
+  catch { return []; }
+}
+
+window.addEventListener("error", (event) => {
+  if (event.message) debugLog("error", "window:unhandled", event.message.slice(0, 2000));
+});
+window.addEventListener("unhandledrejection", (event) => {
+  const message = event.reason instanceof Error ? event.reason.message : String(event.reason ?? "未知异步异常");
+  debugLog("error", "promise:unhandled", message.slice(0, 2000));
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

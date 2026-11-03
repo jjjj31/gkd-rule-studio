@@ -7,6 +7,7 @@ interface Window {
     openDouyinSearch?: () => void;
     setBackVisible?: (visible: boolean) => void;
     saveFile?: (fileName: string, mimeType: string, base64: string) => void;
+    getFeedbackDiagnostics?: () => string;
     postJson?: (
       requestId: string,
       url: string,

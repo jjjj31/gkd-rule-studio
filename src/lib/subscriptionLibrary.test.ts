@@ -149,12 +149,12 @@ describe("complete rule group delivery", () => {
     expect(() => selectLibraryGroup(broken, broken.subscription.apps[0], 0)).toThrow("重复");
   });
 
-  it("maps all local references to the fork's rule order and retains source defaults", () => {
+  it("preserves keys, references and source defaults for official GKD", () => {
     const original = source();
     const selected = selectLibraryGroup(original, original.subscription.apps[0], 0);
     const prepared = prepareLibraryAppend(selected);
-    expect(prepared.groups[0]).toMatchObject({ enable: false, actionCdKey: 0, actionMaximumKey: 1, rules: [
-      { key: 0, matches: expect.any(String) }, { key: 1, preKeys: 0, actionCdKey: 0, actionMaximumKey: 1 },
+    expect(prepared.groups[0]).toMatchObject({ enable: false, actionCdKey: 10, actionMaximumKey: 30, rules: [
+      { key: 10, matches: expect.any(String) }, { key: 30, preKeys: 10, actionCdKey: 10, actionMaximumKey: 30 },
     ] });
     expect(selected.app.groups[0].rules[1].preKeys).toBe(10);
   });

@@ -77,6 +77,12 @@ describe("snapshotExport", () => {
     expect(childLine).toContain("`[100,300][260,380]`");
   });
 
+  it("keeps WebP filenames and Markdown links consistent", () => {
+    const files = buildSnapshotExport(buildSnapshot(42, { appId: "com.demo" }), new Date(), "beta", "image/webp");
+    expect(files.screenshotName).toBe("beta.webp");
+    expect(files.markdownContent).toContain("![截图](./beta.webp)");
+  });
+
   it("still exports orphan nodes whose parent id is missing", () => {
     const raw: RawGkdSnapshot = {
       id: 1755271833000,

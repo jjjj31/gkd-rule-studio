@@ -1,0 +1,18 @@
+{
+  "checked_at": "2026-10-29T12:06:26.290347+00:00",
+  "base_url": "https://120.25.221.144/gkd-feedback/",
+  "status": "passed",
+  "smtp_configured": false,
+  "synthetic_data_removed": true,
+  "checks": [
+    "public_https_health",
+    "android_null_origin_preflight",
+    "anonymous_inbox_denied",
+    "administrator_login_secure_cookie",
+    "persistent_idempotent_submission_and_conflict",
+    "authenticated_attachment_and_anonymous_denial",
+    "csrf_and_status_transition",
+    "permanent_feedback_and_attachment_deletion",
+    "logout_revokes_session"
+  ]
+}

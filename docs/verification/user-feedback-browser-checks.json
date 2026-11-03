@@ -1,0 +1,189 @@
+{
+  "version": 1,
+  "scope": "real Firefox against synthetic GKD and feedback data; not Android device acceptance",
+  "generatedAt": "2026-10-30T05:20:42.359615+00:00",
+  "status": "passed",
+  "viewport": {
+    "width": 412,
+    "height": 915,
+    "pixelRatio": 1
+  },
+  "appUrl": "http://127.0.0.1:5174",
+  "fixture": "http://127.0.0.1:8786",
+  "protectedProductionEndpoint": "https://120.25.221.144/gkd-feedback/api/feedback",
+  "fixtureSnapshot": {
+    "id": 4101,
+    "appId": "com.fixture.feedback",
+    "activityId": "com.fixture.feedback.MainActivity",
+    "screenWidth": 1080,
+    "screenHeight": 2400,
+    "isLandscape": false,
+    "appInfo": {
+      "id": "com.fixture.feedback",
+      "name": "反馈验收样本",
+      "versionCode": 41,
+      "versionName": "4.1"
+    },
+    "appName": "反馈验收样本"
+  },
+  "checks": [
+    {
+      "id": "environment",
+      "title": "真实 Firefox、合成 fixture 与 Vite",
+      "status": "passed",
+      "detail": "Firefox 以 412×915 运行；Vite 复用或由本脚本隐藏启动；fixture 监听 8786"
+    },
+    {
+      "id": "connect",
+      "title": "连接 GKD HTTP fixture 并读取快照",
+      "status": "passed",
+      "detail": "页面显示 1 张 fixture 快照，服务端实际收到 getServerInfo 与 getSnapshots"
+    },
+    {
+      "id": "home-snapshot-selection",
+      "title": "首页反馈可选择快照并启用截图/节点材料",
+      "status": "passed",
+      "detail": "首页反馈显示快照选择器；选择 fixture 后实际读取 getSnapshot/getScreenshot，截图与节点树复选框解除禁用"
+    },
+    {
+      "id": "home-snapshot-autoload",
+      "title": "首页已勾选快照会带入反馈",
+      "status": "passed",
+      "detail": "首页只勾选一张快照时，打开反馈会预选并加载该快照，截图与节点树直接可选"
+    },
+    {
+      "id": "default-attachments",
+      "title": "反馈材料默认均未勾选",
+      "status": "passed",
+      "detail": "当前规则、当前截图、当前节点树三项均默认为 false"
+    },
+    {
+      "id": "inputs",
+      "title": "填写描述、凭据与敏感节点",
+      "status": "passed",
+      "detail": "localStorage 注入合成 API key；描述与错误均含已知密钥；截图与节点树已勾选，敏感节点已手动选择"
+    },
+    {
+      "id": "pointer-mask",
+      "title": "真实 pointer 在截图上绘制打码框",
+      "status": "passed",
+      "detail": "Firefox actions 从 (37, 264) 拖到 (358, 357)，界面显示手动框选 1 处"
+    },
+    {
+      "id": "preview-save",
+      "title": "预览脱敏材料并保存 IndexedDB 草稿",
+      "status": "passed",
+      "detail": "预览显示合成截图与节点 JSON；IndexedDB 草稿已存在；手机视口无横向溢出"
+    },
+    {
+      "id": "offline-failure",
+      "title": "首次提交模拟断网并保留草稿",
+      "status": "passed",
+      "detail": "只拦截生产反馈 URL；未发真实请求；页面显示已保留脱敏草稿，IndexedDB latest 仍存在"
+    },
+    {
+      "id": "request-privacy",
+      "title": "请求体凭据、节点与图片打码",
+      "status": "passed",
+      "detail": "生产端点替身收到 2 个附件；正文与 nodes.json 不含已知 key/节点文字/资源 ID；PNG (200,145) 从原图像素变为纯黑"
+    },
+    {
+      "id": "source-unchanged",
+      "title": "脱敏不修改工作区源节点",
+      "status": "passed",
+      "detail": "返回整理后节点列表仍显示原 text/vid；仅预览 payload 被脱敏"
+    },
+    {
+      "id": "unchanged-repreview",
+      "title": "内容不变再次预览复用草稿 clientId",
+      "status": "passed",
+      "detail": "返回整理后未修改材料，confirm 合成放行后再次预览保存；IndexedDB 草稿仍使用首次 clientId"
+    },
+    {
+      "id": "offline-repreview-idempotency",
+      "title": "再次离线重试保持同 body 与 clientId",
+      "status": "passed",
+      "detail": "第二次离线请求的完整 body、clientId 和 Idempotency-Key 与首轮一致"
+    },
+    {
+      "id": "reload-draft",
+      "title": "整页 reload 后从首页继续同一草稿",
+      "status": "passed",
+      "detail": "reload 后首页反馈入口显示继续草稿；打开后恢复预览，发送同意框回到未勾选"
+    },
+    {
+      "id": "retry-success",
+      "title": "手动重试成功后清理草稿",
+      "status": "passed",
+      "detail": "合成回执 uf-browser-20261029-ok；三次 clientId/body 完全一致，Idempotency-Key 等于 clientId；成功后草稿已清除"
+    },
+    {
+      "id": "draft-cleared-ui",
+      "title": "成功回执后可再次打开且无旧草稿",
+      "status": "passed",
+      "detail": "重新打开反馈面板未显示继续草稿或删除草稿入口"
+    },
+    {
+      "id": "corrupt-draft",
+      "title": "损坏 IndexedDB 草稿可删除",
+      "status": "passed",
+      "detail": "注入 schema 损坏记录后页面给出可删除提示；删除按钮清理 IndexedDB latest"
+    },
+    {
+      "id": "escape-close",
+      "title": "Escape 可关闭反馈对话框",
+      "status": "passed",
+      "detail": "真实 Firefox 键盘 Escape 触发面板卸载"
+    },
+    {
+      "id": "horizontal-overflow",
+      "title": "最终手机视口无横向溢出",
+      "status": "passed",
+      "detail": "收尾首页 document.scrollWidth 不超过 412px 视口"
+    }
+  ],
+  "feedbackCalls": [
+    {
+      "mode": "offline",
+      "url": "https://120.25.221.144/gkd-feedback/api/feedback",
+      "clientId": "a192dbbd-2150-42a5-90d7-d6d6d70917ba",
+      "idempotencyKey": "a192dbbd-2150-42a5-90d7-d6d6d70917ba",
+      "bodySha256": "c1a58efa836c1e671e5ff7aace855d8361f83f36284e4aaaa31a6c4dabf1371d",
+      "attachmentNames": [
+        "nodes.json",
+        "screenshot.png"
+      ]
+    },
+    {
+      "mode": "offline",
+      "url": "https://120.25.221.144/gkd-feedback/api/feedback",
+      "clientId": "a192dbbd-2150-42a5-90d7-d6d6d70917ba",
+      "idempotencyKey": "a192dbbd-2150-42a5-90d7-d6d6d70917ba",
+      "bodySha256": "c1a58efa836c1e671e5ff7aace855d8361f83f36284e4aaaa31a6c4dabf1371d",
+      "attachmentNames": [
+        "nodes.json",
+        "screenshot.png"
+      ]
+    },
+    {
+      "mode": "success",
+      "url": "https://120.25.221.144/gkd-feedback/api/feedback",
+      "clientId": "a192dbbd-2150-42a5-90d7-d6d6d70917ba",
+      "idempotencyKey": "a192dbbd-2150-42a5-90d7-d6d6d70917ba",
+      "bodySha256": "c1a58efa836c1e671e5ff7aace855d8361f83f36284e4aaaa31a6c4dabf1371d",
+      "attachmentNames": [
+        "nodes.json",
+        "screenshot.png"
+      ]
+    }
+  ],
+  "screenshot": "docs/verification/user-feedback-mobile.png",
+  "failure": null,
+  "findings": [
+    {
+      "id": "none",
+      "status": "closed",
+      "observed": "All requested browser checks passed."
+    }
+  ]
+}

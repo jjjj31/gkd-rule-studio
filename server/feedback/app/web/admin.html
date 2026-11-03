@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <base href="__ADMIN_BASE_HREF__">
+  <title>GKD 反馈后台</title>
+  <link rel="stylesheet" href="admin/static/admin.css">
+  <script src="admin/static/admin.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">GKD RULE BUILDER</p>
+      <h1>反馈后台</h1>
+    </div>
+    <button id="logoutButton" class="button ghost" type="button" hidden>退出登录</button>
+  </header>
+
+  <main>
+    <section id="loginView" class="login-card" aria-labelledby="loginTitle">
+      <h2 id="loginTitle">管理员登录</h2>
+      <p class="muted">此页面只允许管理员访问。</p>
+      <form id="loginForm">
+        <label>
+          用户名
+          <input id="username" name="username" type="text" autocomplete="username" required>
+        </label>
+        <label>
+          密码
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+        </label>
+        <button class="button primary" type="submit">登录</button>
+        <p id="loginError" class="error" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="appView" class="dashboard" hidden>
+      <aside class="list-panel" aria-labelledby="listTitle">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">INBOX</p>
+            <h2 id="listTitle">反馈列表</h2>
+          </div>
+          <span id="totalCount" class="count">0</span>
+        </div>
+        <div class="filters" role="group" aria-label="按状态筛选">
+          <button class="filter active" data-status="all" type="button">全部</button>
+          <button class="filter" data-status="pending" type="button">待处理</button>
+          <button class="filter" data-status="resolved" type="button">已解决</button>
+        </div>
+        <p id="listStatus" class="status-line" role="status"></p>
+        <p id="mailStatus" class="muted" role="status"></p>
+        <div id="feedbackList" class="feedback-list"></div>
+        <nav class="filters" aria-label="反馈分页">
+          <button id="previousPage" class="button ghost" type="button" disabled>上一页</button>
+          <span id="pageInfo" class="muted">第 1 页</span>
+          <button id="nextPage" class="button ghost" type="button" disabled>下一页</button>
+        </nav>
+      </aside>
+
+      <article id="detailPanel" class="detail-panel" aria-live="polite">
+        <div class="empty-state">
+          <p class="eyebrow">DETAILS</p>
+          <h2>选择一条反馈</h2>
+          <p class="muted">正文、联系方式和附件只在这里向已登录管理员显示。</p>
+        </div>
+      </article>
+    </section>
+  </main>
+</body>
+</html>
+

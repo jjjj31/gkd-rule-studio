@@ -8,13 +8,7 @@ import type {
   NormalizedSnapshotNode,
   ParsedGkdSnapshot,
 } from "../types/gkdSnapshot";
-import type { AppSdkProfile } from "../types/appSdkProfile";
 import type { PromptScenarioInfo, RuleSettings } from "../types/ruleDraft";
-import {
-  findAppSdkProfile,
-  formatAdSdkContextLines,
-  resolveAdSdkContext,
-} from "./adSdkContext";
 
 interface PromptInput {
   snapshot: ParsedGkdSnapshot | null;
@@ -24,34 +18,15 @@ interface PromptInput {
   includeNodeTree?: boolean;
   /** 当前选择的场景（预设/自定义）名称与说明，帮助 AI 理解运行参数的来由。 */
   scenario?: PromptScenarioInfo;
-  /**
-   * 已导入的 LibChecker 应用 SDK 档案。只按精确包名关联当前快照；
-   * 不传、包名不同或页面也无 SDK 特征时，prompt 与原来完全一致。
-   */
-  adSdkProfiles?: readonly AppSdkProfile[] | null;
 }
 
 /** 单步求助 prompt 入口：快照+选点+候选+设置 → 格式化文字。包装了场景、节点树、现有候选和兜底策略。 */
 export function buildHelpPrompt(input: PromptInput): string {
-  const {
-    snapshot,
-    pickResult,
-    ruleSettings,
-    includeNodeTree = true,
-    scenario,
-    adSdkProfiles,
-  } = input;
+  const { snapshot, pickResult, ruleSettings, includeNodeTree = true, scenario } = input;
 
   if (!snapshot) {
     return "请先导入或连接设备加载一个 GKD 快照。";
   }
-
-  const adSdkLines = formatAdSdkContextLines(
-    resolveAdSdkContext(
-      snapshot,
-      findAppSdkProfile(adSdkProfiles, snapshot.appId),
-    ),
-  );
 
   const lines = [
     "你是 GKD 规则专家。请根据下面的快照信息，为我生成稳定、低误触、尽量省电的 GKD 应用规则 JSON5。",
@@ -84,7 +59,6 @@ export function buildHelpPrompt(input: PromptInput): string {
     `- activityId: ${snapshot.activityId ?? "-"}`,
     `- screen: ${snapshot.screenWidth}x${snapshot.screenHeight}`,
     "",
-    ...(adSdkLines.length > 0 ? [...adSdkLines, ""] : []),
     ...(scenario
       ? [
           "场景：",

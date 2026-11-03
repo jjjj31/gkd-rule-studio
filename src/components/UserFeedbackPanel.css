@@ -1,0 +1,36 @@
+.user-feedback-backdrop { position: fixed; inset: 0; z-index: 2000; background: #070b12c9; display: flex; justify-content: center; padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom)); }
+.user-feedback-panel { background: var(--surface-1, #121923); color: var(--text-main, #dce6f0); border: 1px solid #ffffff24; border-radius: 16px; width: min(100%, 680px); overflow-y: auto; overscroll-behavior: contain; padding: 20px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 20px 80px #0008; }
+.user-feedback-panel > * { flex-shrink: 0; min-width: 0; }
+.user-feedback-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.user-feedback-head h2 { display: flex; gap: 9px; align-items: center; font-size: 20px; margin: 0; }
+.user-feedback-panel h3, .user-feedback-panel p { margin: 0; line-height: 1.65; }
+.user-feedback-panel label { display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.user-feedback-panel input:not([type=checkbox]), .user-feedback-panel textarea, .user-feedback-panel select { box-sizing: border-box; width: 100%; padding: 11px; border: 1px solid #ffffff30; border-radius: 8px; background: #0b111b; color: #e5edf7; font: inherit; }
+.user-feedback-panel textarea { resize: vertical; min-height: 72px; }
+.user-feedback-panel :focus-visible { outline: 2px solid #69b4ff; outline-offset: 3px; }
+.user-feedback-panel .user-feedback-check { display: flex; flex-direction: row; align-items: flex-start; gap: 9px; overflow-wrap: anywhere; line-height: 1.6; }
+.user-feedback-check input { flex: 0 0 auto; width: 18px; height: 18px; margin: 3px 0 0; accent-color: #70b8ff; }
+.user-feedback-panel fieldset { display: grid; gap: 14px; border: 1px solid #ffffff25; border-radius: 10px; padding: 14px; }
+.user-feedback-panel legend { padding: 0 6px; }
+.user-feedback-panel details { border: 1px solid #ffffff24; border-radius: 10px; padding: 12px; }
+.user-feedback-panel summary { cursor: pointer; line-height: 1.5; overflow-wrap: anywhere; }
+.user-feedback-panel details[open] > :not(summary) { margin-top: 12px; }
+.user-feedback-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; max-height: 350px; overflow: auto; padding: 12px; background: #060a11; border-radius: 8px; }
+.user-feedback-help { color: var(--text-muted, #9eacc0); font-size: 13px; }
+.user-feedback-notice { border: 1px solid #e0ac4e66; border-radius: 8px; padding: 12px; background: #e0ac4e12; overflow-wrap: anywhere; }
+.user-feedback-actions, .user-feedback-draft { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.user-feedback-draft { padding: 12px; border-radius: 10px; background: #72b8ff15; }
+.user-feedback-draft strong, .user-feedback-draft span { flex-basis: 100%; }
+.user-feedback-draft span { font-size: 12px; color: var(--text-muted); }
+.user-feedback-node-list { display: grid; gap: 10px; max-height: 280px; overflow-y: auto; margin-top: 12px; }
+.user-feedback-image-editor { max-width: 380px; width: 100%; align-self: center; }
+.user-feedback-image-editor canvas { width: 100%; height: auto; display: block; border: 1px solid #ffffff38; border-radius: 6px; touch-action: none; cursor: crosshair; }
+.user-feedback-image-editor canvas[hidden] { display: none; }
+.user-feedback-image-editor .user-feedback-actions { margin-top: 12px; font-size: 12px; }
+.user-feedback-final-image { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+.user-feedback-meta { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px 12px; margin: 0; font-size: 14px; }
+.user-feedback-meta dt { color: var(--text-muted); }
+.user-feedback-meta dd { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.user-feedback-receipt { display: flex; flex-direction: column; gap: 18px; align-items: center; text-align: center; padding: 24px 0; }
+.user-feedback-receipt code { overflow-wrap: anywhere; user-select: all; }
+@media (max-width: 440px) { .user-feedback-backdrop { padding-left: 0; padding-right: 0; } .user-feedback-panel { border-radius: 10px; padding: 16px; } }

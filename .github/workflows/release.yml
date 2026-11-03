@@ -35,7 +35,7 @@ jobs:
           pnpm test
 
       - name: Build web assets into Android
-        run: pnpm exec tsc -b && pnpm exec vite build --base ./ --outDir android/app/src/main/assets --emptyOutDir
+        run: pnpm run build:android-assets
 
       - uses: actions/setup-java@v4
         with:

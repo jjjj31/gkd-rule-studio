@@ -1,7 +1,7 @@
 """生成 README 用的演示截图。
 
 用合成开屏广告图 + 模拟 GKD 接口，在托管 Firefox 里走一遍真实 UI：
-首页、SDK 信息、订阅规则库、工作区候选，最后拼一张头图。
+首页、订阅规则库、工作区候选，最后拼一张头图。
 
 运行目录：仓库根目录。
 
@@ -9,7 +9,6 @@
 
 产物写入 docs/images/（会提交）。中间 profile 在 .scratch/readme-shots/（已忽略）。
 """
-import base64
 import io
 import json
 import math
@@ -278,62 +277,7 @@ SUBSCRIPTION = {
     ],
 }
 
-SDK_APPS = [
-    {
-        "apkInfo": {
-            "packageName": "com.ss.android.ugc.aweme",
-            "versionCode": "300504",
-            "versionName": "30.5.0",
-            "appName": "抖音",
-            "components": {
-                "activities": [
-                    {"name": "com.byted.pangle.core.SplashAdActivity", "sdk": None},
-                    {"name": "com.ss.android.ugc.aweme.splash.SplashActivity", "sdk": None},
-                ],
-                "services": [{"name": "com.bytedance.sdk.openadsdk.TTAdService", "sdk": None}],
-                "receivers": [{"name": "com.byted.pangle.core.NetworkReceiver", "sdk": None}],
-                "providers": [],
-            },
-            "sdkSummary": [],
-        },
-        "analyzedAt": "2026-10-14T09:30:00.000Z",
-    },
-    {
-        "apkInfo": {
-            "packageName": "com.taobao.taobao",
-            "versionCode": "102100",
-            "versionName": "10.21.0",
-            "appName": "淘宝",
-            "components": {
-                "activities": [{"name": "com.qq.e.ads.PortraitADActivity", "sdk": None}],
-                "services": [{"name": "com.qq.e.comm.DownloadService", "sdk": None}],
-                "receivers": [],
-                "providers": [],
-            },
-            "sdkSummary": [],
-        },
-        "analyzedAt": "2026-10-14T09:30:00.000Z",
-    },
-    {
-        "apkInfo": {
-            "packageName": "com.xingin.xhs",
-            "versionCode": "8200",
-            "versionName": "8.20.0",
-            "appName": "小红书",
-            "components": {
-                "activities": [{"name": "com.xingin.xhs.activity.SplashActivity", "sdk": None}],
-                "services": [],
-                "receivers": [],
-                "providers": [],
-            },
-            "sdkSummary": [],
-        },
-        "analyzedAt": "2026-10-14T09:30:00.000Z",
-    },
-]
-
 SUBSCRIPTION_BYTES = json.dumps(SUBSCRIPTION, ensure_ascii=False).encode("utf-8")
-SDK_JSON_TEXT = json.dumps(SDK_APPS, ensure_ascii=False)
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -472,26 +416,6 @@ def set_input(selector, value):
     )
 
 
-def inject_file(name, mime, payload_b64):
-    return js(
-        "(() => {"
-        "  const input = document.querySelector('.ad-sdk-file-input');"
-        "  const binary = atob(%r);"
-        "  const bytes = new Uint8Array(binary.length);"
-        "  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);"
-        "  const dt = new DataTransfer();"
-        "  dt.items.add(new File([bytes], %r, { type: %r }));"
-        "  input.files = dt.files;"
-        "  input.dispatchEvent(new Event('change', { bubbles: true }));"
-        "  return true;"
-        "})()" % (payload_b64, name, mime)
-    )
-
-
-def b64(data: bytes) -> str:
-    return base64.b64encode(data).decode()
-
-
 def open_app(timeout=300):
     global _warmed_up
     deadline = time.monotonic() + timeout
@@ -584,18 +508,7 @@ try:
     time.sleep(0.4)
     shot("home.png")
 
-    # 2. SDK 信息面板
-    click(".library-entry:nth-of-type(2)")
-    wait_js("document.querySelector('.app-sdk-panel')")
-    inject_file("apps.json", "application/json", b64(SDK_JSON_TEXT.encode()))
-    wait_js("(document.querySelector('.library-notice') || {}).textContent.includes('已导入')")
-    wait_js("document.querySelectorAll('.library-app-button').length === 3")
-    js("window.scrollTo(0, 0);")
-    time.sleep(0.5)
-    shot("sdk.png")
-    go_home()
-
-    # 3. 订阅规则库
+    # 2. 订阅规则库
     click(".library-entry:nth-of-type(1)")
     wait_js("document.querySelector('.rule-library')")
     if not js("document.querySelector('.library-sources').open"):
@@ -613,7 +526,7 @@ try:
     shot("library.png")
     go_home()
 
-    # 4. 工作区：连接模拟 GKD → 选快照 → 拖动选中跳过按钮
+    # 3. 工作区：连接模拟 GKD → 选快照 → 拖动选中跳过按钮
     set_input(".android-device-form .android-input", FIXTURE)
     click(".android-device-form .android-button")
     wait_js("document.querySelector('.android-snapshot-chooser')")

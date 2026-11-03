@@ -1,0 +1,2 @@
+"""GKD feedback intake service."""
+

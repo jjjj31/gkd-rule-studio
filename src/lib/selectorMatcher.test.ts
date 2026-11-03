@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { prepareSelectorEngine, matchGkdSelectorString } from "./selectorAdapter";
 import { normalizeSnapshot } from "./snapshotNormalize";
 import {
   validateAiCandidateAgainstSnapshot,
@@ -160,6 +161,36 @@ function appWithRule(
     ],
   };
 }
+
+describe("official beta selector engine", () => {
+  beforeAll(async () => { await prepareSelectorEngine("beta"); });
+
+  it.each([
+    ['[text="A"]', [6]],
+    ['[text~="跳.*"]', [2]],
+    ['[text.length=2][text="跳过"]', [2]],
+    ['[getChild(0).text="跳过"]', [1]],
+    ['[text="跳过"][parent.childCount=3]', [2]],
+    ['[text.indexOf("跳")=0]', [2]],
+    ['LinearLayout @FrameLayout TextView[text="ChainEnd"]', [16]],
+  ])("matches %s using the new engine", (expression, expected) => {
+    const snapshot = buildFixture();
+    snapshot.gkdChannel = "beta";
+    const result = matchGkdSelectorString(snapshot, expression as string);
+    expect(result, result.unparsedReason).toMatchObject({ unparsed: false, clickIds: expected });
+  });
+
+  it("retains trace support nodes and rejects invalid beta selectors", () => {
+    const snapshot = buildFixture();
+    snapshot.gkdChannel = "beta";
+    const trace = matchGkdSelectorString(snapshot, 'LinearLayout @FrameLayout TextView[text="ChainEnd"]');
+    expect(trace.supportIds.sort()).toEqual([15, 17]);
+    expect(matchGkdSelectorString(snapshot, "not a selector ???")).toMatchObject({ unparsed: true, clickIds: [] });
+    const [rule] = validateAppRuleAgainstSnapshot(snapshot, makeApp(['[text="P"]', '[text="A"]']));
+    expect(ids(rule.clickNodes)).toEqual([6]);
+    expect(ids(rule.supportNodes)).toEqual([11]);
+  });
+});
 
 describe("selectorMatcher AI 路径（@gkd-kit/selector）", () => {
   it("matches 全部成立时只点击最后一项，前项作为支持节点", () => {

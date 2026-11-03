@@ -1,0 +1,1001 @@
+{
+  "date": "2026-11-03",
+  "purpose": "Read-only audit snapshot before adding audit documents; groups are navigation hints, not safe git add batches.",
+  "branch": "codex/subscription-rule-library",
+  "head": "fbd7f7ac4d79b9fc980e6465408185a243b28363",
+  "release_baseline": "v0.2.0 / 02ba8d0",
+  "modified_count": 37,
+  "untracked_count": 128,
+  "files": [
+    {
+      "status": " M",
+      "path": ".github/workflows/release.yml",
+      "suggested_group": "build-and-ci",
+      "sha256": "7c5c7e7a00aa5f9367c42e8e597e95251653195ef54c0918414d18f86ed734cc"
+    },
+    {
+      "status": " M",
+      "path": "README.md",
+      "suggested_group": "shared-integration",
+      "sha256": "e92b8c0399d483654cde5bf2fdb53e958cfe7b649905116c93826adf1755e12a"
+    },
+    {
+      "status": " M",
+      "path": "android/README.md",
+      "suggested_group": "shared-integration",
+      "sha256": "afb11ce387cdbcbed191a39d25e6de6dbc9d366602692c8abf93cff3b4ffddaf"
+    },
+    {
+      "status": " M",
+      "path": "android/app/build.gradle",
+      "suggested_group": "shared-integration",
+      "sha256": "a65b9e4a56e91a8e1f7649455792fade05ec580422fac0e056dec00ad68fc1e7"
+    },
+    {
+      "status": " M",
+      "path": "android/app/src/main/AndroidManifest.xml",
+      "suggested_group": "shared-integration",
+      "sha256": "4188f0225952376bcb5e58e5f0c39ff1e91ec7310a17e73f18121161a9c65d13"
+    },
+    {
+      "status": " M",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/MainActivity.java",
+      "suggested_group": "shared-integration",
+      "sha256": "104418c347dc2b4d451d66cbe0edf7864c4b9d44583a0f1ad00f44e131bd2f39"
+    },
+    {
+      "status": " M",
+      "path": "docs/specs/libchecker-sdk-import.md",
+      "suggested_group": "app-sdk",
+      "sha256": "12e5179a5e71157993a867a663423e9e91164518472e5dec5f211d3b166202bb"
+    },
+    {
+      "status": " M",
+      "path": "package.json",
+      "suggested_group": "shared-integration",
+      "sha256": "8c7520217bb96647c75de9fd90f665632e67d8fdc5a25850b176c6f9338ce8d0"
+    },
+    {
+      "status": " M",
+      "path": "pnpm-lock.yaml",
+      "suggested_group": "shared-integration",
+      "sha256": "042050a9c324fd7bb9e2b1615c28da552acddac613cc42bccbaf74d9e931324f"
+    },
+    {
+      "status": " M",
+      "path": "scripts/check-libchecker-import.py",
+      "suggested_group": "app-sdk",
+      "sha256": "0786962ac4fd89ca870e934ab73ffec9264b7d8e5eadea91aa1b39f9ac7ab542"
+    },
+    {
+      "status": " M",
+      "path": "src/components/AndroidLiteApp.tsx",
+      "suggested_group": "shared-integration",
+      "sha256": "58e6c2d2644afe39175eb88fbe4bda00f5adb543ca763d41e1a8c2b4c4006476"
+    },
+    {
+      "status": " M",
+      "path": "src/components/AppSdkPanel.css",
+      "suggested_group": "app-sdk",
+      "sha256": "c4784811209cee4e8b4ea2e0b5aeb49f4665d3d18c07b32f9d1ca9ce89f6303c"
+    },
+    {
+      "status": " M",
+      "path": "src/components/AppSdkPanel.tsx",
+      "suggested_group": "app-sdk",
+      "sha256": "8554f3e4926393b7a7e6332142d7a70b3fbb9d5e45d2eefed9bdfebc795d99db"
+    },
+    {
+      "status": " M",
+      "path": "src/components/ScreenshotCanvas.tsx",
+      "suggested_group": "workspace-and-library",
+      "sha256": "364da723add64612e5194b5ba5d121f5cafea53540a6247683284a79767b614f"
+    },
+    {
+      "status": " M",
+      "path": "src/components/SubscriptionLibrary.tsx",
+      "suggested_group": "workspace-and-library",
+      "sha256": "bac14a395d62611fdd63e527fa809d292dce828e17a37dd2c34ddff8e152c310"
+    },
+    {
+      "status": " M",
+      "path": "src/data/adSdkSignatures.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "f7b79d40a9497f0ae5238344dc45b43d32dd73a4704d8bba49eacb00bfa320c7"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/adSdkContext.test.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "70cf46eacad1b68f53cc31aa52d23e6603aa962f1d1ec6dc57538d54dd964216"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/adSdkContext.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "73e422ff978e60cc77bdb74b2ce9bc39eda634afa281d65929fd6ec8ad7b2128"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/deviceApi.test.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "bbc777890fd659c4df46e9aa2cb17dca3a6baa855198759d324cd93771dfa734"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/deviceApi.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "6862abb7eaff35b3a0fe6ff7bfb623e020d08c98470039bff323012bb69c598a"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/gkdTarget.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "cb6cd8314055b4d29afda0292255bb8c126e90d5c268e4665d1dfc76a0d43e46"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/libCheckerImport.test.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "326f02b5a8bb7b030f343c33f6b761bb445ce98853bd6918f33108fdce302eb7"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/libCheckerImport.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "94729656a73c7a028c3e1d443b9568bbe1177ac9447cb88d9e564cb875e57832"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/selectorAdapter.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "0f40e8c98315d747cd25c90d10674b2687a36a855951f5fc54630ea6f47d5918"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/selectorMatcher.test.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "85544de938392cb21409c0f443e9de4abf7a4fe56d1d2b4484924b4cde0e8064"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/snapshotExport.test.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "7eb26fedbc78a0371297cf527677df77eebbea73bf264ec08ef0e34063e28919"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/snapshotExport.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "05ac2065c772c3db7e5ba307acbdd2ccae009217c45df69b2bf6005561e666ba"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/snapshotNormalize.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "a354546407a4ca2e1cbf28f4ccbd4cd98dd9a6afd58678fdc5caeacfdcfe27db"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/subscriptionLibrary.test.ts",
+      "suggested_group": "workspace-and-library",
+      "sha256": "5dad84b3afde12d9b44f027e83c77d4c2c6d59b0a48372491fe4b458b8cc8270"
+    },
+    {
+      "status": " M",
+      "path": "src/lib/subscriptionLibrary.ts",
+      "suggested_group": "workspace-and-library",
+      "sha256": "77826470414cf39a3b5e7fe545e3a41142685c95124d38d1cd6e42a8500e618c"
+    },
+    {
+      "status": " M",
+      "path": "src/main.tsx",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "d59d32006b0a3ea61e982c353c99867d69c94cdbbeca1986c65ab0258888e120"
+    },
+    {
+      "status": " M",
+      "path": "src/types/appSdkProfile.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "e7e76947812f6282a0e32b5e10f5114e28157d8d5a00dff0b543eec5e7a4b3be"
+    },
+    {
+      "status": " M",
+      "path": "src/types/gkdSnapshot.ts",
+      "suggested_group": "shared-integration",
+      "sha256": "661243865ecbe5a2ebcc61ccbc4656276d4d22e924dceb1a929ff7ead5cd9e83"
+    },
+    {
+      "status": " M",
+      "path": "src/types/subscriptionLibrary.ts",
+      "suggested_group": "workspace-and-library",
+      "sha256": "3a5ac8bd551d35741507d384af3b2b4b0f041cd21810d806f32ba78747eab76e"
+    },
+    {
+      "status": " M",
+      "path": "src/vite-env.d.ts",
+      "suggested_group": "shared-integration",
+      "sha256": "e18a65c5db08e54cdc8a9910a52ba36b02bb5465c4870e0b9a85a29fc6e70090"
+    },
+    {
+      "status": " M",
+      "path": "tsconfig.node.json",
+      "suggested_group": "build-and-ci",
+      "sha256": "686f9f907d2498219ee8cb918ea7547c3547591a300beb1d8b4bef43252f4b5a"
+    },
+    {
+      "status": " M",
+      "path": "vite.config.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "7bbe08a383682ca61074f6c3f807d65c7234b81e304c345ce7ac070547a36d32"
+    },
+    {
+      "status": "??",
+      "path": ".github/workflows/check.yml",
+      "suggested_group": "build-and-ci",
+      "sha256": "7232ca51fd3efc53c49398fd6a2a59fe4acf955f237958e88f849a385e2ddbfc"
+    },
+    {
+      "status": "??",
+      "path": "THIRD_PARTY_NOTICES.md",
+      "suggested_group": "app-sdk",
+      "sha256": "7cfad044d9d0ba646a1facdcb4db557849ebaf7ade2ee03688220be24f4a022e"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/AdSdkCatalog.java",
+      "suggested_group": "app-sdk",
+      "sha256": "3b1d573e08bcbe650e224be78f113529bd98e487e1cd655c1854360ee30236f5"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/AdSdkRuleMatcher.java",
+      "suggested_group": "app-sdk",
+      "sha256": "f5f1beee967b769b7a30a20a2930e8e165bcda5f68f6d36ebef0f5c20a340105"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/AndroidMcpServer.java",
+      "suggested_group": "mcp",
+      "sha256": "bdf75fd6c60f9cb408079dd9f0b13c31c69a29122b0c35d5fc99eed642ade232"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/AppSdkDetectionScanner.java",
+      "suggested_group": "app-sdk",
+      "sha256": "3be86bbc65af64b11b8be5d8ea1e8db4cef5c2a8e4ccb20eb7c5e10cab0d407e"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/AppSdkScanManager.java",
+      "suggested_group": "app-sdk",
+      "sha256": "82d39eda64ca95732d8760cefb040d871aea3dfe420385c014e857c347730d76"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/FeedbackDiagnostics.java",
+      "suggested_group": "user-feedback",
+      "sha256": "d7a0702d7ea3c339faf71c9f90ac46bb7d2efda27c1cca564306fb5aaf34d57d"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/McpAnalysisRuntime.java",
+      "suggested_group": "mcp",
+      "sha256": "c93ace0692c41006ae6f8465076cd9a37e4af4a2d6aa27377592a580073484ed"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/McpRuleSources.java",
+      "suggested_group": "mcp",
+      "sha256": "3411023879a1823e193e662cd0d54cf3b438135afb27b21742aed0addf8833d2"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/McpServerService.java",
+      "suggested_group": "mcp",
+      "sha256": "a2607984a75c11ac3dcf1c1a53364480f089ced931b54fe1693241b5344edbc2"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/ScreenshotFormat.java",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "2ad4d49558412051390ea4533c330698891f70b2b5ab7da77ecc8a76a9fa71c8"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/java/com/gkdrulebuilder/android/StreamingDexClassScanner.java",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "2f5668ae6101bbb9abd495120d046d671289e26cd47bbb42f4539b9fb246ade1"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/res/raw/app_sdk_catalog.json",
+      "suggested_group": "app-sdk",
+      "sha256": "27f5a2a074fbc14ddbc875629ecace4c8ff0d6478a1e30bfd13fa10b2a98c84b"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/thirdPartyAssets/NANOHTTPD-LICENSE.txt",
+      "suggested_group": "mcp",
+      "sha256": "a0ada3797d7ff576a77f892c7cd5e7910e0fffb56efa9cf2a295cbf596706185"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/thirdPartyAssets/_NOTE.md",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "40e38003a64bba881f34b38c1ee27c824c822b98abf794b817838957a170f84d"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/main/thirdPartyAssets/mcp-analysis.html",
+      "suggested_group": "mcp",
+      "sha256": "5a215e637bedad8bde467be4710d3a747c8c4aae01e44683a02485a58c246845"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/test/java/com/gkdrulebuilder/android/AdSdkRuleMatcherTest.java",
+      "suggested_group": "app-sdk",
+      "sha256": "311c7973553cff687ed06a985f7db3a0a3ca99776872fc813a726f404f24e516"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/test/java/com/gkdrulebuilder/android/FeedbackDiagnosticsTest.java",
+      "suggested_group": "user-feedback",
+      "sha256": "e504cb51693386241f5028426cc46f16fdcec817ea7f6d4cb0855126f13b7eb2"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/test/java/com/gkdrulebuilder/android/ScreenshotFormatTest.java",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "fe4f1388aff9ad2423d4b3a6cbffc138177aca20c97b89eb8cd720dfd422a256"
+    },
+    {
+      "status": "??",
+      "path": "android/app/src/test/java/com/gkdrulebuilder/android/StreamingDexClassScannerTest.java",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "aa3310b24634e968f4ae149b7db2e9931c2c80fc6e97f61864aa680ad6461888"
+    },
+    {
+      "status": "??",
+      "path": "docs/agent-mcp.md",
+      "suggested_group": "mcp",
+      "sha256": "af9d8b61113ce944299ef025c68808fc98f0dc6fbadc385ae8df8123c81b6155"
+    },
+    {
+      "status": "??",
+      "path": "docs/feature-tree.html",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "b50b8799fcef5216f180a4026046d72e560b8a1d1cdcbaefb39cacfa9e6d4d08"
+    },
+    {
+      "status": "??",
+      "path": "docs/research/gkd-community-phone-rule-writing-2026-10-29.md",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "d03bda3b451b3620494ad16ff5fc16ed8840f4d65d68494779dc3fda735b81cb"
+    },
+    {
+      "status": "??",
+      "path": "docs/specs/agent-mcp-analysis.md",
+      "suggested_group": "mcp",
+      "sha256": "eb33928ff68c8f1210dc5f9b09f56df2b1b3c61c0d72663fdce687d919f02b55"
+    },
+    {
+      "status": "??",
+      "path": "docs/specs/agent-mcp-rule-authoring.md",
+      "suggested_group": "mcp",
+      "sha256": "c9d309d592e65d8c3b64198dbb37eb7c82daeae11ae563e4509aaae3844d5cc2"
+    },
+    {
+      "status": "??",
+      "path": "docs/specs/app-sdk-detection.md",
+      "suggested_group": "app-sdk",
+      "sha256": "28245b079ab86ba90f03265c107b958ab605ef84b6e7739c504c7590c5f7b2ae"
+    },
+    {
+      "status": "??",
+      "path": "docs/specs/user-feedback.md",
+      "suggested_group": "user-feedback",
+      "sha256": "0066f90b13bcfb958cd9a8e8ffa44e22240254265230f6b8fa96e4a101b33637"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/01-gkd-action-logs.md",
+      "suggested_group": "mcp",
+      "sha256": "95da2328f30de0f046eb95a40a1d9303179ee01455ee92152882bdb209a968c2"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/02-mcp-connection.md",
+      "suggested_group": "mcp",
+      "sha256": "53f284b9b35a95b17e8057ed73db4ff2e413cc3c4ca0703a8fa61e70c1dc0c24"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/03-snapshot-and-draft.md",
+      "suggested_group": "mcp",
+      "sha256": "ae9d3a04efee005343bcf9068443f2caf1d509019550871b8597fabb2229468c"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/04-test-and-feedback.md",
+      "suggested_group": "user-feedback",
+      "sha256": "2afc7600eb38346f3022a1eb0b25a7963bc3149c96351ea1ab37b6c83ad87445"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/05-import-and-cleanup.md",
+      "suggested_group": "mcp",
+      "sha256": "3c58de3178471fcb6894402d6b9df03627e89e213713f429360e3b1be4dda65b"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/06-persistence-and-resume.md",
+      "suggested_group": "mcp",
+      "sha256": "cdc26543d1d547cbbe0fe3f84b00dda1c2677bafb2ef52820bb46ebdc8ebac5c"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/07-end-to-end-validation.md",
+      "suggested_group": "mcp",
+      "sha256": "7d75f02233969b54ce960d29ee02dc0b2f801613f7751c02ddaf2fd7f0bfa353"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/08-android-native-feasibility.md",
+      "suggested_group": "mcp",
+      "sha256": "f294f9f1a074bea5e670b205f0ddf6aac829d0e5c5d29c47c2e4f0d9e7e29476"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/09-rule-reference.md",
+      "suggested_group": "mcp",
+      "sha256": "61dca5003b52378d509c0ac3bc151c627778602233b076cfd4bd312e3e9d6ade"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/10-node-analysis.md",
+      "suggested_group": "mcp",
+      "sha256": "49b3853b8a3e15fde8e5951589f46bab23f275c7fcebf872e9adc3e1d4dbdcc4"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/11-static-regression.md",
+      "suggested_group": "mcp",
+      "sha256": "47ca8d99f54d07ae3858ba1577fd5b7558b2caf56f754a95c7ed646a22966437"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/12-native-test-lifecycle.md",
+      "suggested_group": "mcp",
+      "sha256": "ccb21ee8c05e871cc96a073bf317e406672949ec22f2f2223ba4f99490a14912"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/13-background-stability.md",
+      "suggested_group": "mcp",
+      "sha256": "6559381afb0290bcdc5316ecdb42bd98f00f7ff83dca50345c56e66f6c8e7d8f"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/14-authoring-context.md",
+      "suggested_group": "mcp",
+      "sha256": "81a6627a4f6f41e8cb1ec769236b89b12e15453825c3a6209de0c5069bc84d74"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/agent-mcp-rule-authoring/README.md",
+      "suggested_group": "mcp",
+      "sha256": "0c97b1e05bbe120bfefd79ea4014897fb727d771cca2e94aeb36c84107640ada"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/app-sdk-detection/01-core-and-rules.md",
+      "suggested_group": "app-sdk",
+      "sha256": "d0af53e81f27598ca39e2db4cc46d31b065a2af7cb14202e6eb8be2f5fec4549"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/app-sdk-detection/02-native-bridge-and-storage.md",
+      "suggested_group": "app-sdk",
+      "sha256": "25d96286b33c49b2fb024bd5f5237b1dd493ac36c71d28d97d27ddeff1f4ff04"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/app-sdk-detection/03-ui-and-prompt.md",
+      "suggested_group": "app-sdk",
+      "sha256": "523ae08e212a40884b8ba96ae1f2257fc64365ee852db6914891bb15e5d65111"
+    },
+    {
+      "status": "??",
+      "path": "docs/tickets/app-sdk-detection/04-build-and-device-validation.md",
+      "suggested_group": "app-sdk",
+      "sha256": "e43a6ee13f879d454c078bf41e80fe9240b43b9b2b12f66819bf04ed09c336fe"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/agent-mcp-device-read-checks.json",
+      "suggested_group": "mcp",
+      "sha256": "6878b0311e88859a6011240ec2fdac55209f2fe37b3a066fd00fdfbff68708d4"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/agent-mcp-rule-authoring.md",
+      "suggested_group": "mcp",
+      "sha256": "11c4462cfc66ff7dc9cc172b641ac03db751954f1dc04233da14e7fe002cdab0"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/agent-mcp-session-store.md",
+      "suggested_group": "mcp",
+      "sha256": "2b4d151dc1ab3edda1ce34b195b5633cea4e09ab0403599cf574df0bb463eceb"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/agent-mcp-t01-gkd-action-logs.md",
+      "suggested_group": "mcp",
+      "sha256": "4aacb54344d985d368f3a72472827082c2d8d35b8c5ad0719c8a7ec20b4c7886"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/agent-mcp-tablet-yunji.md",
+      "suggested_group": "mcp",
+      "sha256": "778efdbc63eaed7a1951715ff8701f49c8120565aa6d3073be891ca787b1849b"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/android-mcp-analysis-checks.json",
+      "suggested_group": "mcp",
+      "sha256": "8a21dbf8f1139c1625d5ae1969e436e228bf8e1b988b92121ebeb622cce94c9a"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/android-mcp-analysis.md",
+      "suggested_group": "mcp",
+      "sha256": "d8faf56c9550d1be6880090dc45f22f777e78023d0c63007de2d0ed2882971e6"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/android-native-mcp-checks.json",
+      "suggested_group": "mcp",
+      "sha256": "dedab468b1290964936bd5c5226d1c3ae89c502450c2204a420a2ba6cceddfc1"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/android-native-mcp.md",
+      "suggested_group": "mcp",
+      "sha256": "090ba236a97ee952d780da80f263c6d5e1f19b081218bc6e29085e8a722406c8"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/app-sdk-detection-checks.json",
+      "suggested_group": "app-sdk",
+      "sha256": "9b0b71af587a40030c850acb14f11eda2e889ce62aa9dab7ced29bb2b94d8971"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/app-sdk-detection-device.png",
+      "suggested_group": "app-sdk",
+      "sha256": "86ea1dfacbe7d20bfab6000a5405a307ed4af7c5e23c08c7828bdea067410940"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/app-sdk-detection.md",
+      "suggested_group": "app-sdk",
+      "sha256": "9faec457694a86961380f0905ee5d61712c266369845d7a6c21f49bfdfc9f882"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/feedback-deployment-prerequisites.md",
+      "suggested_group": "user-feedback",
+      "sha256": "cca740e683fb68e8171a2c0217e3e490e98502cc7d45245e18f96abfd55db6a1"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/gkd-release-channels.md",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "10d8ff7f603aefa7bfacda442cededa08304666ff719a9a34d3e75758c19b968"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/release-v0.2.0-regression-checklist.md",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "9965a564e29a17b3cd6b65866a9877d0440a906d3785ba1cb7df8d87171a9092"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/user-feedback-admin-checks.json",
+      "suggested_group": "user-feedback",
+      "sha256": "c5252ff762cebaf44613f4c78a62375d0e83d7307249e41b3e484dfb730aa82a"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/user-feedback-admin.png",
+      "suggested_group": "user-feedback",
+      "sha256": "186cbfc9f2bdc683fcaa688e7923aa590cb47c42a937633e65885f4dd7574bfc"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/user-feedback-browser-checks.json",
+      "suggested_group": "user-feedback",
+      "sha256": "cf5899e9b4b013aa0e7ab6eaac60cfe4396bffe80a687d7e82e5f77f7a2c4eff"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/user-feedback-deployment.json",
+      "suggested_group": "user-feedback",
+      "sha256": "db3935ddbbcc24cecf8cc5d48949593bebee69ff2f0adb5255a5cef0954beeda"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/user-feedback-device-checks.json",
+      "suggested_group": "user-feedback",
+      "sha256": "54f8c5d1ccaf9c1e2b104ae7dd89565ae1f3b392c5c5fcd3791af375c8a12fc3"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/user-feedback-mobile.png",
+      "suggested_group": "user-feedback",
+      "sha256": "189b79dd44f3d3d5c9daa8ce0ff5f6226123b77c9aabef538490d0f26f3e7b43"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/user-feedback-service-checks.json",
+      "suggested_group": "user-feedback",
+      "sha256": "96b5839f591a65ea89a78b5a4dad818f519e83eb09665e551e85d7a87efdc38a"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/user-feedback.md",
+      "suggested_group": "user-feedback",
+      "sha256": "d96bc688522fbef73ecf74e6a0ae334fe985b8ccaef9666886e187f3ebf91f05"
+    },
+    {
+      "status": "??",
+      "path": "docs/verification/windows-build-ci.md",
+      "suggested_group": "docs-and-other-review",
+      "sha256": "6715538af19e6b2f3b6354c122a0568b4a15f115ec20c3d1016dbd0417ea29a0"
+    },
+    {
+      "status": "??",
+      "path": "scripts/__pycache__/check-rule-authoring.cpython-314.pyc",
+      "suggested_group": "local-residue-exclude",
+      "sha256": "fda6ebaa21d6b1efcc44795802025ce24a380b040a0464f1fa5e58caed5e0981"
+    },
+    {
+      "status": "??",
+      "path": "scripts/build-android.ps1",
+      "suggested_group": "build-and-ci",
+      "sha256": "08892992845a405ec1f3e3d729796dde77348a0faa53cca61a2273b3a429d2d8"
+    },
+    {
+      "status": "??",
+      "path": "scripts/check-app-sdk-catalog.py",
+      "suggested_group": "app-sdk",
+      "sha256": "d0900e025f620b88406c44ee503d9f7603e5c3e5b35499aef97e8dfea472f26f"
+    },
+    {
+      "status": "??",
+      "path": "scripts/check-feedback-admin.py",
+      "suggested_group": "user-feedback",
+      "sha256": "65f47a4a7095f44ea0a26a10e37ac6be4e5512bcc1184c3209210084890de9fb"
+    },
+    {
+      "status": "??",
+      "path": "scripts/check-feedback-service.py",
+      "suggested_group": "user-feedback",
+      "sha256": "27b046ab74d69dc9a163c9e324faf4fd436d664d093b7e3ff11bc627c54e5fac"
+    },
+    {
+      "status": "??",
+      "path": "scripts/check-user-feedback-device.py",
+      "suggested_group": "user-feedback",
+      "sha256": "5eae8981470e17e3d0e2f3cd8267e7ee71c4add98d1a463bf3d0f4cc72152758"
+    },
+    {
+      "status": "??",
+      "path": "scripts/check-user-feedback.py",
+      "suggested_group": "user-feedback",
+      "sha256": "8d81a1ff7256c919826fa594d8e89e15c5c6c11b7161cc505b1f7abd698cff9b"
+    },
+    {
+      "status": "??",
+      "path": "scripts/deploy-feedback.py",
+      "suggested_group": "user-feedback",
+      "sha256": "fc80e73af4666cc6760bb80c30e8acd02663fae1a604c86d4c9984d28ad326c3"
+    },
+    {
+      "status": "??",
+      "path": "scripts/generate-app-sdk-catalog.py",
+      "suggested_group": "app-sdk",
+      "sha256": "a6c5dad62a91d2d65470b78813d97ac91c1855786e100755a102dcac4408e196"
+    },
+    {
+      "status": "??",
+      "path": "scripts/test-android-build.ps1",
+      "suggested_group": "build-and-ci",
+      "sha256": "b11252e5fd7ef31ebe72069d6c94fcbcaec1e2388b35f79395dab21bd24f8c52"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/.dockerignore",
+      "suggested_group": "user-feedback",
+      "sha256": "92d0629261f565d35ca9790083bc96043928e3a6ef823aaf3e3ba5c36914ae5b"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/.env.example",
+      "suggested_group": "user-feedback",
+      "sha256": "f3bd1afa608d23806835773645eb5aff8cffd12b8c1e591a2032fea8e16c65fd"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/.gitignore",
+      "suggested_group": "user-feedback",
+      "sha256": "a21869449236438c3c088298c5e68fc6a32bdf76bed385cdffd639146c1bfe20"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/Dockerfile",
+      "suggested_group": "user-feedback",
+      "sha256": "e36447fff01df3d8458011740a311a603bc5d8bdc6cb4a147b61ac7c485c1046"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/README.md",
+      "suggested_group": "user-feedback",
+      "sha256": "0efe84a673e425cbb7e0b91f60ef4f10e5aedda9c5a36c4f4a0c8b9ee29a5245"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/app/__init__.py",
+      "suggested_group": "user-feedback",
+      "sha256": "db1dddfa98a499f23028d931b525a8eb7ce0663c8a093b736a48bfdd8003a49d"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/app/__main__.py",
+      "suggested_group": "user-feedback",
+      "sha256": "41de37c771dbbd6f03fa4005f451a4b3bc3b3ec24b0f1a3dacabaa41d5aec7a6"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/app/main.py",
+      "suggested_group": "user-feedback",
+      "sha256": "6a05f598633ea279e09ec2e5c2802561cf67545e401b21a733c3f2522745f5f5"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/app/web/admin.css",
+      "suggested_group": "user-feedback",
+      "sha256": "d750785b533ecdc1899f7f459e6543454e6ae6ec964f794120116faa3eb7202a"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/app/web/admin.html",
+      "suggested_group": "user-feedback",
+      "sha256": "caf7ddc1f3b608a828bd63490418206c4bcf71782357f84196e12f3b03816ecd"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/app/web/admin.js",
+      "suggested_group": "user-feedback",
+      "sha256": "565c988c35ec26133ddf148942e2e81d467fc0549eda3c00b2ba3754fb1ad9cf"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/requirements.txt",
+      "suggested_group": "user-feedback",
+      "sha256": "7ba27f8313322c80d1f6ed53ee914d8dd0723fe537b66f9e614d9989ab8c8dd6"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/tests/__init__.py",
+      "suggested_group": "user-feedback",
+      "sha256": "9768efd65d0d4568100b9e9489f4f5828fbba0821e5a351f5f27d5173f67a364"
+    },
+    {
+      "status": "??",
+      "path": "server/feedback/tests/test_app.py",
+      "suggested_group": "user-feedback",
+      "sha256": "754e2525354f42c8ca562a99b2219c43eaf7f855550989ad18bfedfdae173533"
+    },
+    {
+      "status": "??",
+      "path": "src/build/inlineSelectorWasm.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "c2e2903cb9191da099c5b93ed2cba51fb9152812eb0f3443ee302d7b57caca94"
+    },
+    {
+      "status": "??",
+      "path": "src/components/AndroidMcpPanel.tsx",
+      "suggested_group": "mcp",
+      "sha256": "fbfcf477dc73c80c1f8627d9adc02159e54c29c6f52f71f65fb8771c793ed99e"
+    },
+    {
+      "status": "??",
+      "path": "src/components/UserFeedbackPanel.css",
+      "suggested_group": "user-feedback",
+      "sha256": "e6496df37258f68f990451a8e4aa0385a9654b250d83908647a4b0a900d14a05"
+    },
+    {
+      "status": "??",
+      "path": "src/components/UserFeedbackPanel.tsx",
+      "suggested_group": "user-feedback",
+      "sha256": "c9bcb936a5671bb7bea91bbabfcc1f99889e30bf137bd1073a671f6c2cab8a5d"
+    },
+    {
+      "status": "??",
+      "path": "src/data/appSdkCatalog.json",
+      "suggested_group": "app-sdk",
+      "sha256": "27f5a2a074fbc14ddbc875629ecace4c8ff0d6478a1e30bfd13fa10b2a98c84b"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/appSdkCatalog.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "9f62b783d3088cd8c0ba7db2e591560b057c2e7cbf2b569c0cc308bd3933f4a0"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/appSdkDetection.test.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "94841776a88b6986846f0741be44c3a93839b0d0ce68d1b448d1cc46bdc7fde7"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/appSdkDetection.ts",
+      "suggested_group": "app-sdk",
+      "sha256": "41c752a65fe7c745ea5a2d948341131f41b65f16936c04df4d24097ecf1a466e"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/gkdTarget.test.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "6f1cc5d0ce13052e9128eb1ab4cfc70bd72620309bda284077c8e22a0806fdc7"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/screenshotFormat.test.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "6af887f42f320aeb995d4c0edbaf2ac423f547d604467e49475e603597ed7f45"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/screenshotFormat.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "554da706a28dafc2a8d60e9195b86edf905542361ca0db42c92a223382bfb24d"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/selectorBetaAdapter.ts",
+      "suggested_group": "gkd-channels-and-snapshots",
+      "sha256": "40e10c7868a2bb4bcb66ec85572bf7ad5e994598ae8655e4fae49ccadb93906f"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/userFeedback.test.ts",
+      "suggested_group": "user-feedback",
+      "sha256": "d5aa14667e35a75c1732ca8a910e7a77d08e31cff35a772a4ca171c99b816407"
+    },
+    {
+      "status": "??",
+      "path": "src/lib/userFeedback.ts",
+      "suggested_group": "user-feedback",
+      "sha256": "4d7a1448f88f4dfd852557ae9ca057dc224040cd0fb684a8af303fe964ea0652"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/androidAnalysis.test.ts",
+      "suggested_group": "mcp",
+      "sha256": "99b63871124bd9db6ef09916f2ff366e919a092f3141b4d05c8e48c00376c3de"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/androidAnalysis.ts",
+      "suggested_group": "mcp",
+      "sha256": "8aba8def6024f0055488fae110771679e0251daa904559ecd635c4196240f0bf"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/androidRuleLibrary.test.ts",
+      "suggested_group": "mcp",
+      "sha256": "2f3e785e9f9fab136c0b5f7bc06964d4efc256b6da42280bf7565cffc4255cdc"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/androidRuleLibrary.ts",
+      "suggested_group": "mcp",
+      "sha256": "24cab5c68dbb1a6da2624eb5a3c4ddf10e547a7991371ff737413680fa556f4d"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/androidRuntime.ts",
+      "suggested_group": "mcp",
+      "sha256": "70130b69a32a10a6cc10dff165414214923c8203180f33aaa30ba47742a5b00c"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/authoring.test.ts",
+      "suggested_group": "mcp",
+      "sha256": "3656ff1cf329a1ebba521ec0f354d8a7f46a8413c1d5ff8754f4fbf1d91737ba"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/authoring.ts",
+      "suggested_group": "mcp",
+      "sha256": "82224d2150a0df36459781321e2577153ed502fc02934ef69886e0390c18312b"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/cli.ts",
+      "suggested_group": "mcp",
+      "sha256": "4168e93d47fcb11c3495ec43f5d1463e2f1675537f722c13b273694d5f5b7fc7"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/device.test.ts",
+      "suggested_group": "mcp",
+      "sha256": "a61dc7abf58a728233558886d0f7e9dd78eaeb0152bd6bd5aaf3edfe44dde8ec"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/device.ts",
+      "suggested_group": "mcp",
+      "sha256": "0734332ed0849986af7122c01d79b7892cd0d68eaac36663471305297d4516f8"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/server.test.ts",
+      "suggested_group": "mcp",
+      "sha256": "a89349acd0f16370be70c92e484cc2a30838844b37dd22148a090cd5b661afbb"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/server.ts",
+      "suggested_group": "mcp",
+      "sha256": "12bd736953729b97766b5318811b9e8f4005dc8b3935fc6a2d79c7a455e73e1c"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/session.test.ts",
+      "suggested_group": "mcp",
+      "sha256": "b6da3699a9465ce4b2595a8d27ff4861f8b84c66eb12afa8f4b2d20e96f7fa2e"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/session.ts",
+      "suggested_group": "mcp",
+      "sha256": "33a917ace3f39f9f9dd60ec4701a1928f8ea1b747200e1b3f29f60c8d212bc87"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/store.test.ts",
+      "suggested_group": "mcp",
+      "sha256": "93b3f440cb768c337b01b3607b32ed04a43cc16c2c4d8929b0e714d6af3d63cc"
+    },
+    {
+      "status": "??",
+      "path": "src/mcp/store.ts",
+      "suggested_group": "mcp",
+      "sha256": "2612e89ad38754b591f4f6c0d48d530af16a683503a324275c533671b3d03b3b"
+    },
+    {
+      "status": "??",
+      "path": "third_party/libchecker/LICENSE",
+      "suggested_group": "app-sdk",
+      "sha256": "43af6759f646e247123637d0d3e61bd0648200b830a22661eaac18b5ba85d421"
+    },
+    {
+      "status": "??",
+      "path": "third_party/libchecker/NOTICE.md",
+      "suggested_group": "app-sdk",
+      "sha256": "5df441732f4ecab12cf5a3fa055efed2e6c91470440dfe97e677800cfb808dc9"
+    },
+    {
+      "status": "??",
+      "path": "vite.mcp.config.ts",
+      "suggested_group": "mcp",
+      "sha256": "68d734ecefbc72a8cbb1ed48f1bf577e28a54bf02e4ec2e291c07e49563398e9"
+    }
+  ]
+}

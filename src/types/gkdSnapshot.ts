@@ -96,6 +96,7 @@ export interface DeviceSnapshotSummary {
  * - sourceName 标记来源（设备快照 / zip 导入）
  */
 export interface ParsedGkdSnapshot extends Omit<RawGkdSnapshot, "nodes"> {
+  gkdChannel?: "stable" | "beta";
   nodes: NormalizedSnapshotNode[];
   nodeById: Map<number, NormalizedSnapshotNode>;
   screenshotUrl: string;

@@ -44,6 +44,17 @@ import {
   NotSelectorExpression,
 } from "@gkd-kit/selector";
 import type { NormalizedSnapshotNode, ParsedGkdSnapshot } from "../types/gkdSnapshot";
+import { getGkdChannel, type GkdTargetChannel } from "./gkdTarget";
+
+let betaMatcher: typeof import("./selectorBetaAdapter").matchBetaSelector | undefined;
+let betaLoading: Promise<void> | undefined;
+
+export async function prepareSelectorEngine(channel: GkdTargetChannel): Promise<void> {
+  if (channel !== "beta") return;
+  betaLoading ??= import("./selectorBetaAdapter").then(module => { betaMatcher = module.matchBetaSelector; });
+  try { await betaLoading; }
+  catch { betaLoading = undefined; throw new Error("无法加载测试版选择器引擎，请更新系统 WebView 后重试"); }
+}
 
 const KtSelector = Selector as unknown as {
   Companion: {
@@ -188,6 +199,10 @@ export function matchGkdSelectorString(
   snapshot: ParsedGkdSnapshot,
   expr: string,
 ): MatchResult {
+  if (snapshot.gkdChannel === "beta" || getGkdChannel(snapshot.gkdAppInfo) === "beta") {
+    return betaMatcher ? betaMatcher(snapshot, expr) : { clickIds: [], supportIds: [], unparsed: true,
+      unparsedReason: "测试版选择器引擎尚未加载，请先连接 GKD 测试版" };
+  }
   try {
     const ast = KtSelector.Companion.parseAst(expr);
     const { matchOption, typeInfo } = ensureGlobals();

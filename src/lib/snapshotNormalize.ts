@@ -29,6 +29,8 @@ export function normalizeSnapshot(
     screenHeight: raw.screenHeight,
     isLandscape: raw.isLandscape,
     appInfo: raw.appInfo,
+    gkdAppInfo: raw.gkdAppInfo,
+    device: raw.device,
     nodes,
     nodeById,
     screenshotUrl,

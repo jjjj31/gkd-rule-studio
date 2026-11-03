@@ -177,20 +177,7 @@ export function stringifyLibrarySelection(selection: LibrarySelection): string {
 }
 
 export function prepareLibraryAppend(selection: LibrarySelection): SubscriptionApp {
-  const app = clone(selection.app);
-  const group = app.groups[0];
-  const keys = new Map<number, number>();
-  group.rules.forEach((rule, index) => { if (rule.key !== undefined) keys.set(rule.key, index); });
-  // The fork assigns keys by rule order; remap every reference before sending a complete, non-deduplicated group.
-  for (const props of [group, ...group.rules]) {
-    if (props.preKeys !== undefined) props.preKeys = mapIntegerValue(props.preKeys, keys);
-    for (const field of ["actionCdKey", "actionMaximumKey"] as const) {
-      if (props[field] !== undefined) props[field] = keys.get(props[field] as number);
-    }
-  }
-  group.rules.forEach((rule, index) => { rule.key = index; });
-  if (group.scopeKeys !== undefined) delete group.scopeKeys;
-  return app;
+  return clone(selection.app);
 }
 
 export function libraryContentKey(selection: LibrarySelection): string {
@@ -239,15 +226,6 @@ function integerArray(value: unknown): number[] {
   const values = Array.isArray(value) ? value : [value];
   if (!values.every(isInteger)) throw new Error("规则引用必须是整数或整数数组");
   return values;
-}
-
-function mapIntegerValue(value: unknown, mapping: Map<number, number>): number | number[] {
-  const mapped = integerArray(value).map((key) => {
-    const next = mapping.get(key);
-    if (next === undefined) throw new Error(`规则引用缺失：${key}`);
-    return next;
-  });
-  return Array.isArray(value) ? mapped : mapped[0];
 }
 
 function stableJson(value: unknown): string {

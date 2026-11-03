@@ -19,8 +19,8 @@ import {
   KeyRound,
   ListChecks,
   Loader2,
+  MessageSquareWarning,
   Music2,
-  PackageSearch,
   Pencil,
   Plus,
   Plug,
@@ -87,6 +87,7 @@ import {
   exportDebugReport,
   clearDebugLog,
   flushToAdbHelper,
+  getDebugEntries,
 } from "../lib/debugLog";
 import {
   createDeviceApiClient,
@@ -94,14 +95,12 @@ import {
   type DeviceApiClient,
 } from "../lib/deviceApi";
 import {
-  DEBUG_GKD_PACKAGE,
-  OFFICIAL_GKD_PACKAGE,
-  isDebugTarget,
-  matchesTargetPackage,
-  readStoredTargetPackage,
-  storeTargetPackage,
-  targetPackageLabel,
-  type GkdTargetPackage,
+  isBetaTarget,
+  matchesTargetChannel,
+  readStoredTargetChannel,
+  storeTargetChannel,
+  targetChannelLabel,
+  type GkdTargetChannel,
 } from "../lib/gkdTarget";
 import {
   buildFlowHelpPrompt,
@@ -109,7 +108,6 @@ import {
   stringifyFlowRuleDraft,
 } from "../lib/flowDraft";
 import { buildHelpPrompt } from "../lib/helpPrompt";
-import { loadAppSdkProfiles } from "../lib/libCheckerImport";
 import {
   buildAiBatchFeedbackMessages,
   buildExternalFeedbackPrompt,
@@ -146,6 +144,7 @@ import {
 import { pickExistingNode, pickNodeAtPoint } from "../lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../lib/regionCandidates";
 import { normalizeSnapshot } from "../lib/snapshotNormalize";
+import { screenshotMimeType } from "../lib/screenshotFormat";
 import { buildSnapshotExport, saveExportedFile } from "../lib/snapshotExport";
 import {
   loadSnapshotNames,
@@ -210,11 +209,9 @@ import { ScreenshotCanvas } from "./ScreenshotCanvas";
 import { RulePreviewPanel } from "./RulePreviewPanel";
 import { NodeSelectionPanel } from "./NodeSelectionPanel";
 import { ConditionEditor } from "./ConditionEditor";
-import { MultiSnapshotValidationPanel } from "./MultiSnapshotValidationPanel";
-import { FailureFeedbackPanel, toCandidateFeedback, type FailureFeedbackDraft } from "./FailureFeedbackPanel";
 import AndroidUpdatePanel from "./AndroidUpdatePanel";
 import { SubscriptionLibrary } from "./SubscriptionLibrary";
-import { AdSdkWorkspaceSummary, AppSdkPanel } from "./AppSdkPanel";
+import { UserFeedbackPanel } from "./UserFeedbackPanel";
 import { buildLibraryTestSubscription } from "../lib/subscriptionTesting";
 import { libraryContentKey } from "../lib/subscriptionLibrary";
 import type { LibrarySelection, LibraryTest } from "../types/subscriptionLibrary";
@@ -237,12 +234,13 @@ export function AndroidLiteApp() {
   const [deviceUrl, setDeviceUrl] = useState(
     () => localStorage.getItem("gkd-rule-builder-device-url") ?? "",
   );
-  const [targetPackage, setTargetPackage] = useState<GkdTargetPackage>(
-    readStoredTargetPackage,
+  const [targetChannel, setTargetChannel] = useState<GkdTargetChannel>(
+    readStoredTargetChannel,
   );
   const [client, setClient] = useState<DeviceApiClient | null>(null);
   const clientRef = useRef<DeviceApiClient | null>(null);
-  const [view, setView] = useState<"home" | "workspace" | "library" | "sdk">(
+  const connectionAttemptRef = useRef(0);
+  const [view, setView] = useState<"home" | "workspace" | "library">(
     "home",
   );
   const [libraryTests, setLibraryTests] = useState<LibraryTest[]>([]);
@@ -282,8 +280,6 @@ export function AndroidLiteApp() {
     context: string; candidate: SelectorCandidate;
   } | null>(null);
   const [editingPreview, setEditingPreview] = useState<SelectorCandidate | null>(null);
-  const [failureFeedback, setFailureFeedback] = useState<{ context: string; value: FailureFeedbackDraft } | null>(null);
-  const [feedbackCopyState, setFeedbackCopyState] = useState<{ context: string; value: "copied" | "failed" } | null>(null);
   const [selectedAiCandidateId, setSelectedAiCandidateId] = useState<
     string | null
   >(null);
@@ -303,8 +299,6 @@ export function AndroidLiteApp() {
   const [snapshotMemory, setSnapshotMemory] = useState<
     Record<string, SnapshotWorkspaceMemory>
   >(loadSnapshotWorkspaceMemory);
-  const [appSdkState, setAppSdkState] = useState(() => loadAppSdkProfiles());
-  const appSdkProfiles = appSdkState.profiles;
   const [aiProfileStore, setAiProfileStore] =
     useState<AiModelProfileStore>(loadAiProfileStore);
   const [aiConfig, setAiConfig] = useState<AiModelConfig>(loadAiConfig);
@@ -340,12 +334,23 @@ export function AndroidLiteApp() {
   const [testPageOpen, setTestPageOpen] = useState(false);
   const [updatePanelOpen, setUpdatePanelOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [userFeedback, setUserFeedback] = useState<{
+    snapshot: ParsedGkdSnapshot | null;
+    snapshotId: number | null;
+    snapshotLoading: boolean;
+    snapshotError: string;
+    ruleText: string;
+    errors: string;
+    page: string;
+  } | null>(null);
+  const feedbackSnapshotRequestRef = useRef(0);
+  const feedbackSnapshotUrlRef = useRef<string | null>(null);
   const [updateSilentChecked, setUpdateSilentChecked] = useState(false);
   const [flowPreparing, setFlowPreparing] = useState(false);
   const pushedWorkspaceHistoryRef = useRef(false);
-  const aiMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
-  const mainMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
-  const externalAiMessageTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const aiMessageTimerRef = useRef<number | null>(null);
+  const mainMessageTimerRef = useRef<number | null>(null);
+  const externalAiMessageTimerRef = useRef<number | null>(null);
   const prolongedMainRef = useRef(false);
   const syncQueueRef = useRef<Promise<boolean>>(Promise.resolve(true));
   const activeFlowStep =
@@ -397,24 +402,11 @@ export function AndroidLiteApp() {
     return createAppRuleDraft(snapshot, selectedCandidate,
       currentEditorCandidate ? [] : selectFallbackCandidates(selectedCandidate, candidates));
   }, [snapshot, selectedCandidate, selectedAiCandidate, candidates, currentEditorCandidate]);
-  const sampleRuleDraft = useMemo(() => activeRuleDraft ?? (snapshot && currentEditorCandidate
-    ? createAppRuleDraft(snapshot, currentEditorCandidate, []) : null),
-  [activeRuleDraft, snapshot, currentEditorCandidate]);
   const activeRuleValidation = useMemo(() => {
     if (!snapshot || !activeRuleDraft) return null;
     return validateAiCandidateAgainstSnapshot({ id: "preview", title: "", summary: "", risk: "",
       app: activeRuleDraft }, snapshot);
   }, [snapshot, activeRuleDraft]);
-  const failureContext = `${snapshot?.id}|${activeRuleDraft ? ruleContentKey(activeRuleDraft) : ""}`;
-  const currentFailureFeedback: FailureFeedbackDraft = failureFeedback?.context === failureContext
-    ? failureFeedback.value : {
-      result: "not-triggered", note: "", snapshotId: snapshot?.id,
-      appId: activeRuleDraft?.id,
-      staticValidation: activeRuleValidation?.status === "invalid" ? "unknown" : activeRuleValidation?.status,
-      diagnostics: activeRuleValidation?.diagnostics,
-      knownLimitations: snapshot && activeRuleDraft && activeRuleValidation
-        ? describeRulePreview(activeRuleDraft, snapshot, activeRuleValidation).unknowns : [],
-    };
   const customScenarioEditorOpen = scenarioId === CUSTOM_SCENARIO_OPTION_ID;
   const scenarioInfo = useMemo(
     () => resolvePromptScenarioInfo(scenarioId, customScenarios),
@@ -437,21 +429,28 @@ export function AndroidLiteApp() {
       flowDesc,
       steps: flowSteps,
       stepScenarios: stepScenarioInfos,
-      adSdkProfiles: appSdkProfiles,
     });
-  }, [flowName, flowDesc, flowSteps, stepScenarioInfos, appSdkProfiles]);
+  }, [flowName, flowDesc, flowSteps, stepScenarioInfos]);
   const singleAiPrompt = useMemo(() => {
     return buildHelpPrompt({
       snapshot,
       pickResult,
       ruleSettings,
       scenario: scenarioInfo,
-      adSdkProfiles: appSdkProfiles,
     });
-  }, [snapshot, pickResult, ruleSettings, scenarioInfo, appSdkProfiles]);
+  }, [snapshot, pickResult, ruleSettings, scenarioInfo]);
   const selectedSnapshotList = useMemo(
     () => snapshots.filter((item) => selectedSnapshotIds.has(item.id)),
     [snapshots, selectedSnapshotIds],
+  );
+  const feedbackSnapshotOptions = useMemo(
+    () => view === "home"
+      ? snapshots.map((item) => ({
+          id: item.id,
+          label: snapshotOptionLabel(item, snapshotNames[String(item.id)] ?? null),
+        }))
+      : [],
+    [view, snapshots, snapshotNames],
   );
   const flowCanvasSnapshots = useMemo(
     () =>
@@ -531,6 +530,11 @@ export function AndroidLiteApp() {
       window.removeEventListener("popstate", handlePopState);
       clearAllTransientMessages();
     };
+  }, []);
+
+  useEffect(() => () => {
+    feedbackSnapshotRequestRef.current += 1;
+    releaseFeedbackSnapshotUrl();
   }, []);
 
   useEffect(() => {
@@ -655,14 +659,16 @@ export function AndroidLiteApp() {
   }, [aiLoading, aiRequestStartedAt]);
 
   async function connect(): Promise<void> {
+    const attempt = ++connectionAttemptRef.current;
     setLoading(true);
     setMessage(null);
     clientRef.current = null;
     setClient(null);
     try {
       const origin = resolveConnectOrigin(deviceUrl);
-      const nextClient = await createDeviceApiClient(origin);
+      const nextClient = await createDeviceApiClient(origin, targetChannel);
       const nextSnapshots = await nextClient.getSnapshots();
+      if (attempt !== connectionAttemptRef.current) return;
       clientRef.current = nextClient;
       setClient(nextClient);
       setSnapshots(nextSnapshots);
@@ -670,26 +676,19 @@ export function AndroidLiteApp() {
       setSelectedSnapshotIds(new Set());
       setDeviceUrl(nextClient.origin);
       localStorage.setItem("gkd-rule-builder-device-url", nextClient.origin);
-      if (matchesTargetPackage(nextClient.serverInfo.gkdAppInfo?.id, targetPackage)) {
-        showMainTransient("连接成功");
-      } else {
-        setMessage(
-          `已连接，但当前目标是 ${targetPackageLabel(
-            targetPackage,
-          )}，HTTP 服务来自 ${nextClient.serverInfo.gkdAppInfo?.id ?? "未知包名"}`,
-        );
-      }
+      showMainTransient(`已连接 ${targetChannelLabel(targetChannel)}`);
       debugLog("network", "connect:ok", nextClient.origin, {
         serverInfo: nextClient.serverInfo,
         snapshotCount: nextSnapshots.length,
       });
       if (libraryTestRef.current) void syncInlineTestsToGkd(inlineTestingRef.current);
     } catch (cause) {
+      if (attempt !== connectionAttemptRef.current) return;
       const msg = cause instanceof Error ? cause.message : "连接设备失败";
       debugLog("error", "connect:fail", msg);
       setMessage(msg);
     } finally {
-      setLoading(false);
+      if (attempt === connectionAttemptRef.current) setLoading(false);
     }
   }
 
@@ -726,7 +725,7 @@ export function AndroidLiteApp() {
     }
   }
 
-  /** 首页导出：拉取快照数据 + 截图，保存为 Markdown 文档和 PNG 两个文件。 */
+  /** 首页导出：保存 Markdown 文档和原格式截图。 */
   async function exportSnapshotFromHome(item: DeviceSnapshotSummary): Promise<void> {
     if (!client || exportingSnapshotId !== null) return;
 
@@ -738,14 +737,16 @@ export function AndroidLiteApp() {
         client.getScreenshot(item.id),
       ]);
       const parsed = normalizeSnapshot(raw, "", `设备快照 ${item.id}`);
+      const screenshotType = screenshotMimeType(new Uint8Array(screenshot));
       const files = buildSnapshotExport(
         parsed,
         new Date(),
         snapshotNames[String(item.id)],
+        screenshotType,
       );
       await saveExportedFile(
         files.screenshotName,
-        new Blob([screenshot], { type: "image/png" }),
+        new Blob([screenshot], { type: screenshotType }),
       );
       await saveExportedFile(
         files.markdownName,
@@ -1012,7 +1013,6 @@ export function AndroidLiteApp() {
       pickResult,
       ruleSettings,
       scenario: scenarioInfo,
-      adSdkProfiles: appSdkProfiles,
     });
     await copyTextToClipboard(prompt);
     markCopied("rule");
@@ -1031,7 +1031,6 @@ export function AndroidLiteApp() {
       flowDesc,
       steps: flowSteps,
       stepScenarios: stepScenarioInfos,
-      adSdkProfiles: appSdkProfiles,
     });
     await copyTextToClipboard(prompt);
     markCopied("flowPrompt");
@@ -1449,7 +1448,7 @@ export function AndroidLiteApp() {
   ): Promise<boolean> {
     const device = clientRef.current;
     const libraryAtStart = libraryTestRef.current;
-    if (!device || !matchesTargetPackage(device.serverInfo.gkdAppInfo?.id, targetPackage)) {
+    if (!device || !matchesTargetChannel(device.serverInfo.gkdAppInfo, targetChannel)) {
       setMessage("请先连接对应版本的 GKD HTTP 服务");
       if (libraryAtStart && libraryTestRef.current === libraryAtStart) {
         commitLibraryTest({ ...libraryAtStart, error: "未连接对应版本，测试变更尚未同步；请连接正确目标后同步。" });
@@ -1511,7 +1510,7 @@ export function AndroidLiteApp() {
   }
 
   async function startLibraryTest(selection: LibrarySelection): Promise<void> {
-    if (!clientRef.current || !matchesTargetPackage(clientRef.current.serverInfo.gkdAppInfo?.id, targetPackage)) {
+    if (!clientRef.current || !matchesTargetChannel(clientRef.current.serverInfo.gkdAppInfo, targetChannel)) {
       setMessage("请先连接对应版本的 GKD HTTP 服务");
       return;
     }
@@ -1530,18 +1529,21 @@ export function AndroidLiteApp() {
     await syncInlineTestsToGkd(inlineTestingRef.current, "已记录结果并结束规则库测试");
   }
 
-  function changeTargetPackage(packageId: GkdTargetPackage): void {
-    storeTargetPackage(packageId);
-    setTargetPackage(packageId);
+  function changeTargetChannel(channel: GkdTargetChannel): void {
+    connectionAttemptRef.current++;
+    storeTargetChannel(channel);
+    setTargetChannel(channel);
+    setLoading(false);
     clientRef.current = null;
     setClient(null);
     setSnapshots([]);
+    setSelectedSnapshotId("");
     setSelectedSnapshotIds(new Set());
     const current = libraryTestRef.current;
     if (current && ["syncing", "testing", "failed"].includes(current.status)) {
       commitLibraryTest({ ...current, status: "failed", error: "目标已切换，请连接后同步当前测试集合" });
     }
-    showMainTransient(`已切换目标：${targetPackageLabel(packageId)}`);
+    showMainTransient(`已切换目标：${targetChannelLabel(channel)}`);
   }
 
   function endInlineTest(itemId: string): void {
@@ -1581,13 +1583,13 @@ export function AndroidLiteApp() {
   }
 
   async function saveInlineItemToLocalRulesBeta(item: InlineRuleTestItem): Promise<void> {
-    if (!isDebugTarget(targetPackage)) {
+    if (!isBetaTarget(targetChannel)) {
       await copyTextToClipboard(stringifyRuleDraft(item.app));
-      setMessage("正式版 GKD 不支持本地规则 API，已复制规则片段");
+      setMessage("正式版路径已复制规则片段，请到 GKD 手动添加");
       return;
     }
 
-    if (!client) {
+    if (!client || !matchesTargetChannel(client.serverInfo.gkdAppInfo, targetChannel)) {
       setMessage("请先连接 GKD HTTP 服务");
       return;
     }
@@ -1605,11 +1607,11 @@ export function AndroidLiteApp() {
         markImportedAndClearBuffer(addAppDraftToTestSubscription(current, item.app)),
       );
       showMainTransient(
-        `已保存到 GKD 本地规则 Beta：新增 ${result.addedRules} 条，跳过重复 ${result.skippedDuplicates} 条`,
+        `已保存到 GKD 测试版本地规则：新增 ${result.addedRules} 条`,
       );
     } catch (cause) {
       const detail = cause instanceof Error ? cause.message : "保存到 GKD 本地规则失败";
-      setMessage(`${detail}。当前 GKD 可能还不支持本地规则 Beta API`);
+      setMessage(`${detail}。请先在 GKD 核对是否已写入，勿直接重复导入`);
     } finally {
       setLoading(false);
     }
@@ -2247,6 +2249,85 @@ export function AndroidLiteApp() {
     setMessage(null);
   }
 
+  function releaseFeedbackSnapshotUrl(): void {
+    const current = feedbackSnapshotUrlRef.current;
+    feedbackSnapshotUrlRef.current = null;
+    if (current) URL.revokeObjectURL(current);
+  }
+
+  function closeUserFeedback(): void {
+    feedbackSnapshotRequestRef.current += 1;
+    releaseFeedbackSnapshotUrl();
+    setUserFeedback(null);
+  }
+
+  async function selectFeedbackSnapshot(id: number | null): Promise<void> {
+    const requestId = ++feedbackSnapshotRequestRef.current;
+    if (id === null) {
+      releaseFeedbackSnapshotUrl();
+      setUserFeedback((current) => current
+        ? { ...current, snapshot: null, snapshotId: null, snapshotLoading: false, snapshotError: "" }
+        : current);
+      return;
+    }
+
+    const targetClient = clientRef.current;
+    if (!targetClient) {
+      setUserFeedback((current) => current
+        ? { ...current, snapshotLoading: false, snapshotError: "设备未连接，无法读取快照。" }
+        : current);
+      return;
+    }
+
+    releaseFeedbackSnapshotUrl();
+    setUserFeedback((current) => current
+      ? { ...current, snapshot: null, snapshotId: id, snapshotLoading: true, snapshotError: "" }
+      : current);
+    try {
+      const next = await targetClient.loadSnapshot(id);
+      if (requestId !== feedbackSnapshotRequestRef.current) {
+        URL.revokeObjectURL(next.screenshotUrl);
+        return;
+      }
+      feedbackSnapshotUrlRef.current = next.screenshotUrl;
+      setUserFeedback((current) => current
+        ? { ...current, snapshot: next, snapshotId: id, snapshotLoading: false, snapshotError: "" }
+        : current);
+    } catch (cause) {
+      if (requestId !== feedbackSnapshotRequestRef.current) return;
+      setUserFeedback((current) => current
+        ? {
+            ...current,
+            snapshotLoading: false,
+            snapshotError: cause instanceof Error ? cause.message : "读取快照失败，请重试。",
+          }
+        : current);
+    }
+  }
+
+  function openUserFeedback(item?: InlineRuleTestItem) {
+    const feedbackSnapshot = item
+      ? (String(item.snapshotId) === String(snapshot?.id) ? snapshot : null)
+      : (view === "workspace" ? snapshot : null);
+    const selectedHomeSnapshotId = !item && view === "home" && selectedSnapshotIds.size === 1
+      ? selectedSnapshotIds.values().next().value ?? null
+      : null;
+    const currentRule = item ? JSON.stringify(item.app, null, 2)
+      : view === "workspace" ? (workspaceMode === "flow" ? flowPreview : activeRuleDraft ? JSON.stringify(activeRuleDraft, null, 2) : "") : "";
+    const recentErrors = getDebugEntries().filter((entry) => entry.category === "error" || /fail|error/i.test(entry.action))
+      .slice(-10).map((entry) => `${entry.ts} ${entry.action}: ${entry.detail ?? ""}`).join("\n");
+    feedbackSnapshotRequestRef.current += 1;
+    releaseFeedbackSnapshotUrl();
+    setUserFeedback({ snapshot: feedbackSnapshot,
+      snapshotId: feedbackSnapshot?.id ?? selectedHomeSnapshotId,
+      snapshotLoading: false, snapshotError: "", ruleText: currentRule,
+      errors: item ? `测试状态：${inlineStatusLabel(item.status)}\n${item.note ?? ""}\n${recentErrors}` : recentErrors,
+      page: item ? "测试结果" : view === "workspace" ? (workspaceMode === "flow" ? "工作区（多步骤，仅当前快照）" : "规则工作区") : "首页" });
+    if (!feedbackSnapshot && selectedHomeSnapshotId !== null) {
+      void selectFeedbackSnapshot(selectedHomeSnapshotId);
+    }
+  }
+
   return (
     <main
       className={[
@@ -2267,8 +2348,8 @@ export function AndroidLiteApp() {
         {view === "home" && (
           <div className="android-header-actions">
             <TargetVersionSwitch
-              targetPackage={targetPackage}
-              onChange={changeTargetPackage}
+              targetChannel={targetChannel}
+              onChange={changeTargetChannel}
             />
             <button
               aria-label="模型配置"
@@ -2336,9 +2417,6 @@ export function AndroidLiteApp() {
           <button className="android-card library-entry" type="button" onClick={() => setView("library")}>
             <Search size={24} /><span><strong>订阅规则库</strong></span><ChevronRight size={20} />
           </button>
-          <button className="android-card library-entry" type="button" onClick={() => setView("sdk")}>
-            <PackageSearch size={24} /><span><strong>SDK 信息</strong></span><ChevronRight size={20} />
-          </button>
           <div className="android-card android-connect-card">
             <div className="android-section-title">
               <h2>HTTP 服务</h2>
@@ -2388,24 +2466,17 @@ export function AndroidLiteApp() {
           <button className="android-support-entry" type="button" onClick={() => setSupportOpen(true)}>
             <Star size={15} />支持作者<ChevronRight size={15} />
           </button>
+          <button className="android-support-entry" type="button" onClick={() => openUserFeedback()}>
+            <MessageSquareWarning size={15} />反馈问题<ChevronRight size={15} />
+          </button>
         </section>
       )}
 
       <SubscriptionLibrary active={view === "library"}
-        client={client} targetPackage={targetPackage} loading={loading}
+        client={client} targetChannel={targetChannel} loading={loading}
         tests={libraryTests} onClose={backHome}
         onTest={startLibraryTest} onTestResult={finishLibraryTest}
         onSync={() => syncInlineTestsToGkd(inlineTestingRef.current)}
-      />
-
-      <AppSdkPanel
-        active={view === "sdk"}
-        loadError={appSdkState.error}
-        profiles={appSdkProfiles}
-        onClose={backHome}
-        onProfilesChange={(profiles) =>
-          setAppSdkState({ profiles, error: undefined })
-        }
       />
 
       {view === "workspace" && (
@@ -2415,6 +2486,9 @@ export function AndroidLiteApp() {
           <div className="android-workspace-title">
             <strong>{snapshot?.appInfo?.name ?? snapshot?.appId ?? "未加载快照"}</strong>
           </div>
+          <button aria-label="反馈当前问题" className="android-icon-button" type="button" onClick={() => openUserFeedback()}>
+            <MessageSquareWarning size={16} />
+          </button>
           <button
             aria-label="当前测试"
             className="android-icon-button"
@@ -2481,33 +2555,6 @@ export function AndroidLiteApp() {
             {activeRuleDraft && activeRuleValidation && <RulePreviewPanel
               app={activeRuleDraft} snapshot={snapshot} validation={activeRuleValidation}
             />}
-            {sampleRuleDraft && <details className="rule-authoring-panel" hidden={!activeRuleDraft}>
-              <summary>多快照验证</summary>
-              <MultiSnapshotValidationPanel key={sampleRuleDraft.id}
-                app={sampleRuleDraft} snapshot={snapshot} availableSnapshots={snapshots}
-                loadSnapshot={client && matchesTargetPackage(client.serverInfo.gkdAppInfo.id, targetPackage)
-                  ? client.loadSnapshot : undefined}
-              />
-            </details>}
-            {activeRuleDraft && <details className="rule-authoring-panel">
-              <summary>反馈与修复</summary>
-              <FailureFeedbackPanel feedback={currentFailureFeedback}
-                onFeedbackChange={(value) => setFailureFeedback({ context: failureContext, value })}
-                copyState={feedbackCopyState?.context === failureContext ? feedbackCopyState.value : "idle"}
-                sendState={aiLoading ? "sending" : "idle"}
-                onCopyPrompt={() => {
-                  const candidate = selectedAiCandidate ?? { id: selectedCandidate?.id ?? "current-rule",
-                    title: selectedCandidate?.title ?? "当前规则", summary: "", risk: "", app: activeRuleDraft };
-                  void copyTextToClipboard(buildExternalFeedbackPrompt(
-                    enrichCurrentFeedback([toCandidateFeedback(candidate, currentFailureFeedback)]), workspaceMode === "flow",
-                  )).then(() => setFeedbackCopyState({ context: failureContext, value: "copied" }),
-                    () => setFeedbackCopyState({ context: failureContext, value: "failed" }));
-                }}
-                onSendFeedback={selectedAiCandidate && activeAiSession && aiCandidates.includes(selectedAiCandidate) ? () => {
-                  void sendAiFeedback([toCandidateFeedback(selectedAiCandidate, currentFailureFeedback)]);
-                } : null}
-              />
-            </details>}
             {workspaceMode === "flow" && (
               <AndroidFlowStepRail
                 activeStepId={activeFlowStepId}
@@ -2522,8 +2569,6 @@ export function AndroidLiteApp() {
           <div className="android-empty">未选择快照</div>
         )}
       </section>
-
-      <AdSdkWorkspaceSummary profiles={appSdkProfiles} snapshot={snapshot} />
 
       <AndroidWorkspaceTabs
         activeTab={activeTab}
@@ -2576,7 +2621,7 @@ export function AndroidLiteApp() {
               snapshot={snapshot}
               snapshotId={snapshot?.id}
               controlKey={controlKeyForPick(snapshot, pickResult)}
-              targetPackage={targetPackage}
+              targetChannel={targetChannel}
               selectedId={selectedCandidate?.id ?? null}
               onEndTest={endInlineTest}
               onImport={(item) => void importInlineItem(item)}
@@ -2604,7 +2649,7 @@ export function AndroidLiteApp() {
             snapshot={snapshot}
             pickResult={pickResult}
             selectedAiCandidateId={selectedAiCandidateId}
-            targetPackage={targetPackage}
+            targetChannel={targetChannel}
             testSubscription={testSubscription}
             workspaceMode={workspaceMode}
             onAddExternalCandidate={addExternalAiCandidateToTestZone}
@@ -2655,7 +2700,7 @@ export function AndroidLiteApp() {
             selectedAiCandidateId={selectedAiCandidateId}
             session={activeAiSession}
             snapshot={snapshot}
-            targetPackage={targetPackage}
+            targetChannel={targetChannel}
             testSubscription={testSubscription}
             workspaceMode={workspaceMode}
             onAddCandidate={addAiCandidateToTestZone}
@@ -2733,16 +2778,29 @@ export function AndroidLiteApp() {
         <AndroidTestPage
           items={inlineTesting.items}
           loading={loading}
-          targetPackage={targetPackage}
+          targetChannel={targetChannel}
           onClose={() => setTestPageOpen(false)}
           onDelete={deleteInlineTestRecord}
           onEnd={endInlineTest}
           onImport={(item) => void importInlineItem(item)}
+          onFeedback={openUserFeedback}
         />
       )}
       {updatePanelOpen && (
         <AndroidUpdatePanel onClose={() => setUpdatePanelOpen(false)} />
       )}
+      {userFeedback && <UserFeedbackPanel
+        snapshot={userFeedback.snapshot}
+        selectedSnapshotId={userFeedback.snapshotId}
+        snapshotLoading={userFeedback.snapshotLoading}
+        snapshotError={userFeedback.snapshotError}
+        ruleText={userFeedback.ruleText}
+        errors={userFeedback.errors}
+        page={userFeedback.page}
+        snapshotOptions={feedbackSnapshotOptions}
+        onSnapshotSelect={(id) => void selectFeedbackSnapshot(id)}
+        secrets={[aiConfig.apiKey, ...aiProfileStore.profiles.map((profile) => profile.config.apiKey)].filter(Boolean)}
+        onClose={closeUserFeedback} />}
       {view === "home" && supportOpen && (
         <div className="android-dialog-backdrop" role="presentation" onClick={() => setSupportOpen(false)}>
           <section aria-label="支持作者" aria-modal="true" className="android-dialog android-support-dialog" role="dialog" onClick={(event) => event.stopPropagation()}>
@@ -3112,19 +3170,21 @@ function AndroidLogPage({
 function AndroidTestPage({
   items,
   loading,
-  targetPackage,
+  targetChannel,
   onClose,
   onDelete,
   onEnd,
   onImport,
+  onFeedback,
 }: {
   items: InlineRuleTestItem[];
   loading: boolean;
-  targetPackage: GkdTargetPackage;
+  targetChannel: GkdTargetChannel;
   onClose: () => void;
   onDelete: (itemId: string) => void;
   onEnd: (itemId: string) => void;
   onImport: (item: InlineRuleTestItem) => void;
+  onFeedback: (item: InlineRuleTestItem) => void;
 }) {
   const activeItems = items.filter((item) => item.status === "testing");
   const validCount = items.filter((item) => item.status === "valid").length;
@@ -3169,6 +3229,7 @@ function AndroidTestPage({
                   {inlineStatusLabel(item.status)}
                 </span>
                 <div className="inline-test-actions">
+                  <button type="button" onClick={() => onFeedback(item)}>反馈问题</button>
                   {item.status === "testing" ? (
                     <button type="button" onClick={() => onEnd(item.id)}>
                       结束测试
@@ -3179,7 +3240,7 @@ function AndroidTestPage({
                       type="button"
                       onClick={() => onImport(item)}
                     >
-                      {isDebugTarget(targetPackage) ? "导入" : "复制"}
+                      {isBetaTarget(targetChannel) ? "导入" : "复制"}
                     </button>
                   )}
                   <button
@@ -3242,27 +3303,29 @@ function openSupportLink(event: MouseEvent<HTMLAnchorElement>): void {
 }
 
 function TargetVersionSwitch({
-  targetPackage,
+  targetChannel,
   onChange,
 }: {
-  targetPackage: GkdTargetPackage;
-  onChange: (packageId: GkdTargetPackage) => void;
+  targetChannel: GkdTargetChannel;
+  onChange: (channel: GkdTargetChannel) => void;
 }) {
   return (
     <div className="mode-switch android-target-switch" aria-label="GKD 目标版本">
       <button
-        className={targetPackage === DEBUG_GKD_PACKAGE ? "mode-switch-active" : ""}
+        className={targetChannel === "beta" ? "mode-switch-active" : ""}
+        aria-pressed={targetChannel === "beta"}
         type="button"
-        onClick={() => onChange(DEBUG_GKD_PACKAGE)}
+        onClick={() => onChange("beta")}
       >
-        Beta
+        测试版
       </button>
       <button
-        className={targetPackage === OFFICIAL_GKD_PACKAGE ? "mode-switch-active" : ""}
+        className={targetChannel === "stable" ? "mode-switch-active" : ""}
+        aria-pressed={targetChannel === "stable"}
         type="button"
-        onClick={() => onChange(OFFICIAL_GKD_PACKAGE)}
+        onClick={() => onChange("stable")}
       >
-        正式
+        正式版
       </button>
     </div>
   );
@@ -3815,7 +3878,7 @@ function AndroidAiPanel({
   selectedAiCandidateId,
   session,
   snapshot,
-  targetPackage,
+  targetChannel,
   elapsedSeconds,
   loading,
   message,
@@ -3840,7 +3903,7 @@ function AndroidAiPanel({
   selectedAiCandidateId: string | null;
   session: InlineAiSession | null;
   snapshot: ParsedGkdSnapshot | null;
-  targetPackage: GkdTargetPackage;
+  targetChannel: GkdTargetChannel;
   elapsedSeconds: number;
   loading: boolean;
   message: string | null;
@@ -3929,7 +3992,7 @@ function AndroidAiPanel({
               isSelected={candidate.id === selectedAiCandidateId}
               session={session}
               snapshot={snapshot}
-              targetPackage={targetPackage}
+              targetChannel={targetChannel}
               onAddCandidate={onAddCandidate}
               onEndTest={onEndCandidateTest}
               onImport={onImportCandidate}
@@ -3957,7 +4020,7 @@ function AndroidAiCandidateCard({
   isSelected,
   session,
   snapshot,
-  targetPackage,
+  targetChannel,
   onAddCandidate,
   onEndTest,
   onMarkTest,
@@ -3970,7 +4033,7 @@ function AndroidAiCandidateCard({
   isSelected: boolean;
   session: InlineAiSession | null;
   snapshot: ParsedGkdSnapshot | null;
-  targetPackage: GkdTargetPackage;
+  targetChannel: GkdTargetChannel;
   onAddCandidate: (candidate: AiRuleCandidate) => void;
   onEndTest: (itemId: string) => void;
   onMarkTest: (
@@ -4053,7 +4116,7 @@ function AndroidAiCandidateCard({
           item: testItem,
           feedbackActions: true,
           targetLabel: "测试",
-          targetPackage,
+          targetChannel,
           onStart: () => onAddCandidate(candidate),
           onEnd: onEndTest,
           onMark: onMarkTest,
@@ -4470,7 +4533,7 @@ function AndroidPromptPanel({
   externalAiMode,
   externalAiSession,
   inlineTesting,
-  targetPackage,
+  targetChannel,
   snapshot,
   pickResult,
   copied,
@@ -4495,7 +4558,7 @@ function AndroidPromptPanel({
   externalAiMode: "single" | "flow" | null;
   externalAiSession: InlineAiSession | null;
   inlineTesting: InlineRuleTestingState;
-  targetPackage: GkdTargetPackage;
+  targetChannel: GkdTargetChannel;
   snapshot: ParsedGkdSnapshot | null;
   pickResult: NodePickResult | null;
   copied: "scene" | "rule" | "draft" | "flowDraft" | "flowPrompt" | null;
@@ -4553,7 +4616,7 @@ function AndroidPromptPanel({
               isSelected={candidate.id === selectedAiCandidateId}
               session={externalAiSession}
               snapshot={snapshot}
-              targetPackage={targetPackage}
+              targetChannel={targetChannel}
               onAddCandidate={onAddExternalCandidate}
               onEndTest={onEndCandidateTest}
               onImport={onImportCandidate}
@@ -4964,7 +5027,7 @@ function CandidateSummary({
   snapshot,
   snapshotId,
   controlKey,
-  targetPackage,
+  targetChannel,
   onSelect,
   onStartTest,
   onEndTest,
@@ -4980,7 +5043,7 @@ function CandidateSummary({
   snapshot: ParsedGkdSnapshot | null;
   snapshotId?: number | string;
   controlKey: string;
-  targetPackage: GkdTargetPackage;
+  targetChannel: GkdTargetChannel;
   onSelect: (candidate: SelectorCandidate) => void;
   onStartTest: (candidate: SelectorCandidate) => void;
   onEndTest: (itemId: string) => void;
@@ -5083,7 +5146,7 @@ function CandidateSummary({
                   item: testItem,
                   feedbackActions: false,
                   targetLabel: "测试",
-                  targetPackage,
+                  targetChannel,
                   onStart: () => onStartTest(candidate),
                   onEnd: onEndTest,
                   onImport,
@@ -5142,7 +5205,7 @@ function renderInlineCandidateActions({
   item,
   feedbackActions,
   targetLabel,
-  targetPackage,
+  targetChannel,
   onStart,
   onEnd,
   onMark,
@@ -5151,7 +5214,7 @@ function renderInlineCandidateActions({
   item: InlineRuleTestItem | null;
   feedbackActions: boolean;
   targetLabel: string;
-  targetPackage: GkdTargetPackage;
+  targetChannel: GkdTargetChannel;
   onStart: () => void;
   onEnd: (itemId: string) => void;
   onMark: (
@@ -5247,7 +5310,7 @@ function renderInlineCandidateActions({
           onImport(item);
         }}
       >
-        {isDebugTarget(targetPackage) ? "导入" : "复制"}
+        {isBetaTarget(targetChannel) ? "导入" : "复制"}
       </button>
     </>
   );

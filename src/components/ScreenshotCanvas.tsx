@@ -45,15 +45,13 @@ export function ScreenshotCanvas({
   const lastDragPointRef = useRef<NodePoint | null>(null);
   const dragStartRef = useRef<DragStartState | null>(null);
   const savedMagnifierLocalRef = useRef<DragLocalPoint | null>(null);
-  const hideMagnifierTimerRef = useRef<ReturnType<
-    typeof window.setTimeout
-  > | null>(null);
-  const dragWatchdogTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(
+  const hideMagnifierTimerRef = useRef<number | null>(null);
+  const dragWatchdogTimerRef = useRef<number | null>(
     null,
   );
   const [imageBox, setImageBox] = useState<ImageBox | null>(null);
   const [magnifier, setMagnifier] = useState<MagnifierState | null>(null);
-  const idleTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const idleTimerRef = useRef<number | null>(null);
   const nextTouchIsScrollRef = useRef(false);
 
   useLayoutEffect(() => {

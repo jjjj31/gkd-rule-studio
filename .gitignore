@@ -58,3 +58,6 @@ AGENTS.md
 my-video/
 docs/rule-search-design.md
 .scratch/
+
+# Python-generated cache files
+__pycache__/

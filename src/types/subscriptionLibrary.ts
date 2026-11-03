@@ -58,6 +58,7 @@ export interface LibraryImportRecord extends LibrarySelection {
   complete?: boolean;
   importedAt: number;
   deviceOrigin: string;
+  /** New records store stable/beta; legacy package IDs remain historical fork records. */
   targetPackage: string;
   submittedApp: SubscriptionApp;
 }

@@ -1,0 +1,8 @@
+{
+  "time": "20261029T120457Z",
+  "image": "gkd-feedback:20261029t120457z",
+  "sha256": "b33e30bbeba06ceb26b20fc5cdb31fd5ba220423713d99dfc28805295851dc8c",
+  "base_image": "python:3.12-slim",
+  "backup": "C:\\Users\\kmttjnm\\skill-backups\\gkd-feedback-20261029T120457Z",
+  "admin_url": "https://120.25.221.144/gkd-feedback/admin"
+}

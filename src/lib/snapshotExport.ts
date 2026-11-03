@@ -1,5 +1,5 @@
 /**
- * 快照导出：把设备快照导出为 Markdown 文档 + PNG 截图两个文件。
+ * 快照导出：把设备快照导出为 Markdown 文档和原格式截图。
  * Markdown 内容 = 基本信息（应用/Activity/分辨率/设备）+ 截图引用 + 缩进节点树。
  * 截图文件名与 Markdown 内的引用保持一致，两个文件放在同一目录即可直接预览。
  * 保存渠道：Android WebView 走 GkdAndroidBridge.saveFile（写入系统下载目录），
@@ -57,9 +57,10 @@ export function buildSnapshotExport(
   snapshot: ParsedGkdSnapshot,
   now: Date = new Date(),
   customName?: string | null,
+  screenshotType: "image/png" | "image/webp" = "image/png",
 ): SnapshotExportFiles {
   const stem = snapshotExportFileStem(snapshot, customName);
-  const screenshotName = `${stem}.png`;
+  const screenshotName = `${stem}.${screenshotType === "image/webp" ? "webp" : "png"}`;
   return {
     markdownName: `${stem}.md`,
     markdownContent: buildSnapshotMarkdown(snapshot, screenshotName, now),

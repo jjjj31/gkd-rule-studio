@@ -1,5 +1,7 @@
 # GKD Rule Studio
 
+> 分支范围：`codex/release-preparation` — 本次发行准备，不包含新 SDK 检测或 MCP。见[分支与发行范围](docs/verification/branch-split-2026-11-03.md)。
+
 [![License: SATA](https://img.shields.io/badge/License-SATA-blue.svg)](LICENSE)
 
 在手机上帮 GKD 生成跳过规则的辅助工具。连上 GKD HTTP 服务，在截图上拖动选目标控件，自动出候选规则 → 测试 → 导入，一条龙。
@@ -14,9 +16,7 @@
 
 **🧪 同时测试多条规则** — 同一控件可以加多个候选同时测试，在手机上触发一次就能对比哪条命中最准。测试管理页统一查看所有测试状态。
 
-**📥 一键导入本地订阅** — 测试有效的规则点一下"导入"就存进 GKD 本地规则，不用复制粘贴。（需要 GKD fork 版，官方版暂不支持）
-
-**🔍 识别应用里的广告 SDK** — 用 LibChecker 导出应用信息后导入，生成器按已有签名表匹配应用包含的穿山甲、优量汇等广告 SDK；工作区同时显示应用清单和当前页面的 SDK 特征，并一起带进求助 prompt 和内置 AI。
+**📥 一键导入本地订阅** — 连接官方 GKD 1.13 测试版后，测试有效的规则可以直接导入本地规则；正式版路径保留复制后手动添加。
 
 **🔄 软件内更新** — App 内直接检查新版本、下载并安装，不用去 Releases 页翻。发版由 GitHub Actions 自动完成：打 tag 即自动构建 APK 并生成更新清单。清单在国内网络下会自动尝试镜像源。
 
@@ -28,6 +28,8 @@
 
 **📦 轻量安装包** — 一个纯 WebView + 前端代码的轻量 APK，不内置任何 AI 模型、不需要 Google Play Service。
 
+**💬 应用内反馈** — 首页、规则工作区和测试结果可直接反馈工具故障或规则问题。版本和相关错误自动整理，规则、截图及节点树按需附带；支持截图打码、关联文字隐藏和提交前预览。发送失败保留本地脱敏草稿，手动重试；联系方式选填，材料保留 90 天。作者使用私有后台处理反馈，邮件提醒待配置后启用。[功能说明](docs/specs/user-feedback.md)。
+
 ## 快速开始
 
 1. 下载 APK、安装
@@ -36,7 +38,7 @@
 4. 连接后勾选一张快照，点「进入工作区」
 5. 在截图画布上**拖动**（不是点击）到目标按钮上松手
 6. 底部「候选」标签页会出现自动生成的规则，选一条点「测试」
-7. 测试有效后 Beta 版直接「导入」，正式版「复制」再手动粘到 GKD
+7. 测试有效后，官方测试版直接「导入」，正式版「复制」再手动粘到 GKD
 
 多步骤操作：勾选多张快照进入工作区，在「步骤」标签页编排顺序，适合"点红包 → 返回"这种连续操作。
 
@@ -47,20 +49,11 @@
 1. 首页打开「订阅规则库」，在「管理订阅来源」添加用于 GKD 的订阅文件链接，可添加多个来源。
 2. 输入软件名或包名，进入应用后按来源查看规则组原名称和说明，逐组选取需要的功能。
 3. 点「复制」得到包含应用信息和完整规则组的 JSON5，粘贴到 GKD → 本地订阅 → 应用规则的添加位置。复制无需连接设备或先测试。
-4. 需要测试时连接 GKD HTTP 服务，逐组实测并手动记录有效／无效。支持本地规则接口的 Beta 也可以直接「导入」，无需先测试；正式版通过复制后手动添加。
+4. 需要测试时连接对应版本的 GKD HTTP 服务，逐组实测并手动记录有效／无效。官方 GKD 1.13 测试版也可以直接「导入」规则组；正式版通过复制后手动添加。
 
 订阅下载后保存在本地，重启或断网仍可搜索和复制，更新由用户手动刷新。导入的是固定副本，不随原订阅自动更新；源规则默认禁用的组会保留这一设置，可在 GKD 按需启用。
 
 规格与实施进度见 [Spec #3](https://github.com/jjjj31/gkd-rule-studio/issues/3)。
-
-### 让 AI 知道应用里有哪些广告 SDK
-
-1. 用 [LibChecker](https://github.com/LibChecker/LibChecker) 导出应用信息（`.lcapps`），把文件放到手机上。
-2. 首页打开「SDK 信息」，导入该文件。生成器按现有签名表匹配每个应用包含的广告 SDK，结果保存在本地，重启和断网都还在，也可以按应用删除。
-3. 进入工作区后，「应用 SDK」和「页面特征」分开显示：应用包含哪些 SDK，当前页面命中了哪些 SDK 特征。
-4. 生成规则、复制求助 prompt 或内置 AI 生成时都会带上这些信息，并注明清单只代表应用包含该 SDK，定位仍以当前节点树为准。
-
-不导入也能正常用；导入信息不会提高候选评分，也不会自动生成规则。规格与实施进度见 [Spec #8](https://github.com/jjjj31/gkd-rule-studio/issues/8)。
 
 ### 自己生成规则
 
@@ -72,11 +65,14 @@
 
 ## GKD 版本说明
 
-官方 GKD 的 HTTP 服务只支持导入"内存订阅"（临时生效），不支持直接写入本地规则。Rule Studio 默认连接 **GKD Debug/Beta 版**（包名 `li.songe.gkd.debug`），它额外提供了 `localRules/append` API，可以一键把规则存进本地。
+App 内保留「正式版 / 测试版」两条路径，首次使用默认正式版：
 
-> 我 fork 了一个支持本地规则导入的 GKD 版本：[[点击跳转](https://github.com/jjjj31/gkd)]()
+- **正式版**：面向现有正式发布版本，沿用 0.5.23 选择器引擎；支持快照读取和内存订阅测试，最终规则复制后手动添加。
+- **测试版**：面向官方 GKD 1.13 测试版，使用 0.6.1 选择器引擎，通过 `/api/appendRules` 追加到本地规则。保留规则编号和引用；再次导入会追加副本，不进行选择器去重。
 
-App 内右上角可以切换「Beta / 正式」目标版本。正式版测试后只能复制 JSON5 手动粘贴到 GKD。
+两者可能共用 `li.songe.gkd` 包名，连接时按包名和版本号共同核对；版本不符会提示切换路径。旧 `.debug` 自改版不再作为官方测试版入口。两条路径均支持读取 PNG/WebP 截图；新版引擎和 WebAssembly 随应用打包，按需加载。
+
+源码依据及验证范围见 [版本路径验收记录](docs/verification/gkd-release-channels.md)。
 
 ## 下载
 
@@ -98,9 +94,10 @@ pnpm test
 pnpm run typecheck
 pnpm run dev                  # 浏览器开发
 pnpm run build:android-assets # 构建 Android WebView 资源
-pnpm run package:full         # 构建资源并打包 APK（需要 JDK 17+ 与 Android SDK）
 pnpm run check:update         # 发版后校验线上更新清单是否可用
 ```
+
+Windows 打包（运行目录：项目根目录；Shell：PowerShell）：`pnpm run package:full`，会构建资源、运行 Java 单测并生成 APK 和 SHA256。可先执行 `pnpm run check:android-env` 检查 JDK 17+、SDK 35 和路径；详见 [Android 构建说明](android/README.md#构建步骤)。日常 PR 和分支推送由 CI 执行前端、Android 和反馈后端检查。
 
 发版：升级 `package.json` 的 version → `git tag vX.Y.Z && git push origin vX.Y.Z`，GitHub Actions 会自动构建并发布 APK 与更新清单（`update.json`）。
 
