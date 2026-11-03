@@ -3,7 +3,7 @@ import { ChevronLeft, ClipboardCopy, Download, Loader2, Plus, RefreshCw, Search,
 import { useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "../lib/clipboard";
 import type { DeviceApiClient } from "../lib/deviceApi";
-import { isBetaTarget, matchesTargetChannel, targetChannelLabel, type GkdTargetChannel } from "../lib/gkdTarget";
+import { isBetaTarget, matchesTargetChannel, type GkdTargetChannel } from "../lib/gkdTarget";
 import {
   inspectLibraryGroup, libraryContentKey, loadLibraryImports, loadLibrarySources,
   normalizeSubscriptionUrl, prepareLibraryAppend, refreshLibrarySource, saveLibraryImports,
@@ -227,16 +227,6 @@ export function SubscriptionLibrary(props: Props) {
         </section>;
       })}
 
-      {records.length > 0 && <details className="android-card library-import-history"><summary>固定副本记录（{records.length}）</summary>
-        {records.map((record, index) => <div className="library-source" key={index}>
-          <strong>{record.app.name} · {record.app.groups[0]?.name}</strong>
-          <span>{record.subscriptionName} · v{record.version} · {formatTime(record.importedAt)}</span>
-          {record.complete === false && <span className="library-error">部分写入，请先在 GKD 核对；下方可复制完整的原请求内容。</span>}
-          <span className="library-url">{record.sourceUrl}</span>
-          <small>{targetChannelLabel(record.targetPackage)} · {record.deviceOrigin}</small>
-          <button className="android-button" type="button" onClick={() => void copy(record)}><ClipboardCopy size={14} />复制导入时内容</button>
-        </div>)}
-      </details>}
     </section>
   );
 }
