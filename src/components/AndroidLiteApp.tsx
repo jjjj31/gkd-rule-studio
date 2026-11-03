@@ -222,6 +222,16 @@ type AiOperation = "test" | "generate" | "feedback" | null;
 const INLINE_TESTING_STORAGE_KEY = "gkd-rule-studio-inline-testing";
 const SNAPSHOT_MEMORY_STORAGE_KEY = "gkd-rule-studio-snapshot-memory";
 
+/**
+ * 2026-11-03 发行版下架项。
+ * 实现和测试暂时保留，仅从 Android 发行界面隐藏；恢复前需重新做真机验收。
+ */
+const ARCHIVED_RELEASE_UI = {
+  locatorEditor: false,
+  nodeSelectionPanel: false,
+  ruleSnapshotPanel: false,
+} as const;
+
 interface SnapshotWorkspaceMemory {
   point: NodePoint | null;
   nodeId?: number;
@@ -2544,17 +2554,25 @@ export function AndroidLiteApp() {
               snapshot={snapshot}
               onPointSelected={handlePointSelected}
             />
-            <NodeSelectionPanel snapshot={snapshot} pickResult={pickResult}
+            {ARCHIVED_RELEASE_UI.nodeSelectionPanel && <NodeSelectionPanel
+              snapshot={snapshot}
+              pickResult={pickResult}
               clickNodes={activeRuleValidation?.clickNodes ?? []}
               onChooseSnapshot={backHome}
-              onSelectNode={(node) => handlePointSelected(pickResult?.point ?? {
-                x: (node.attr.left + node.attr.right) / 2,
-                y: (node.attr.top + node.attr.bottom) / 2,
-              }, node)}
-            />
-            {activeRuleDraft && activeRuleValidation && <RulePreviewPanel
-              app={activeRuleDraft} snapshot={snapshot} validation={activeRuleValidation}
+              onSelectNode={(node) => handlePointSelected(
+                pickResult?.point ?? {
+                  x: (node.attr.left + node.attr.right) / 2,
+                  y: (node.attr.top + node.attr.bottom) / 2,
+                },
+                node,
+              )}
             />}
+            {ARCHIVED_RELEASE_UI.ruleSnapshotPanel &&
+              activeRuleDraft &&
+              activeRuleValidation &&
+              <RulePreviewPanel
+                app={activeRuleDraft} snapshot={snapshot} validation={activeRuleValidation}
+              />}
             {workspaceMode === "flow" && (
               <AndroidFlowStepRail
                 activeStepId={activeFlowStepId}
@@ -2598,21 +2616,24 @@ export function AndroidLiteApp() {
             <div className="android-section-title">
               <h2>候选 selector</h2>
             </div>
-            {snapshot && currentEditorCandidate ? <ConditionEditor
-              snapshot={snapshot} candidate={currentEditorCandidate}
-              onPreview={setEditingPreview}
-              onCancel={() => { setEditingCandidate(null); setEditingPreview(null); }}
-              onApply={(candidate) => {
-                const nextCandidates = [candidate, ...candidates.filter((item) => item.id !== candidate.id)];
-                setCandidateEdits((current) => ({ ...current, [candidateContext]: [candidate,
-                  ...(current[candidateContext] ?? []).filter((item) => item.id !== candidate.id)] }));
-                setSelectedCandidateId(candidate.id);
-                setSelectedAiCandidateId(null);
-                setEditingCandidate(null);
-                setEditingPreview(null);
-                syncActiveFlowStep({ candidates: nextCandidates, selectedCandidate: candidate });
-              }}
-            /> : null}
+            {ARCHIVED_RELEASE_UI.locatorEditor &&
+              snapshot &&
+              currentEditorCandidate &&
+              <ConditionEditor
+                snapshot={snapshot} candidate={currentEditorCandidate}
+                onPreview={setEditingPreview}
+                onCancel={() => { setEditingCandidate(null); setEditingPreview(null); }}
+                onApply={(candidate) => {
+                  const nextCandidates = [candidate, ...candidates.filter((item) => item.id !== candidate.id)];
+                  setCandidateEdits((current) => ({ ...current, [candidateContext]: [candidate,
+                    ...(current[candidateContext] ?? []).filter((item) => item.id !== candidate.id)] }));
+                  setSelectedCandidateId(candidate.id);
+                  setSelectedAiCandidateId(null);
+                  setEditingCandidate(null);
+                  setEditingPreview(null);
+                  syncActiveFlowStep({ candidates: nextCandidates, selectedCandidate: candidate });
+                }}
+              />}
             <CandidateSummary
               candidates={candidates}
               importedSelectorKeys={new Set(testSubscription.importedSelectors)}
@@ -5126,10 +5147,12 @@ function CandidateSummary({
                     candidate.validation).summaries.join(" / ")
                 : candidate.title}</span>
               <div className="android-candidate-actions">
-                <button className="android-candidate-detail" type="button"
-                  onClick={(event) => { event.stopPropagation(); onEdit(candidate); }}>
-                  编辑条件
-                </button>
+                {ARCHIVED_RELEASE_UI.locatorEditor && (
+                  <button className="android-candidate-detail" type="button"
+                    onClick={(event) => { event.stopPropagation(); onEdit(candidate); }}>
+                    修改定位
+                  </button>
+                )}
                 <button
                   className="android-candidate-detail"
                   type="button"
