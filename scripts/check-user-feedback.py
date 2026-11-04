@@ -24,6 +24,7 @@ import time
 import traceback
 import urllib.error
 import urllib.request
+import zipfile
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -49,6 +50,18 @@ NODE_RESOURCE = "com.fixture:id/private-7788"
 NODE_VID = "private-vid-7788"
 VISUAL_SECRET = "VISUAL-MASK-9911"
 SYNTHETIC_RECEIPT = "uf-browser-20261029-ok"
+RULE_FILE_NAME = "fixture-rules.json5"
+RULE_FILE_TEXT = json.dumps(
+    {
+        "name": "反馈规则样本",
+        "apiKey": AI_KEY,
+        "rules": [{"matches": ["com.fixture.feedback"]}],
+    },
+    ensure_ascii=False,
+    indent=2,
+)
+RULE_PASTE_SUFFIX = "\n// manually-pasted-7788\n"
+DIAGNOSTIC_ZIP_NAME = "gkd-log-fixture.zip"
 CHECK = {"id": "bootstrap", "title": "浏览器验收启动"}
 checks: list[dict[str, Any]] = []
 state: dict[str, Any] = {"requests": []}
@@ -202,6 +215,20 @@ SCREENSHOT_IMAGE = screenshot_image()
 SCREENSHOT_BUFFER = io.BytesIO()
 SCREENSHOT_IMAGE.save(SCREENSHOT_BUFFER, format="PNG", optimize=False)
 SCREENSHOT_PNG = SCREENSHOT_BUFFER.getvalue()
+DIAGNOSTIC_BUFFER = io.BytesIO()
+with zipfile.ZipFile(DIAGNOSTIC_BUFFER, "w", zipfile.ZIP_DEFLATED) as archive:
+    archive.writestr(
+        "matching-diagnostics/fixture/diagnostic.json",
+        json.dumps(
+            {
+                "appId": "com.fixture.feedback",
+                "versionName": "1.13.0",
+                "trackingComplete": True,
+            },
+            ensure_ascii=False,
+        ),
+    )
+DIAGNOSTIC_ZIP = DIAGNOSTIC_BUFFER.getvalue()
 
 
 class FixtureHandler(BaseHTTPRequestHandler):
@@ -296,6 +323,28 @@ def port_is_listening(port: int) -> bool:
     return completed.stdout.strip() == "1"
 
 
+def stop_owned_vite_listener(port: int = 5174) -> None:
+    command = (
+        "$listeners = Get-NetTCPConnection -LocalPort %d -State Listen "
+        "-ErrorAction SilentlyContinue; "
+        "foreach ($listener in $listeners) { "
+        "$process = Get-CimInstance Win32_Process "
+        "-Filter \"ProcessId = $($listener.OwningProcess)\"; "
+        "if ($process.CommandLine -like '*gkd-rule-builder*' "
+        "-and $process.CommandLine -like '*vite*' "
+        "-and $process.CommandLine -like '*--port %d*') { "
+        "Stop-Process -Id $listener.OwningProcess -Force "
+        "} }"
+    ) % (port, port)
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True,
+        text=True,
+        timeout=8,
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+
+
 def close_process_tree(process: subprocess.Popen[bytes] | None) -> None:
     if process is None or process.poll() is not None:
         return
@@ -374,6 +423,27 @@ def set_value(selector: str, value: str) -> None:
         value,
     )
     assert changed, "找不到输入：" + selector
+
+
+def set_file_input(selector: str, name: str, mime_type: str, content: bytes) -> None:
+    changed = page.run_js(
+        """(selector, name, mimeType, encoded) => {
+          const input = document.querySelector(selector);
+          if (!(input instanceof HTMLInputElement) || input.type !== "file") return false;
+          const binary = atob(encoded);
+          const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+          const transfer = new DataTransfer();
+          transfer.items.add(new File([bytes], name, { type: mimeType }));
+          input.files = transfer.files;
+          input.dispatchEvent(new Event("change", { bubbles: true }));
+          return true;
+        }""",
+        selector,
+        name,
+        mime_type,
+        base64.b64encode(content).decode("ascii"),
+    )
+    assert changed, "找不到文件输入：" + selector
 
 
 def click_checkbox_label(text: str) -> None:
@@ -482,6 +552,32 @@ def read_draft_client_id() -> str | None:
     return str(value) if value else None
 
 
+def read_draft_payload() -> dict[str, Any]:
+    value = page.run_js(
+        """(() => {
+          return new Promise((resolve) => {
+            const request = indexedDB.open("gkd-rule-builder-feedback", 1);
+            request.onerror = () => resolve(null);
+            request.onsuccess = () => {
+              const db = request.result;
+              try {
+                const tx = db.transaction("drafts", "readonly");
+                const get = tx.objectStore("drafts").get("latest");
+                get.onsuccess = () => resolve(get.result?.payload || null);
+                get.onerror = () => resolve(null);
+                tx.oncomplete = () => db.close();
+              } catch {
+                db.close();
+                resolve(null);
+              }
+            };
+          });
+        })()"""
+    )
+    assert isinstance(value, dict), "IndexedDB 中找不到反馈草稿"
+    return value
+
+
 def write_corrupt_draft() -> None:
     written = page.run_js(
         """(() => {
@@ -516,14 +612,19 @@ def decode_attachment(body: dict[str, Any], name: str) -> bytes:
     return base64.b64decode(attachment["data"], validate=True)
 
 
+MASK_EDITOR_SELECTOR = '[role="dialog"][aria-label="截图打码"]'
+MASK_CANVAS_SELECTOR = 'canvas[aria-label="拖动框选截图打码区域"]'
+
+
 def canvas_drag_points() -> tuple[tuple[int, int], tuple[int, int]]:
     geometry = js(
-        """(() => {
-          const canvas = document.querySelector('canvas[aria-label="拖动框选截图打码区域"]');
+        f"""(() => {{
+          const canvas = document.querySelector({MASK_EDITOR_SELECTOR!r})
+            ?.querySelector({MASK_CANVAS_SELECTOR!r});
           if (!canvas) return null;
           const r = canvas.getBoundingClientRect();
-          return { left: r.left, top: r.top, width: r.width, height: r.height };
-        })()"""
+          return {{ left: r.left, top: r.top, width: r.width, height: r.height }};
+        }})()"""
     )
     assert geometry, "找不到打码画布"
     left, top = float(geometry["left"]), float(geometry["top"])
@@ -534,17 +635,38 @@ def canvas_drag_points() -> tuple[tuple[int, int], tuple[int, int]]:
     )
 
 
+def mask_status(expected: int) -> None:
+    wait_js(
+        f"document.querySelector({MASK_EDITOR_SELECTOR!r})"
+        f"?.innerText.includes('手动框选 {expected} 处')"
+    )
+
+
+def open_mask_editor() -> None:
+    click_button("打码", ".user-feedback-panel")
+    wait_js(f"document.querySelector({MASK_EDITOR_SELECTOR!r})")
+    wait_js(
+        f"document.querySelector({MASK_EDITOR_SELECTOR!r})"
+        f"?.querySelector({MASK_CANVAS_SELECTOR!r})?.getBoundingClientRect().width > 0"
+    )
+
+
+def close_mask_editor(label: str) -> None:
+    click_button(label, MASK_EDITOR_SELECTOR)
+    wait_js(f"!document.querySelector({MASK_EDITOR_SELECTOR!r})")
+
+
 def open_home_feedback() -> None:
     clicked = page.run_js(
         """return (() => {
           const button = Array.from(document.querySelectorAll(".android-support-entry"))
-            .find((item) => item.textContent.includes("反馈问题"));
+            .find((item) => item.textContent.trim().includes("反馈"));
           if (!button) return false;
           button.click();
           return true;
         })();"""
     )
-    assert clicked, "首页找不到反馈问题按钮"
+    assert clicked, "首页找不到反馈按钮"
     wait_js("document.querySelector('.user-feedback-panel')")
 
 
@@ -669,8 +791,96 @@ try:
         "页面显示 1 张 fixture 快照，服务端实际收到 getServerInfo 与 getSnapshots",
     )
 
+    start_check("feedback-entry-controls", "首页反馈入口、功能建议与 GKD 版本")
+    home_feedback_text = js(
+        """Array.from(document.querySelectorAll(".android-support-entry"))
+          .find((item) => item.textContent.includes("反馈"))?.textContent.trim()"""
+    )
+    assert home_feedback_text == "反馈", home_feedback_text
+    open_home_feedback()
+    panel_text = js("document.querySelector('.user-feedback-panel').innerText")
+    assert "反馈问题" not in panel_text
+    assert "正式版 · 1.13.0 (1130)" in panel_text
+    assert js("!document.querySelector('.user-feedback-panel details').open")
+    assert "诊断采集" not in panel_text
+    assert js("""[...document.querySelectorAll(
+      'textarea[aria-label="问题描述"], input[aria-label="反馈联系方式"]'
+    )].every(field => !field.placeholder)""")
+    click_css(".user-feedback-panel details > summary")
+    click_css(".user-feedback-diagnostic-upload summary")
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('设置 → 诊断 → 诊断采集')")
+    category_options = js(
+        """Array.from(document.querySelector(".user-feedback-panel select").options)
+          .map((option) => ({ value: option.value, text: option.textContent.trim() }))"""
+    )
+    assert {"value": "feature", "text": "希望有的功能"} in category_options
+    add_check(
+        "feedback-entry-controls",
+        "首页反馈入口、功能建议与 GKD 版本",
+        "首页和面板标题均为“反馈”；分类含“希望有的功能”；连接 fixture 后显示"
+        "版本“正式版 · 1.13.0 (1130)”；材料默认折叠，展开后可查看诊断导出指引",
+    )
+
+    start_check("feedback-file-inputs", "规则文件上传、直接粘贴与诊断 ZIP")
+    click_checkbox_label("当前规则")
+    wait_js("document.querySelector('.user-feedback-panel input[type=file][accept*=\".json\"]')")
+    set_file_input(
+        ".user-feedback-panel input[type=file][accept*='.json']",
+        RULE_FILE_NAME,
+        "application/json",
+        RULE_FILE_TEXT.encode("utf-8"),
+    )
+    wait_js(
+        f"document.querySelector('textarea[aria-label=\"反馈规则内容\"]')?.value.includes('反馈规则样本')"
+        f" && document.querySelector('.user-feedback-panel').innerText.includes({RULE_FILE_NAME!r})"
+    )
+    set_value("textarea[aria-label='反馈规则内容']", RULE_FILE_TEXT + RULE_PASTE_SUFFIX)
+    set_file_input(
+        ".user-feedback-panel input[type=file][accept*='.zip']",
+        DIAGNOSTIC_ZIP_NAME,
+        "application/zip",
+        DIAGNOSTIC_ZIP,
+    )
+    wait_js(
+        f"document.querySelector('.user-feedback-panel').innerText.includes({DIAGNOSTIC_ZIP_NAME!r})"
+    )
+    set_value(".user-feedback-panel select", "feature")
+    set_value(
+        "textarea[aria-label='问题描述']",
+        "希望增加按功能建议分类筛选反馈的能力。",
+    )
+    click_button("预览并保存草稿", ".user-feedback-panel")
+    wait_js("document.querySelector('.user-feedback-meta')")
+    new_fields_payload = read_draft_payload()
+    assert new_fields_payload["category"] == "feature", new_fields_payload["category"]
+    assert new_fields_payload["context"]["gkdChannel"] == "正式版"
+    assert new_fields_payload["context"]["gkdVersion"] == "1.13.0 (1130)"
+    uploaded_rules = decode_attachment(new_fields_payload, "rules.txt").decode("utf-8")
+    assert "反馈规则样本" in uploaded_rules
+    assert "manually-pasted-7788" in uploaded_rules
+    assert AI_KEY not in uploaded_rules
+    uploaded_diagnostics = decode_attachment(new_fields_payload, DIAGNOSTIC_ZIP_NAME)
+    assert uploaded_diagnostics == DIAGNOSTIC_ZIP, "诊断 ZIP 在整理时被改写"
+    add_check(
+        "feedback-file-inputs",
+        "规则文件上传、直接粘贴与诊断 ZIP",
+        "规则文件可读取后继续粘贴编辑；诊断 ZIP 由用户手动选择；预览 payload 为"
+        "功能建议分类，带真实 GKD 版本，规则凭据已脱敏，ZIP 字节保持不变",
+    )
+    click_button("返回整理", ".user-feedback-panel")
+    wait_js("document.querySelector('.user-feedback-draft')")
+    page.run_js("(() => { window.confirm = () => true; return true; })()")
+    click_button("删除草稿", ".user-feedback-panel")
+    deadline = time.monotonic() + 5
+    while read_draft_state() and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert not read_draft_state(), "新增控件验收后草稿未清理"
+    click_css("button[aria-label='关闭反馈']")
+    wait_js("!document.querySelector('.user-feedback-panel')")
+
     start_check("home-snapshot-selection", "首页反馈可选择快照并启用截图/节点材料")
     open_home_feedback()
+    click_css(".user-feedback-panel details > summary")
     wait_js("document.querySelector('select[aria-label=\"反馈现场快照\"]')")
     set_value(
         "select[aria-label='反馈现场快照']",
@@ -722,10 +932,9 @@ try:
     click_css("button[aria-label='关闭反馈']")
     wait_js("!document.querySelector('.user-feedback-panel')")
 
-    click_css(".android-snapshot-chooser > .android-button-primary")
-    wait_js("document.querySelector('.android-workspace-shell') && document.querySelector('.screenshot-stage')")
-    page.ele("css:button[aria-label='反馈当前问题']").click()
-    wait_js("document.querySelector('.user-feedback-panel')")
+    open_home_feedback()
+    wait_js("document.querySelector('.user-feedback-panel input[aria-label=\"反馈现场快照\"]') || document.querySelector('.user-feedback-panel select[aria-label=\"反馈现场快照\"]')")
+    wait_js("Array.from(document.querySelectorAll('.user-feedback-panel fieldset input[type=checkbox]')).filter((item) => !item.disabled).length >= 2")
 
     start_check("default-attachments", "反馈材料默认均未勾选")
     material = js(
@@ -741,6 +950,7 @@ try:
     )
 
     start_check("inputs", "填写描述、凭据与敏感节点")
+    click_css(".user-feedback-panel details > summary")
     set_value(
         "textarea[aria-label='问题描述']",
         f"合成反馈 {NODE_TEXT}；已知密钥 {AI_KEY}；视觉区域 {VISUAL_SECRET}",
@@ -753,8 +963,13 @@ try:
     click_checkbox_label("当前截图")
     click_checkbox_label("当前节点树")
     wait_js(
-        "document.querySelector('canvas[aria-label=\"拖动框选截图打码区域\"]')"
-        " && !document.querySelector('canvas[aria-label=\"拖动框选截图打码区域\"]').hidden"
+        "Array.from(document.querySelectorAll('.user-feedback-panel button'))"
+        ".some((button) => button.textContent.trim() === '打码')"
+    )
+    assert js("!document.querySelector('.user-feedback-panel canvas')")
+    wait_js(
+        "document.querySelector('.user-feedback-screenshot-preview')"
+        "?.complete && document.querySelector('.user-feedback-screenshot-preview').naturalWidth > 0"
     )
     clicked_node = page.run_js(
         """(needle) => {
@@ -782,26 +997,202 @@ try:
         "localStorage 注入合成 API key；描述与错误均含已知密钥；截图与节点树已勾选，敏感节点已手动选择",
     )
 
-    start_check("pointer-mask", "真实 pointer 在截图上绘制打码框")
+    start_check("fullscreen-mask-entry", "截图默认只读，打码进入独立全屏层")
+    assert js(
+        "(() => { const panel = document.querySelector('.user-feedback-panel');"
+        " return panel && !panel.inert && !panel.querySelector('canvas'); })()"
+    )
+    open_mask_editor()
+    editor_box = js(
+        f"""(() => {{
+          const editor = document.querySelector({MASK_EDITOR_SELECTOR!r});
+          const rect = editor.getBoundingClientRect();
+          return {{ x: rect.left, y: rect.top, width: rect.width, height: rect.height,
+            viewportWidth: innerWidth, viewportHeight: innerHeight,
+            panelInert: document.querySelector('.user-feedback-panel').inert,
+            focused: Boolean(document.activeElement.closest({MASK_EDITOR_SELECTOR!r})) }};
+        }})()"""
+    )
+    assert abs(editor_box["x"]) <= 2 and abs(editor_box["y"]) <= 2, editor_box
+    assert abs(editor_box["width"] - editor_box["viewportWidth"]) <= 2, editor_box
+    assert abs(editor_box["height"] - editor_box["viewportHeight"]) <= 2, editor_box
+    assert editor_box["panelInert"] and editor_box["focused"], editor_box
+    add_check(
+        "fullscreen-mask-entry",
+        "截图默认只读，打码进入独立全屏层",
+        "材料区仅显示静态截图和“打码”按钮；全屏层覆盖 412×915 视口，底层表单 inert，焦点进入编辑器",
+    )
+
+    start_check("pointer-mask", "轻触不落框，拖动才绘制，撤销和整图遮挡可撤回")
     page.run_js(
-        """(() => {
-          document.querySelector('canvas[aria-label="拖动框选截图打码区域"]')
-            .scrollIntoView({ block: "center" });
+        f"""(() => {{
+          document.querySelector({MASK_EDITOR_SELECTOR!r})
+            .querySelector({MASK_CANVAS_SELECTOR!r}).scrollIntoView({{ block: "center" }});
           return true;
-        })()"""
+        }})()"""
     )
     time.sleep(0.3)
+    page.run_js(
+        f"""(() => {{
+          const canvas = document.querySelector({MASK_EDITOR_SELECTOR!r})
+            .querySelector({MASK_CANVAS_SELECTOR!r});
+          const rect = canvas.getBoundingClientRect();
+          const x = rect.left + rect.width / 2;
+          const y = rect.top + rect.height / 2;
+          const fire = (type, pointerId, isPrimary, dx, dy, buttons = 1) => canvas.dispatchEvent(
+            new PointerEvent(type, {{ bubbles: true, cancelable: true, pointerId, pointerType: "touch",
+              isPrimary, button: 0, buttons, clientX: x + dx, clientY: y + dy }}));
+          fire("pointerdown", 91, true, 0, 0);
+          fire("pointermove", 91, true, 3, 3);
+          fire("pointerup", 91, true, 3, 3, 0);
+          fire("pointerdown", 92, true, 0, 0);
+          fire("pointerdown", 93, false, 60, 60);
+          fire("pointermove", 93, false, 80, 80);
+          fire("pointercancel", 92, true, 0, 0, 0);
+          fire("pointerup", 93, false, 80, 80, 0);
+          return true;
+        }})()"""
+    )
+    time.sleep(0.25)
+    mask_status(0)
+    canvas_box = js(
+        f"""(() => {{
+          const rect = document.querySelector({MASK_EDITOR_SELECTOR!r})
+            .querySelector({MASK_CANVAS_SELECTOR!r}).getBoundingClientRect();
+          return {{ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }};
+        }})()"""
+    )
+    page.actions.click((int(canvas_box["x"]), int(canvas_box["y"]))).perform()
+    time.sleep(0.25)
+    mask_status(0)
     start, end = canvas_drag_points()
     page.actions.drag_to(start, end, duration=500, steps=20).perform()
-    wait_js(
-        "document.querySelector('.user-feedback-image-editor .user-feedback-actions')"
-        ".innerText.includes('手动框选 1 处')"
-    )
+    mask_status(1)
+    click_button("撤销", MASK_EDITOR_SELECTOR)
+    mask_status(0)
+    click_button("遮住整张截图", MASK_EDITOR_SELECTOR)
+    mask_status(1)
+    click_button("撤销", MASK_EDITOR_SELECTOR)
+    mask_status(0)
+    page.actions.drag_to(start, end, duration=500, steps=20).perform()
+    mask_status(1)
+    page.actions.press(Keys.ESCAPE).perform()
+    wait_js(f"!document.querySelector({MASK_EDITOR_SELECTOR!r})")
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('手动框选 0 处')")
+    assert js("document.activeElement?.textContent.trim() === '打码'")
+    open_mask_editor()
+    mask_status(0)
+    start, end = canvas_drag_points()
+    page.actions.drag_to(start, end, duration=500, steps=20).perform()
+    mask_status(1)
     add_check(
         "pointer-mask",
-        "真实 pointer 在截图上绘制打码框",
-        f"Firefox actions 从 {start} 拖到 {end}，界面显示手动框选 1 处",
+        "轻触不落框，拖动才绘制，撤销和整图遮挡可撤回",
+        f"微小拖动、第二指针与 pointercancel 均为 0 处；真实 pointer 从 {start} 拖到 {end} 后为 1 处；撤销、整图遮挡、再撤销均恢复正确；Escape 回滚并归还“打码”焦点",
     )
+
+    start_check("small-screen-mask", "360×640 窄屏仍可完整编辑")
+    page.set_viewport(360, 640, device_pixel_ratio=1)
+    small_editor = js(
+        f"""(() => {{
+          const editor = document.querySelector({MASK_EDITOR_SELECTOR!r});
+          const editorRect = editor.getBoundingClientRect();
+          const canvasRect = editor.querySelector({MASK_CANVAS_SELECTOR!r}).getBoundingClientRect();
+          const complete = Array.from(editor.querySelectorAll('button'))
+            .find((button) => button.textContent.trim() === '完成').getBoundingClientRect();
+          return {{ width: editorRect.width, height: editorRect.height,
+            canvasInside: canvasRect.left >= -1 && canvasRect.top >= -1
+              && canvasRect.right <= innerWidth + 1 && canvasRect.bottom <= innerHeight + 1,
+            completeInside: complete.left >= -1 && complete.top >= -1
+              && complete.right <= innerWidth + 1 && complete.bottom <= innerHeight + 1 }};
+        }})()"""
+    )
+    assert abs(small_editor["width"] - 360) <= 2 and abs(small_editor["height"] - 640) <= 2, small_editor
+    assert small_editor["canvasInside"] and small_editor["completeInside"], small_editor
+    page.set_viewport(412, 915, device_pixel_ratio=1)
+    add_check(
+        "small-screen-mask",
+        "360×640 窄屏仍可完整编辑",
+        "全屏层随视口变为 360×640；画布与“完成”按钮均在可视范围内；随后恢复 412×915",
+    )
+
+    close_mask_editor("完成")
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('手动框选 1 处')")
+    wait_js("document.querySelectorAll('.user-feedback-screenshot-masks rect').length >= 3")
+    assert js("document.querySelector('.user-feedback-screenshot-masks rect')?.getAttribute('fill') === '#000'")
+
+    start_check("reenter-undo", "重新进入后可以撤销已保存的手动框")
+    open_mask_editor()
+    mask_status(1)
+    assert js(
+        f"""(() => {{
+          const editor = document.querySelector({MASK_EDITOR_SELECTOR!r});
+          const undo = Array.from(editor.querySelectorAll('button'))
+            .find((button) => button.textContent.trim() === '撤销');
+          return Boolean(undo && !undo.disabled);
+        }})()"""
+    )
+    click_button("撤销", MASK_EDITOR_SELECTOR)
+    mask_status(0)
+    close_mask_editor("取消")
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('手动框选 1 处')")
+    open_mask_editor()
+    click_button("撤销", MASK_EDITOR_SELECTOR)
+    mask_status(0)
+    close_mask_editor("完成")
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('手动框选 0 处')")
+    open_mask_editor()
+    start, end = canvas_drag_points()
+    page.actions.drag_to(start, end, duration=500, steps=20).perform()
+    mask_status(1)
+    close_mask_editor("完成")
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('手动框选 1 处')")
+    add_check(
+        "reenter-undo",
+        "重新进入后可以撤销已保存的手动框",
+        "再次进入时撤销按钮可用；撤销后取消恢复原框；再次撤销并完成会清除已保存遮罩；可重新画框",
+    )
+
+    start_check("snapshot-mask-isolation", "更换快照清空旧遮罩与节点选择")
+    set_value("select[aria-label='反馈现场快照']", "")
+    wait_js("document.querySelector('select[aria-label=\"反馈现场快照\"]')?.value === ''")
+    wait_js(
+        "Array.from(document.querySelectorAll('.user-feedback-panel label'))"
+        ".find((label) => label.textContent.includes('当前截图'))"
+        "?.querySelector('input[type=\"checkbox\"]').disabled === true"
+    )
+    set_value("select[aria-label='反馈现场快照']", str(FIXTURE_SNAPSHOT["id"]))
+    wait_js(
+        "document.querySelector('.user-feedback-screenshot-preview')"
+        "?.complete && document.querySelector('.user-feedback-screenshot-preview').naturalWidth > 0"
+    )
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('手动框选 0 处')")
+    panel_text = js("document.querySelector('.user-feedback-panel').innerText")
+    assert "手动隐藏节点文字（已选 0 个）" in panel_text, panel_text
+    add_check(
+        "snapshot-mask-isolation",
+        "更换快照清空旧遮罩与节点选择",
+        "先取消快照再重新选择；旧图的 1 处手动画框与已选节点均归零，新截图重新加载",
+    )
+
+    start_check("preview-without-mask-editor", "不进入打码编辑器也可预览截图")
+    click_button("预览并保存草稿", ".user-feedback-panel")
+    wait_js("document.querySelector('.user-feedback-meta') && document.querySelector('.user-feedback-final-image')")
+    assert not js(f"document.querySelector({MASK_EDITOR_SELECTOR!r})")
+    add_check(
+        "preview-without-mask-editor",
+        "不进入打码编辑器也可预览截图",
+        "重新选择快照后直接整理材料，预览页仍生成脱敏截图，无需打开全屏编辑器",
+    )
+    click_button("返回整理", ".user-feedback-panel")
+    wait_js("!document.querySelector('.user-feedback-meta')")
+    open_mask_editor()
+    mask_status(0)
+    start, end = canvas_drag_points()
+    page.actions.drag_to(start, end, duration=500, steps=20).perform()
+    mask_status(1)
+    close_mask_editor("完成")
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('手动框选 1 处')")
 
     start_check("preview-save", "预览脱敏材料并保存 IndexedDB 草稿")
     click_button("预览并保存草稿", ".user-feedback-panel")
@@ -1015,6 +1406,55 @@ try:
         "注入 schema 损坏记录后页面给出可删除提示；删除按钮清理 IndexedDB latest",
     )
 
+    start_check("workspace-mask-back", "工作区打开打码时返回只退出编辑器")
+    click_css("button[aria-label='关闭反馈']")
+    wait_js("!document.querySelector('.user-feedback-panel')")
+    set_value(".android-device-form input", FIXTURE)
+    click_css(".android-device-form button")
+    wait_js("document.querySelectorAll('.android-snapshot-check-row').length === 1")
+    if not js("document.querySelector('.android-snapshot-check-row input[type=checkbox]')?.checked"):
+        clicked = page.run_js(
+            """(() => {
+              const input = document.querySelector(".android-snapshot-check-row input[type=checkbox]");
+              if (!input) return false;
+              input.click();
+              return true;
+            })()"""
+        )
+        assert clicked, "首页找不到可勾选的 fixture 快照"
+    wait_js("document.querySelector('.android-snapshot-check-row input[type=checkbox]')?.checked")
+    open_home_feedback()
+    click_css(".user-feedback-panel details > summary")
+    wait_js("Array.from(document.querySelectorAll('.user-feedback-panel fieldset input[type=checkbox]')).filter((item) => !item.disabled).length >= 2")
+    click_checkbox_label("当前截图")
+    wait_js(
+        "Array.from(document.querySelectorAll('.user-feedback-panel button'))"
+        ".some((button) => button.textContent.trim() === '打码')"
+    )
+    page.run_js("document.querySelector('.android-snapshot-chooser > .android-button-primary').click()")
+    wait_js("document.querySelector('.android-workspace-shell')")
+    wait_js("history.state?.gkdRuleBuilderView === 'workspace'")
+    open_mask_editor()
+    page.run_js("history.back()")
+    wait_js(f"!document.querySelector({MASK_EDITOR_SELECTOR!r})")
+    assert js(
+        "Boolean(document.querySelector('.user-feedback-panel')"
+        " && document.querySelector('.android-workspace-shell')"
+        " && !document.querySelector('.android-home'))"
+    )
+    assert js("history.state?.gkdRuleBuilderView === 'workspace'"
+              " && !history.state?.gkdFeedbackMaskEditorBase")
+    add_check(
+        "workspace-mask-back",
+        "工作区打开打码时返回只退出编辑器",
+        "从工作区 history entry 进入全屏打码后回退；编辑器关闭、反馈面板保留、工作区不跳回首页，临时 history 标记已清理",
+    )
+    click_css("button[aria-label='关闭反馈']")
+    wait_js("!document.querySelector('.user-feedback-panel')")
+    page.run_js("window.__GkdAndroidBack?.()")
+    wait_js("document.querySelector('.android-home')")
+    open_home_feedback()
+
     start_check("escape-close", "Escape 可关闭反馈对话框")
     page.actions.press(Keys.ESCAPE).perform()
     wait_js("!document.querySelector('.user-feedback-panel')", 5)
@@ -1069,6 +1509,16 @@ finally:
     profile = (SCRATCH / "firefox-profile").resolve()
     if SCRATCH.resolve() in profile.parents:
         shutil.rmtree(profile, ignore_errors=True)
+    if dev_started_here:
+        deadline = time.monotonic() + 3
+        while port_is_listening(5174) and time.monotonic() < deadline:
+            time.sleep(0.1)
+    if dev_started_here and port_is_listening(5174):
+        # Some Windows shims exit after spawning a child Vite listener.
+        stop_owned_vite_listener()
+        deadline = time.monotonic() + 3
+        while port_is_listening(5174) and time.monotonic() < deadline:
+            time.sleep(0.1)
     leaked_vite = dev_started_here and port_is_listening(5174)
     leaked_fixture = port_is_listening(8786)
     if leaked_vite or leaked_fixture:

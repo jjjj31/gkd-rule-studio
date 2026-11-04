@@ -3,7 +3,7 @@ import type {
   SnapshotNodeAttr,
 } from "../types/gkdSnapshot";
 
-export type FeedbackCategory = "tool" | "rule";
+export type FeedbackCategory = "tool" | "rule" | "feature";
 
 export interface FeedbackRect {
   x: number;
@@ -14,7 +14,7 @@ export interface FeedbackRect {
 
 export interface FeedbackAttachment {
   name: string;
-  mimeType: "image/png" | "text/plain" | "application/json";
+  mimeType: "image/png" | "text/plain" | "application/json" | "application/zip";
   data: string;
 }
 
@@ -27,6 +27,8 @@ export interface FeedbackPayload {
   context: {
     appVersion: string;
     systemVersion: string;
+    gkdVersion: string;
+    gkdChannel: string;
     page: string;
     error: string;
   };
@@ -494,7 +496,9 @@ function validateFeedbackPayload(
   }
   if (
     payload.version !== 1 ||
-    (payload.category !== "tool" && payload.category !== "rule") ||
+    (payload.category !== "tool" &&
+      payload.category !== "rule" &&
+      payload.category !== "feature") ||
     typeof payload.description !== "string" ||
     typeof payload.contact !== "string"
   ) {
@@ -505,7 +509,11 @@ function validateFeedbackPayload(
     typeof payload.context.appVersion !== "string" ||
     typeof payload.context.systemVersion !== "string" ||
     typeof payload.context.page !== "string" ||
-    typeof payload.context.error !== "string"
+    typeof payload.context.error !== "string" ||
+    (payload.context.gkdVersion !== undefined &&
+      typeof payload.context.gkdVersion !== "string") ||
+    (payload.context.gkdChannel !== undefined &&
+      typeof payload.context.gkdChannel !== "string")
   ) {
     throw new Error(label + "上下文格式无效，未提交。");
   }
@@ -520,7 +528,7 @@ function validateFeedbackPayload(
     if (
       !isRecord(attachment) ||
       !isNonEmptyString(attachment.name) ||
-      !["image/png", "text/plain", "application/json"].includes(
+      !["image/png", "text/plain", "application/json", "application/zip"].includes(
         String(attachment.mimeType),
       ) ||
       typeof attachment.data !== "string"

@@ -32,7 +32,9 @@ function formatDate(seconds) {
 }
 
 function categoryLabel(category) {
-  return category === "tool" ? "工具反馈" : "规则反馈";
+  if (category === "tool") return "工具反馈";
+  if (category === "feature") return "功能建议";
+  return "规则反馈";
 }
 
 function statusLabel(status) {
@@ -211,10 +213,12 @@ function renderDetail(feedback) {
   const contextLabels = {
     appVersion: "应用版本",
     systemVersion: "系统版本",
+    gkdChannel: "GKD 版本类型",
+    gkdVersion: "GKD 版本号",
     page: "页面",
     error: "错误"
   };
-  for (const key of ["appVersion", "systemVersion", "page", "error"]) {
+  for (const key of ["appVersion", "systemVersion", "gkdChannel", "gkdVersion", "page", "error"]) {
     appendContext(contextGrid, contextLabels[key], feedback.context[key]);
   }
   contextBlock.append(contextGrid);

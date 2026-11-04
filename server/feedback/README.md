@@ -2,6 +2,12 @@
 
 FastAPI + SQLite 的小型反馈接收器和私有管理后台。公开入口只有提交反馈和健康检查；管理接口必须登录，并通过 CSRF 校验后才能修改或删除数据。
 
+## 当前部署
+
+2026-11-03 已部署镜像 `gkd-feedback:20261103t143643z` 到 `my-server2`，容器 `gkd-feedback` 以 `running / healthy` 状态监听 `127.0.0.1:8020`。公网健康检查为 `https://120.25.221.144/gkd-feedback/healthz`；当前 SMTP 未配置，因此返回 `smtp_configured: false`。
+
+本次升级保留了原有 `.env`、管理员配置和反馈数据。旧 SQLite 已迁移到支持 `tool/rule/feature` 的分类约束；公网服务契约 10 项和真实 Firefox 后台 14 项通过，真机新版材料流程仍待验收。部署摘要见仓库 `docs/verification/user-feedback-deployment.json`。
+
 ## 目录与数据
 
 - app/main.py：API、校验、SQLite、登录会话、后台、通知 outbox、限流和定期维护。
@@ -178,4 +184,4 @@ docker start gkd-feedback
 - GET/PATCH/DELETE /admin/api/feedback/{id}
 - GET /admin/api/feedback/{id}/attachments/{attachmentId}
 
-公开提交使用合同 version 1。description 最长 4000、contact 最长 200；context 只接受 appVersion、systemVersion、page、error 四个字符串，长度上限依次为 200、500、200、4000。附件只接受 image/png、text/plain、application/json；PNG 检查文件签名，application/json 必须是 UTF-8 合法 JSON。服务器只使用随机磁盘文件名；下载始终带 attachment Content-Disposition 和 sandbox CSP。
+公开提交使用合同 version 1。description 最长 4000、contact 最长 200；context 接受 appVersion、systemVersion、page、error，并可附带 gkdVersion、gkdChannel，长度上限依次为 200、500、200、4000、200、20。附件接受 image/png、text/plain、application/json、application/zip；PNG 检查文件签名，JSON 必须是 UTF-8 合法 JSON，ZIP 检查 PK 文件签名。服务器只使用随机磁盘文件名；下载始终带 attachment Content-Disposition 和 sandbox CSP。

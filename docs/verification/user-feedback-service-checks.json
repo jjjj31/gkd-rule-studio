@@ -1,5 +1,5 @@
 {
-  "checked_at": "2026-10-29T12:06:26.290347+00:00",
+  "checked_at": "2026-11-03T14:37:55.886004+00:00",
   "base_url": "https://120.25.221.144/gkd-feedback/",
   "status": "passed",
   "smtp_configured": false,
@@ -10,6 +10,7 @@
     "anonymous_inbox_denied",
     "administrator_login_secure_cookie",
     "persistent_idempotent_submission_and_conflict",
+    "feature_zip_and_gkd_contract",
     "authenticated_attachment_and_anonymous_denial",
     "csrf_and_status_transition",
     "permanent_feedback_and_attachment_deletion",

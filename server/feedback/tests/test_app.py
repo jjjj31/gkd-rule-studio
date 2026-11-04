@@ -120,6 +120,7 @@ async def asgi_request(
 def feedback_payload(
     *,
     client_id: str | None = None,
+    category: str = "tool",
     description: str = "界面崩溃",
     contact: str = "user@example.invalid",
     attachments: list[dict] | None = None,
@@ -127,12 +128,14 @@ def feedback_payload(
     return {
         "version": 1,
         "clientId": client_id or str(uuid.uuid4()),
-        "category": "tool",
+        "category": category,
         "description": description,
         "contact": contact,
         "context": {
             "appVersion": "1.2.3",
             "systemVersion": "Android 16",
+            "gkdVersion": "1.13.0-beta-5",
+            "gkdChannel": "测试版",
             "page": "规则编辑",
             "error": "NullPointerException",
         },
@@ -307,7 +310,11 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_idempotency_and_conflict(self) -> None:
         client_id = str(uuid.uuid4())
-        payload = feedback_payload(client_id=client_id)
+        payload = feedback_payload(
+            client_id=client_id,
+            category="feature",
+            description="希望增加反馈分类筛选",
+        )
         first = await self.post_feedback(payload)
         self.assertEqual(first.status, 201)
         feedback_id = first.json()["id"]
@@ -316,9 +323,18 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(duplicate.status, 200)
         self.assertEqual(duplicate.json()["id"], feedback_id)
 
-        changed = feedback_payload(client_id=client_id, description="不同内容")
+        changed = feedback_payload(
+            client_id=client_id,
+            category="feature",
+            description="不同内容",
+        )
         conflict = await self.post_feedback(changed)
         self.assertEqual(conflict.status, 409)
+        with closing(connect_db(self.settings.db_path)) as db:
+            category = db.execute(
+                "SELECT category FROM feedback WHERE id = ?", (feedback_id,)
+            ).fetchone()[0]
+        self.assertEqual(category, "feature")
 
     async def test_daily_budget_survives_restart_and_feedback_deletion(self) -> None:
         fixed_now = 1_900_000_000
@@ -330,7 +346,78 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
             maintenance_interval=3600,
             outbox_poll_interval=3600,
         )
-        first_payload = feedback_payload(description="first")
+        settings.data_dir.mkdir(parents=True)
+        settings.attachments_dir.mkdir(parents=True)
+        legacy_attachment = settings.attachments_dir / "legacy.txt"
+        legacy_attachment.write_bytes(b"legacy")
+        with closing(sqlite3.connect(settings.db_path)) as db:
+            db.execute("PRAGMA foreign_keys = ON")
+            db.executescript(
+                """
+                CREATE TABLE feedback (
+                    id TEXT PRIMARY KEY,
+                    client_id TEXT NOT NULL UNIQUE,
+                    payload_hash TEXT NOT NULL,
+                    category TEXT NOT NULL CHECK (category IN ('tool', 'rule')),
+                    description TEXT NOT NULL,
+                    contact TEXT NOT NULL,
+                    context_json TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'resolved')),
+                    total_bytes INTEGER NOT NULL,
+                    created_at INTEGER NOT NULL
+                );
+                CREATE TABLE attachments (
+                    id TEXT PRIMARY KEY,
+                    feedback_id TEXT NOT NULL REFERENCES feedback(id) ON DELETE CASCADE,
+                    original_name TEXT NOT NULL,
+                    mime_type TEXT NOT NULL,
+                    byte_size INTEGER NOT NULL,
+                    storage_name TEXT NOT NULL UNIQUE
+                );
+                CREATE TABLE outbox (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    feedback_id TEXT NOT NULL UNIQUE REFERENCES feedback(id) ON DELETE CASCADE,
+                    attempts INTEGER NOT NULL DEFAULT 0,
+                    next_attempt_at INTEGER NOT NULL,
+                    sent_at INTEGER,
+                    last_error TEXT,
+                    created_at INTEGER NOT NULL
+                );
+                """
+            )
+            db.execute(
+                """
+                INSERT INTO feedback (
+                    id, client_id, payload_hash, category, description, contact,
+                    context_json, status, total_bytes, created_at
+                ) VALUES (
+                    'legacy-feedback', 'legacy-client-id', 'legacy-hash', 'rule',
+                    '旧库反馈', '', '{}', 'pending', 6, ?
+                );
+                """,
+                (fixed_now,),
+            )
+            db.execute(
+                """
+                INSERT INTO attachments (
+                    id, feedback_id, original_name, mime_type, byte_size, storage_name
+                ) VALUES (
+                    'legacy-attachment', 'legacy-feedback', 'legacy.txt',
+                    'text/plain', 6, 'legacy.txt'
+                );
+                """
+            )
+            db.execute(
+                """
+                INSERT INTO outbox (
+                    feedback_id, attempts, next_attempt_at, created_at
+                ) VALUES ('legacy-feedback', 0, ?, ?);
+                """,
+                (fixed_now, fixed_now),
+            )
+            db.commit()
+        first_payload = feedback_payload(category="feature", description="first")
         second_payload = feedback_payload(description="second")
         third_payload = feedback_payload(description="third")
 
@@ -347,10 +434,32 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
                 )
                 self.assertEqual(first.status, 201)
                 with closing(connect_db(settings.db_path)) as db:
+                    legacy_category = db.execute(
+                        "SELECT category FROM feedback WHERE id = 'legacy-feedback'"
+                    ).fetchone()[0]
+                    self.assertEqual(legacy_category, "rule")
+                    self.assertEqual(
+                        db.execute(
+                            "SELECT feedback_id FROM attachments WHERE id = 'legacy-attachment'"
+                        ).fetchone()[0],
+                        "legacy-feedback",
+                    )
+                    self.assertEqual(
+                        db.execute(
+                            "SELECT feedback_id FROM outbox WHERE feedback_id = 'legacy-feedback'"
+                        ).fetchone()[0],
+                        "legacy-feedback",
+                    )
                     db.execute("DELETE FROM feedback")
                     db.commit()
                     self.assertEqual(
                         db.execute("SELECT COUNT(*) FROM feedback").fetchone()[0], 0
+                    )
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM attachments").fetchone()[0], 0
+                    )
+                    self.assertEqual(
+                        db.execute("SELECT COUNT(*) FROM outbox").fetchone()[0], 0
                     )
 
             restarted_app = create_app(settings)
@@ -575,7 +684,7 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([response.status for response in responses], [201, 201, 429])
 
     async def test_malformed_values_are_rejected_without_internal_errors(self) -> None:
-        for category in ([], {}, None):
+        for category in ([], {}, None, "suggestion", "FEATURE"):
             payload = feedback_payload()
             payload["category"] = category
             self.assertEqual((await self.post_feedback(payload)).status, 422)
@@ -611,6 +720,11 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
         error_too_long = feedback_payload()
         error_too_long["context"]["error"] = "e" * 4001
         response = await self.post_feedback(error_too_long)
+        self.assertEqual(response.status, 422)
+
+        gkd_channel_too_long = feedback_payload()
+        gkd_channel_too_long["context"]["gkdChannel"] = "x" * 21
+        response = await self.post_feedback(gkd_channel_too_long)
         self.assertEqual(response.status, 422)
 
     async def test_attachment_validation_safe_storage_and_download(self) -> None:
@@ -681,12 +795,17 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
                     "mimeType": "application/json",
                     "data": base64.b64encode(b'{"nodes":[]}').decode("ascii"),
                 },
+                {
+                    "name": "gkd-log.zip",
+                    "mimeType": "application/zip",
+                    "data": base64.b64encode(b"PK\x03\x04synthetic").decode("ascii"),
+                },
             ]
         )
         accepted = await self.post_feedback(accepted_payload)
         self.assertEqual(accepted.status, 201)
         files = list(self.settings.attachments_dir.iterdir())
-        self.assertEqual(len(files), 3)
+        self.assertEqual(len(files), 4)
         self.assertTrue(all(".." not in item.name for item in files))
 
         cookie, _ = await self.login()
@@ -839,6 +958,7 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_admin_auth_csrf_status_delete_and_cookie(self) -> None:
         payload = feedback_payload(
+            category="feature",
             attachments=[
                 {
                     "name": "capture.png",
@@ -907,7 +1027,14 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
             f"/admin/api/feedback/{feedback_id}",
             headers={"Cookie": cookie},
         )
+        self.assertEqual(detail.json()["category"], "feature")
         self.assertEqual(detail.json()["status"], "resolved")
+        listed = await self.request(
+            "GET",
+            "/admin/api/feedback?status=resolved&page=1&limit=50",
+            headers={"Cookie": cookie},
+        )
+        self.assertEqual(listed.json()["items"][0]["category"], "feature")
         self.assertEqual(len(list(self.settings.attachments_dir.iterdir())), 1)
 
         deleted = await self.request(

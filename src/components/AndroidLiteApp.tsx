@@ -95,6 +95,7 @@ import {
   type DeviceApiClient,
 } from "../lib/deviceApi";
 import {
+  getGkdChannel,
   isBetaTarget,
   matchesTargetChannel,
   readStoredTargetChannel,
@@ -526,6 +527,7 @@ export function AndroidLiteApp() {
   useEffect(() => {
     function handlePopState(event: PopStateEvent): void {
       if (!pushedWorkspaceHistoryRef.current) return;
+      if (event.state?.gkdFeedbackMaskEditorBase) return;
       if (event.state?.gkdRuleBuilderView === "library") {
         setView("library");
         return;
@@ -2477,7 +2479,7 @@ export function AndroidLiteApp() {
             <Star size={15} />支持作者<ChevronRight size={15} />
           </button>
           <button className="android-support-entry" type="button" onClick={() => openUserFeedback()}>
-            <MessageSquareWarning size={15} />反馈问题<ChevronRight size={15} />
+            <MessageSquareWarning size={15} />反馈<ChevronRight size={15} />
           </button>
         </section>
       )}
@@ -2496,9 +2498,6 @@ export function AndroidLiteApp() {
           <div className="android-workspace-title">
             <strong>{snapshot?.appInfo?.name ?? snapshot?.appId ?? "未加载快照"}</strong>
           </div>
-          <button aria-label="反馈当前问题" className="android-icon-button" type="button" onClick={() => openUserFeedback()}>
-            <MessageSquareWarning size={16} />
-          </button>
           <button
             aria-label="当前测试"
             className="android-icon-button"
@@ -2818,6 +2817,10 @@ export function AndroidLiteApp() {
         ruleText={userFeedback.ruleText}
         errors={userFeedback.errors}
         page={userFeedback.page}
+        gkdVersion={client?.serverInfo.gkdAppInfo?.versionName
+          ? `${client.serverInfo.gkdAppInfo.versionName}${client.serverInfo.gkdAppInfo.versionCode ? ` (${client.serverInfo.gkdAppInfo.versionCode})` : ""}`
+          : ""}
+        gkdChannel={client ? getGkdChannel(client.serverInfo.gkdAppInfo) ?? "" : ""}
         snapshotOptions={feedbackSnapshotOptions}
         onSnapshotSelect={(id) => void selectFeedbackSnapshot(id)}
         secrets={[aiConfig.apiKey, ...aiProfileStore.profiles.map((profile) => profile.config.apiKey)].filter(Boolean)}
@@ -3250,7 +3253,7 @@ function AndroidTestPage({
                   {inlineStatusLabel(item.status)}
                 </span>
                 <div className="inline-test-actions">
-                  <button type="button" onClick={() => onFeedback(item)}>反馈问题</button>
+                  <button type="button" onClick={() => onFeedback(item)}>反馈</button>
                   {item.status === "testing" ? (
                     <button type="button" onClick={() => onEnd(item.id)}>
                       结束测试

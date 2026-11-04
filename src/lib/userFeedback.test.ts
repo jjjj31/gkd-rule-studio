@@ -409,6 +409,8 @@ function feedbackPayload(): FeedbackPayload {
     context: {
       appVersion: "0.2.0",
       systemVersion: "Android 16",
+      gkdVersion: "1.13.0-beta-5",
+      gkdChannel: "测试版",
       page: "rule",
       error: "",
     },

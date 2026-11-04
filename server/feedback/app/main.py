@@ -50,6 +50,7 @@ CONTENT_TYPES = {
     "image/png": (b"\x89PNG\r\n\x1a\n", "png"),
     "text/plain": (None, "txt"),
     "application/json": (None, "json"),
+    "application/zip": (b"PK", "zip"),
 }
 
 SCHEMA = """
@@ -57,7 +58,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     id TEXT PRIMARY KEY,
     client_id TEXT NOT NULL UNIQUE,
     payload_hash TEXT NOT NULL,
-    category TEXT NOT NULL CHECK (category IN ('tool', 'rule')),
+    category TEXT NOT NULL CHECK (category IN ('tool', 'rule', 'feature')),
     description TEXT NOT NULL,
     contact TEXT NOT NULL,
     context_json TEXT NOT NULL,
@@ -378,6 +379,62 @@ def connect_db(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _migrate_feedback_category(db: sqlite3.Connection) -> None:
+    row = db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'feedback'"
+    ).fetchone()
+    if row is None or "feature" in (row["sql"] or ""):
+        return
+
+    # SQLite cannot alter a CHECK constraint in place. Rebuild the parent table
+    # while preserving attachments/outbox and their foreign-key relationships.
+    db.commit()
+    db.execute("PRAGMA foreign_keys = OFF")
+    try:
+        db.execute("DROP TABLE IF EXISTS feedback_new")
+        db.execute(
+            """
+            CREATE TABLE feedback_new (
+                id TEXT PRIMARY KEY,
+                client_id TEXT NOT NULL UNIQUE,
+                payload_hash TEXT NOT NULL,
+                category TEXT NOT NULL CHECK (category IN ('tool', 'rule', 'feature')),
+                description TEXT NOT NULL,
+                contact TEXT NOT NULL,
+                context_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'resolved')),
+                total_bytes INTEGER NOT NULL,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+        db.execute(
+            """
+            INSERT INTO feedback_new (
+                id, client_id, payload_hash, category, description, contact,
+                context_json, status, total_bytes, created_at
+            )
+            SELECT
+                id, client_id, payload_hash, category, description, contact,
+                context_json, status, total_bytes, created_at
+            FROM feedback
+            """
+        )
+        db.execute("DROP TABLE feedback")
+        db.execute("ALTER TABLE feedback_new RENAME TO feedback")
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS feedback_created_at_idx "
+            "ON feedback(created_at DESC)"
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.execute("PRAGMA foreign_keys = ON")
+
+
 def initialize_storage(settings: Settings) -> None:
     settings.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     settings.attachments_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -388,6 +445,7 @@ def initialize_storage(settings: Settings) -> None:
             pass
     with closing(connect_db(settings.db_path)) as db:
         db.executescript(SCHEMA)
+        _migrate_feedback_category(db)
     _load_or_create_ip_hash_salt(settings)
 
 
@@ -521,19 +579,26 @@ def validate_feedback_payload(
     except (ValueError, AttributeError) as exc:
         raise HTTPException(422, "clientId 必须是 UUID 字符串") from exc
     category = value["category"]
-    if not isinstance(category, str) or category not in {"tool", "rule"}:
-        raise HTTPException(422, "category 必须为 tool 或 rule")
+    if not isinstance(category, str) or category not in {"tool", "rule", "feature"}:
+        raise HTTPException(422, "category 必须为 tool、rule 或 feature")
     description = _valid_text(value["description"], 4000, "description", allow_empty=False)
     contact = _valid_text(value["contact"], 200, "contact")
 
     context = value["context"]
     if not isinstance(context, dict):
         raise HTTPException(422, "context 必须是对象")
-    context_keys = {"appVersion", "systemVersion", "page", "error"}
-    _exact_keys(context, context_keys, "context")
+    required_context_keys = {"appVersion", "systemVersion", "page", "error"}
+    allowed_context_keys = required_context_keys | {"gkdVersion", "gkdChannel"}
+    if (
+        not required_context_keys.issubset(context)
+        or not set(context).issubset(allowed_context_keys)
+    ):
+        raise HTTPException(422, "context 字段不完整或包含未知字段")
     context_limits = {
         "appVersion": 200,
         "systemVersion": 500,
+        "gkdVersion": 200,
+        "gkdChannel": 20,
         "page": 200,
         "error": 4000,
     }
@@ -541,7 +606,7 @@ def validate_feedback_payload(
         key: _valid_text(
             context[key], context_limits[key], f"context.{key}"
         )
-        for key in context_keys
+        for key in context
     }
 
     raw_attachments = value["attachments"]
@@ -578,7 +643,7 @@ def validate_feedback_payload(
             raise HTTPException(422, "附件解码后总大小超过 8 MiB")
         signature = CONTENT_TYPES[mime_type][0]
         if signature is not None and not content.startswith(signature):
-            raise HTTPException(422, f"attachments[{index}] PNG 签名无效")
+            raise HTTPException(422, f"attachments[{index}] 文件签名无效")
         if mime_type == "image/png":
             if len(content) < 24 or content[12:16] != b"IHDR":
                 raise HTTPException(422, f"attachments[{index}] PNG 头无效")

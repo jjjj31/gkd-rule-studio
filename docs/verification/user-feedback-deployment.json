@@ -1,8 +1,21 @@
 {
-  "time": "20261029T120457Z",
-  "image": "gkd-feedback:20261029t120457z",
-  "sha256": "b33e30bbeba06ceb26b20fc5cdb31fd5ba220423713d99dfc28805295851dc8c",
+  "time": "20261103T143643Z",
+  "image": "gkd-feedback:20261103t143643z",
+  "sha256": "29f310754a9e3d30e1372724cfb819aa325ebc51778842d1f8aa9e1cdc3a1ac8",
   "base_image": "python:3.12-slim",
-  "backup": "C:\\Users\\kmttjnm\\skill-backups\\gkd-feedback-20261029T120457Z",
-  "admin_url": "https://120.25.221.144/gkd-feedback/admin"
+  "server": "my-server2",
+  "container": "gkd-feedback",
+  "container_state": "running_healthy",
+  "health_url": "https://120.25.221.144/gkd-feedback/healthz",
+  "admin_url": "https://120.25.221.144/gkd-feedback/admin",
+  "backup": "C:\\Users\\kmttjnm\\skill-backups\\gkd-feedback-20261103T143643Z",
+  "data_backup": {
+    "path": "C:\\Users\\kmttjnm\\skill-backups\\gkd-feedback-data-preupgrade-20261103T143255Z\\gkd-feedback-data-preupgrade-20261103T143255Z.tar.gz",
+    "sha256": "ce9723a649458623cc7969519d36d1f758e2157aedfb1a4462bfaa77a324fde0"
+  },
+  "verification": {
+    "service_checks": "docs/verification/user-feedback-service-checks.json",
+    "admin_checks": "docs/verification/user-feedback-admin-checks.json",
+    "status": "passed"
+  }
 }

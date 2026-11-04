@@ -1,16 +1,16 @@
 {
-  "checked_at": "2026-10-29T12:11:07.201842+00:00",
+  "checked_at": "2026-11-03T14:39:57.858769+00:00",
   "target_url": "https://120.25.221.144/gkd-feedback/admin",
   "status": "passed",
   "smtp_configured": false,
   "synthetic_data_removed": true,
   "synthetic_cleanup_evidence": "ui_delete_http_204",
-  "cleanup_note": "UI DELETE returned HTTP 204 and the exact detail fetch returned 404; the optional secondary API re-login verification hit HTTP 429 and was unnecessary.",
   "checks": [
     "synthetic_feedback_created",
     "script_style_base_path",
     "deep_link_restored_after_login",
     "login_form_cleared",
+    "feature_gkd_zip_contract_visible",
     "on_demand_single_image_preview",
     "status_changed_to_resolved",
     "desktop_layout_without_overflow",
@@ -47,7 +47,7 @@
     }
   },
   "screenshot": "user-feedback-admin.png",
-  "screenshot_list_visible": true,
+  "screenshot_list_visible": false,
   "network": {
     "csp_present": true,
     "admin_js_status": 200,

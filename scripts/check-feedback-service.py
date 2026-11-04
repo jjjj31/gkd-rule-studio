@@ -8,6 +8,7 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import http.cookiejar
+import io
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,7 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
+import zipfile
 
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,10 +66,28 @@ def main() -> None:
         checks.append("administrator_login_secure_cookie")
         client_id = str(uuid.uuid4())
         png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jdosAAAAASUVORK5CYII=")
-        payload = {"version": 1, "clientId": client_id, "category": "tool",
-            "description": "[自动验收] 合成反馈：此条会在检查结束后删除。", "contact": "",
-            "context": {"appVersion": "synthetic", "systemVersion": "synthetic", "page": "smoke-test", "error": "synthetic error"},
-            "attachments": [{"name": "synthetic.png", "mimeType": "image/png", "data": base64.b64encode(png).decode()}]}
+        diagnostic_buffer = io.BytesIO()
+        with zipfile.ZipFile(diagnostic_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr(
+                "matching-diagnostics/synthetic/diagnostic.json",
+                json.dumps({"versionName": "1.13.0-beta-5", "trackingComplete": True}),
+            )
+        diagnostic_zip = diagnostic_buffer.getvalue()
+        payload = {"version": 1, "clientId": client_id, "category": "feature",
+            "description": "[自动验收] 合成功能建议与 GKD 诊断材料：此条会在检查结束后删除。", "contact": "",
+            "context": {
+                "appVersion": "synthetic",
+                "systemVersion": "synthetic",
+                "gkdVersion": "1.13.0-beta-5 (97)",
+                "gkdChannel": "测试版",
+                "page": "smoke-test",
+                "error": "synthetic error",
+            },
+            "attachments": [
+                {"name": "synthetic.png", "mimeType": "image/png", "data": base64.b64encode(png).decode()},
+                {"name": "synthetic-diagnostics.zip", "mimeType": "application/zip",
+                 "data": base64.b64encode(diagnostic_zip).decode()},
+            ]}
         status, result, headers = request("api/feedback", "POST", payload, {"Origin": "null", "Idempotency-Key": client_id}, anonymous=True)
         assert status == 201 and headers.get("Access-Control-Allow-Origin") == "null"
         feedback_id = result["id"]
@@ -79,17 +99,28 @@ def main() -> None:
         path = "admin/api/feedback/" + feedback_id
         status, detail, _ = request(path)
         assert status == 200 and detail["description"] == payload["description"]
-        attachment_path = path + "/attachments/" + detail["attachments"][0]["id"]
-        assert request(attachment_path, anonymous=True)[0] == 401
-        status, image, headers = request(attachment_path)
+        assert detail["category"] == "feature"
+        assert detail["context"]["gkdChannel"] == "测试版"
+        assert detail["context"]["gkdVersion"] == "1.13.0-beta-5 (97)"
+        attachments = {item["name"]: item for item in detail["attachments"]}
+        assert set(attachments) == {"synthetic.png", "synthetic-diagnostics.zip"}
+        image_path = path + "/attachments/" + attachments["synthetic.png"]["id"]
+        zip_path = path + "/attachments/" + attachments["synthetic-diagnostics.zip"]["id"]
+        assert request(image_path, anonymous=True)[0] == 401
+        status, image, headers = request(image_path)
         assert status == 200 and image == png and "attachment" in headers.get("Content-Disposition", "")
+        status, archived_diagnostics, headers = request(zip_path)
+        assert status == 200 and archived_diagnostics == diagnostic_zip
+        assert "attachment" in headers.get("Content-Disposition", "")
+        checks.append("feature_zip_and_gkd_contract")
         checks.append("authenticated_attachment_and_anonymous_denial")
         assert request(path, "PATCH", {"status": "resolved"})[0] == 403
         assert request(path, "PATCH", {"status": "resolved"}, {"X-CSRF-Token": csrf})[0] == 200
         assert request(path)[1]["status"] == "resolved"
         checks.append("csrf_and_status_transition")
         assert request(path, "DELETE", headers={"X-CSRF-Token": csrf})[0] == 204
-        assert request(path)[0] == 404 and request(attachment_path)[0] == 404
+        assert request(path)[0] == 404
+        assert request(image_path)[0] == 404 and request(zip_path)[0] == 404
         feedback_id = ""
         checks.append("permanent_feedback_and_attachment_deletion")
         assert request("admin/api/logout", "POST", headers={"X-CSRF-Token": csrf})[0] == 204

@@ -75,6 +75,9 @@ def make_synthetic_png() -> bytes:
 
 
 PNG = make_synthetic_png()
+SYNTHETIC_GKD_CHANNEL = "测试版"
+SYNTHETIC_GKD_VERSION = "1.13.0-beta-5 (97)"
+SYNTHETIC_ZIP = b"PK\x05\x06" + b"\x00" * 18
 
 
 class CheckFailure(RuntimeError):
@@ -146,12 +149,14 @@ def create_synthetic_feedback(
     payload = {
         "version": 1,
         "clientId": client_id,
-        "category": "tool",
-        "description": "[自动验收] 合成后台浏览器反馈；检查结束后自动删除。",
+        "category": "feature",
+        "description": "[自动验收] 合成功能建议后台浏览器反馈；检查结束后自动删除。",
         "contact": "",
         "context": {
             "appVersion": "synthetic-browser",
             "systemVersion": "synthetic",
+            "gkdChannel": SYNTHETIC_GKD_CHANNEL,
+            "gkdVersion": SYNTHETIC_GKD_VERSION,
             "page": "admin-ui",
             "error": "synthetic",
         },
@@ -165,6 +170,11 @@ def create_synthetic_feedback(
                 "name": "synthetic-b.png",
                 "mimeType": "image/png",
                 "data": base64.b64encode(PNG).decode("ascii"),
+            },
+            {
+                "name": "gkd-diagnostics.zip",
+                "mimeType": "application/zip",
+                "data": base64.b64encode(SYNTHETIC_ZIP).decode("ascii"),
             },
         ],
     }
@@ -506,6 +516,42 @@ def main() -> int:
         require(feedback_id in login_state["detailText"], "详情不是刚创建的合成反馈")
         checks.append("deep_link_restored_after_login")
         checks.append("login_form_cleared")
+
+        stage = "验证功能建议、GKD 版本和诊断 ZIP 展示"
+        new_contract = page.run_js(
+            "return (() => {"
+            " const detail = document.querySelector('#detailPanel');"
+            " const rows = Array.from(detail.querySelectorAll('.context-row'));"
+            " const contextValue = (label) => {"
+            "  const row = rows.find((item) => item.querySelector('strong').textContent === label);"
+            "  return row ? row.querySelector('.context-value').textContent : '';"
+            " };"
+            " const zipLink = Array.from(detail.querySelectorAll('.attachment-row a'))"
+            "  .find((item) => item.textContent === 'gkd-diagnostics.zip');"
+            " const zipRow = zipLink ? zipLink.closest('.attachment-row') : null;"
+            " return {"
+            "  title: detail.querySelector('.detail-heading h2').textContent,"
+            "  gkdChannel: contextValue('GKD 版本类型'),"
+            "  gkdVersion: contextValue('GKD 版本号'),"
+            "  zipVisible: Boolean(zipLink),"
+            "  zipMimeVisible: Boolean(zipRow && zipRow.textContent.includes('application/zip')),"
+            "  attachmentRows: detail.querySelectorAll('.attachment-row').length"
+            " };"
+            "})();"
+        )
+        require(new_contract["title"] == "功能建议", "后台未显示“功能建议”分类")
+        require(
+            new_contract["gkdChannel"] == SYNTHETIC_GKD_CHANNEL,
+            "后台未正确显示 GKD 版本类型",
+        )
+        require(
+            new_contract["gkdVersion"] == SYNTHETIC_GKD_VERSION,
+            "后台未正确显示 GKD 版本号",
+        )
+        require(new_contract["zipVisible"], "后台未显示诊断 ZIP 附件")
+        require(new_contract["zipMimeVisible"], "后台未显示 ZIP 附件类型")
+        require(new_contract["attachmentRows"] == 3, "后台附件数量不正确")
+        checks.append("feature_gkd_zip_contract_visible")
 
         stage = "验证按需图片预览"
         preview = page.run_js(

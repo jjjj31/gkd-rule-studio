@@ -278,7 +278,7 @@ def open_feedback(cdp: CDP) -> None:
     clicked = cdp.evaluate(
         """(() => {
           const button = Array.from(document.querySelectorAll('.android-support-entry'))
-            .find((item) => item.textContent.includes('反馈问题'));
+            .find((item) => item.textContent.trim().includes('反馈'));
           if (!button) return false;
           button.click();
           return true;
@@ -688,7 +688,7 @@ def main() -> None:
         record(
             "feedback_home_entry",
             bool(cdp.evaluate(
-                "Array.from(document.querySelectorAll('.android-support-entry')).some((item) => item.textContent.includes('反馈问题'))"
+                "Array.from(document.querySelectorAll('.android-support-entry')).some((item) => item.textContent.trim().includes('反馈'))"
             )),
             ui_issue="feedback_home_entry_missing",
         )
