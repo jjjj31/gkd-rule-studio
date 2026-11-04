@@ -506,7 +506,7 @@ public class MainActivity extends Activity {
                     return;
                 }
                 Uri uri = Uri.parse(
-                    "content://" + ApkFileProvider.AUTHORITY + file.getAbsolutePath()
+                    "content://" + ApkFileProvider.authority(context) + file.getAbsolutePath()
                 );
                 Intent intent = new Intent(Intent.ACTION_VIEW);
                 intent.setDataAndType(uri, "application/vnd.android.package-archive");

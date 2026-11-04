@@ -7,6 +7,7 @@
  * @see deviceApi HTTP 通信
  */
 import {
+  BookOpen,
   Bot,
   Check,
   ChevronLeft,
@@ -26,7 +27,6 @@ import {
   Plug,
   RefreshCw,
   ScrollText,
-  Search,
   Smartphone,
   Star,
   Trash2,
@@ -2226,6 +2226,12 @@ export function AndroidLiteApp() {
     }, MAIN_TRANSIENT_MS);
   }
 
+  function dismissMainMessage(): void {
+    clearTransientMainMessage();
+    prolongedMainRef.current = false;
+    setMessage(null);
+  }
+
   function showAiTransient(text: string): void {
     clearTransientAiMessage();
     setAiMessage(text);
@@ -2415,23 +2421,39 @@ export function AndroidLiteApp() {
       </header>
 
       {message && (
-        <button
-          type="button"
-          aria-label="延长显示这条提示"
-          className="android-message"
-          onClick={prolongMainMessage}
-        >
-          {message}
-        </button>
+        <div aria-live="polite" className="android-message android-main-toast" role="status">
+          <button
+            aria-label="延长显示这条提示"
+            className="android-main-toast-body"
+            type="button"
+            onClick={prolongMainMessage}
+          >
+            {message}
+          </button>
+          <button
+            aria-label="关闭提示"
+            className="android-main-toast-close"
+            type="button"
+            onClick={dismissMainMessage}
+          >
+            <X size={15} />
+          </button>
+        </div>
       )}
       {view === "home" && (
         <section className="android-home">
           <button className="android-card library-entry" type="button" onClick={() => setView("library")}>
-            <Search size={24} /><span><strong>订阅规则库</strong></span><ChevronRight size={20} />
+            <BookOpen size={22} strokeWidth={1.5} />
+            <span>
+              <strong>订阅规则库</strong>
+              <small>浏览、搜索并导入现成的 GKD 规则</small>
+            </span>
+            <ChevronRight size={18} />
           </button>
           <div className="android-card android-connect-card">
             <div className="android-section-title">
               <h2>HTTP 服务</h2>
+              <span>连接 GKD 本机或局域网服务</span>
             </div>
             <div className="android-device-form">
               <input
@@ -3953,12 +3975,11 @@ function AndroidAiPanel({
 
   return (
     <div className="android-tab-content android-ai-panel">
-      <div className="android-section-title">
-        <h2>AI 规则候选</h2>
-        <span>当前模型：{config.model}</span>
-      </div>
-
-      <div className="android-action-row">
+      <div className="android-ai-heading">
+        <div className="android-section-title">
+          <h2>AI 规则候选</h2>
+          <span>当前模型：{config.model}</span>
+        </div>
         <button
           aria-label="管理 AI sessions"
           className="android-icon-button android-ai-session-trigger"
@@ -3967,6 +3988,9 @@ function AndroidAiPanel({
         >
           <ListChecks size={17} />
         </button>
+      </div>
+
+      <div className="android-ai-actions">
         <button
           className="android-button"
           type="button"
@@ -4739,6 +4763,7 @@ function AndroidSnapshotChooser({
     <div className="android-snapshot-chooser">
       <div className="android-section-title">
         <h2>选择快照</h2>
+        <span>勾选一张进入单步，勾选多张进入多步</span>
       </div>
       {snapshots.length > 0 ? (
         <div className="android-snapshot-check-list">
