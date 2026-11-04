@@ -30,6 +30,7 @@ android {
         targetSdk 35
         versionCode appVersionCode
         versionName appVersionName
+        manifestPlaceholders = [appLabel: "@string/app_name"]
     }
 
     // 固定签名：仓库内的 android/debug.keystore，本地与 CI 共用同一密钥。
@@ -47,6 +48,13 @@ android {
 
     buildTypes {
         debug {
+            signingConfig signingConfigs.debug
+        }
+        uiPreview {
+            initWith debug
+            applicationIdSuffix ".uipreview"
+            versionNameSuffix "-ui-preview"
+            manifestPlaceholders = [appLabel: "GKD Rule Studio Preview"]
             signingConfig signingConfigs.debug
         }
     }

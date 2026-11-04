@@ -5,6 +5,7 @@ import { debugLog } from "./lib/debugLog";
 import { loadAiConfig, loadAiProfileStore } from "./lib/aiModel";
 import { UserFeedbackPanel } from "./components/UserFeedbackPanel";
 import "./styles.css";
+import "./ui-polish.css";
 
 /**
  * 渲染层兜底：React 渲染抛出未捕获异常时会卸载整棵组件树，页面变成空白/黑屏（

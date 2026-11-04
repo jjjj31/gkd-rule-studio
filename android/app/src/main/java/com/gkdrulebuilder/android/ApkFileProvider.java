@@ -2,6 +2,7 @@ package com.gkdrulebuilder.android;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
+import android.content.Context;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.ParcelFileDescriptor;
@@ -14,7 +15,9 @@ import java.io.FileNotFoundException;
  * 不引入 androidx,安装 APK 只需 openFile 一个能力。
  */
 public class ApkFileProvider extends ContentProvider {
-    public static final String AUTHORITY = "com.gkdrulebuilder.android.apkprovider";
+    public static String authority(Context context) {
+        return context.getPackageName() + ".apkprovider";
+    }
 
     /** 应用外部私有目录前缀,openFile 只允许此目录下的文件。 */
     private String allowedPrefix;

@@ -1,5 +1,5 @@
 import JSON5 from "json5";
-import { ChevronLeft, ClipboardCopy, Download, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { BookOpen, ChevronLeft, ClipboardCopy, Download, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "../lib/clipboard";
 import type { DeviceApiClient } from "../lib/deviceApi";
@@ -167,7 +167,7 @@ export function SubscriptionLibrary(props: Props) {
       {props.tests.some((test) => test.error) && <button className="android-button" disabled={busy || !props.client} onClick={() => void props.onSync()} type="button">重试同步当前测试集合</button>}
 
       {!selectedApp && <>
-        <section className="android-card">
+        <section className="android-card library-toolbar">
           <div className="library-search"><Search size={18} /><input className="android-input" aria-label="搜索应用名或包名" placeholder="输入软件名或包名" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
           <span className="android-muted">{sources.length} 个来源 · {apps.length} 个应用</span>
         </section>
@@ -188,6 +188,11 @@ export function SubscriptionLibrary(props: Props) {
             </div>
           </div>)}
         </details>
+        {sources.length === 0 && <div className="android-empty library-empty">
+          <BookOpen size={22} strokeWidth={1.5} />
+          <strong>还没有可浏览的规则</strong>
+          <span>添加订阅来源后，应用和规则会显示在这里</span>
+        </div>}
         {sources.length > 0 && apps.length === 0 && <p className="android-empty library-empty">未找到应用</p>}
         <div className="library-app-list">{apps.map((app) => <button className="android-card library-app-button" key={app.id} type="button" onClick={() => openApp(app.id)}>
           <strong>{app.name}</strong><span className="library-url">{app.id}</span><small>{app.sourceCount} 个来源 · {app.groupCount} 个规则组</small>
