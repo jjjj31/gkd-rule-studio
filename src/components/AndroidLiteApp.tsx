@@ -30,6 +30,8 @@ import {
   Smartphone,
   Star,
   Trash2,
+  Wifi,
+  WifiOff,
   X,
 } from "lucide-react";
 import {
@@ -223,6 +225,15 @@ type AiOperation = "test" | "generate" | "feedback" | null;
 const INLINE_TESTING_STORAGE_KEY = "gkd-rule-studio-inline-testing";
 const SNAPSHOT_MEMORY_STORAGE_KEY = "gkd-rule-studio-snapshot-memory";
 
+function readBrowserPreviewOptions(): { fixtureUrl: string } {
+  return {
+    fixtureUrl: import.meta.env.DEV
+      ? import.meta.env.VITE_GKD_PREVIEW_FIXTURE?.trim() ?? "" : "",
+  };
+}
+
+const BROWSER_PREVIEW = readBrowserPreviewOptions();
+
 /**
  * 2026-11-03 发行版下架项。
  * 实现和测试暂时保留，仅从 Android 发行界面隐藏；恢复前需重新做真机验收。
@@ -243,14 +254,17 @@ const MAIN_TRANSIENT_MS = 2500;
 
 export function AndroidLiteApp() {
   const [deviceUrl, setDeviceUrl] = useState(
-    () => localStorage.getItem("gkd-rule-builder-device-url") ?? "",
+    () => BROWSER_PREVIEW.fixtureUrl
+      || localStorage.getItem("gkd-rule-builder-device-url")
+      || "",
   );
   const [targetChannel, setTargetChannel] = useState<GkdTargetChannel>(
-    readStoredTargetChannel,
+    () => BROWSER_PREVIEW.fixtureUrl ? "stable" : readStoredTargetChannel(),
   );
   const [client, setClient] = useState<DeviceApiClient | null>(null);
   const clientRef = useRef<DeviceApiClient | null>(null);
   const connectionAttemptRef = useRef(0);
+  const previewAutoConnectRef = useRef(false);
   const [view, setView] = useState<"home" | "workspace" | "library">(
     "home",
   );
@@ -525,6 +539,12 @@ export function AndroidLiteApp() {
     (activeAiSession.candidates.length === 0 && !activeAiSessionHasTestingItem);
 
   useEffect(() => {
+    if (!BROWSER_PREVIEW.fixtureUrl || previewAutoConnectRef.current) return;
+    previewAutoConnectRef.current = true;
+    void connect();
+  }, []);
+
+  useEffect(() => {
     function handlePopState(event: PopStateEvent): void {
       if (!pushedWorkspaceHistoryRef.current) return;
       if (event.state?.gkdFeedbackMaskEditorBase) return;
@@ -687,7 +707,7 @@ export function AndroidLiteApp() {
       setSelectedSnapshotId(nextSnapshots[0]?.id ? String(nextSnapshots[0].id) : "");
       setSelectedSnapshotIds(new Set());
       setDeviceUrl(nextClient.origin);
-      localStorage.setItem("gkd-rule-builder-device-url", nextClient.origin);
+      if (!BROWSER_PREVIEW.fixtureUrl) localStorage.setItem("gkd-rule-builder-device-url", nextClient.origin);
       showMainTransient(`已连接 ${targetChannelLabel(targetChannel)}`);
       debugLog("network", "connect:ok", nextClient.origin, {
         serverInfo: nextClient.serverInfo,
@@ -1543,7 +1563,7 @@ export function AndroidLiteApp() {
 
   function changeTargetChannel(channel: GkdTargetChannel): void {
     connectionAttemptRef.current++;
-    storeTargetChannel(channel);
+    if (!BROWSER_PREVIEW.fixtureUrl) storeTargetChannel(channel);
     setTargetChannel(channel);
     setLoading(false);
     clientRef.current = null;
@@ -2413,8 +2433,13 @@ export function AndroidLiteApp() {
                       : "模型未测试连接"
               }
             />
-            <span className={client ? "status-badge success" : "status-badge muted"}>
-              {client ? "已连接" : "未连接"}
+            <span
+              aria-label={client ? "GKD 已连接" : "GKD 未连接"}
+              className={`android-connection-indicator ${client ? "connected" : "disconnected"}`}
+              role="status"
+              title={client ? "GKD 已连接" : "GKD 未连接"}
+            >
+              {client ? <Wifi size={16} /> : <WifiOff size={16} />}
             </span>
           </div>
         )}
@@ -2508,7 +2533,7 @@ export function AndroidLiteApp() {
 
       <SubscriptionLibrary active={view === "library"}
         client={client} targetChannel={targetChannel} loading={loading}
-        tests={libraryTests} onClose={backHome}
+        tests={libraryTests} onClose={backHome} onClearMainToast={dismissMainMessage}
         onTest={startLibraryTest} onTestResult={finishLibraryTest}
         onSync={() => syncInlineTestsToGkd(inlineTestingRef.current)}
       />
@@ -2772,6 +2797,10 @@ export function AndroidLiteApp() {
           onClearCurrent={clearCurrentAiConfigLocal}
           onClose={() => setAiConfigOpen(false)}
           onDeleteProfile={deleteAiProfileLocal}
+          onDismissMessage={() => {
+            clearTransientAiMessage();
+            setAiMessage(null);
+          }}
           onSaveProfile={saveAiProfileLocal}
           onSelectProfile={selectAiProfileLocal}
           onTestConfig={() => void testAiConfigLocal()}
@@ -4326,6 +4355,7 @@ function AndroidAiConfigDialog({
   onDeleteProfile,
   onClearCurrent,
   onTestConfig,
+  onDismissMessage,
   onClose,
 }: {
   profiles: AiModelProfile[];
@@ -4338,6 +4368,7 @@ function AndroidAiConfigDialog({
   onDeleteProfile: (profileId: string) => void;
   onClearCurrent: (profile: AiModelProfile) => void;
   onTestConfig: () => void;
+  onDismissMessage: () => void;
   onClose: () => void;
 }) {
   const NEW_PROFILE_ID_PREFIX = "ai-profile-new-";
@@ -4454,7 +4485,6 @@ function AndroidAiConfigDialog({
             <span>添加</span>
           </button>
         </div>
-        {message && <p className="android-ai-message">{message}</p>}
         <div className="android-ai-config-form">
           <label>
             <span>名称</span>
@@ -4562,6 +4592,23 @@ function AndroidAiConfigDialog({
           </button>
         </div>
       </section>
+      {message && (
+        <div
+          aria-live="polite"
+          className="android-message android-main-toast android-ai-config-toast"
+          role="status"
+        >
+          <span className="android-main-toast-body">{message}</span>
+          <button
+            aria-label="关闭模型配置提示"
+            className="android-main-toast-close"
+            type="button"
+            onClick={onDismissMessage}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -38,7 +38,7 @@ export function persistSnapshotNames(names: SnapshotNameMap): void {
   }
 }
 
-/** 列表行文案：有自定义名时前置并括注原始信息（时间/应用/Activity）。 */
+/** 列表行文案：有自定义名时前置并括注时间与应用名。 */
 export function snapshotOptionLabel(
   snapshot: DeviceSnapshotSummary,
   customName?: string | null,

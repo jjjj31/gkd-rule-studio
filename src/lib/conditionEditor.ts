@@ -15,9 +15,10 @@ import { validateAppRuleAgainstSnapshot } from "./selectorMatcher";
 import { serializePlan } from "./selectorSerialize";
 
 type EditableAttr = "text" | "desc" | "id" | "vid";
+type EditableOperator = "eq" | "contains" | "startsWith" | "endsWith";
 export interface ConditionEditorCondition {
   attr: EditableAttr;
-  op: "eq" | "contains";
+  op: EditableOperator;
   value: string;
 }
 
@@ -399,7 +400,7 @@ function selectorFromSimple(selector: SimpleSelector): ConditionEditorSelector |
         condition.attr === "desc" ||
         condition.attr === "id" ||
         condition.attr === "vid") &&
-      (condition.op === "eq" || condition.op === "contains") &&
+      isEditableStringOperator(condition.op) &&
       typeof condition.value === "string"
     ) {
       conditions.push({ attr: condition.attr, op: condition.op, value: condition.value });
@@ -550,11 +551,22 @@ function isSupportedCondition(condition: SelectorCondition): boolean {
       condition.attr === "desc" ||
       condition.attr === "id" ||
       condition.attr === "vid") &&
-      (condition.op === "eq" || condition.op === "contains") &&
+      isEditableStringOperator(condition.op) &&
       typeof condition.value === "string") ||
     ((condition.attr === "clickable" || condition.attr === "visibleToUser") &&
       condition.op === "eq" &&
       condition.value === true)
+  );
+}
+
+function isEditableStringOperator(
+  op: SelectorOperator,
+): op is EditableOperator {
+  return (
+    op === "eq" ||
+    op === "contains" ||
+    op === "startsWith" ||
+    op === "endsWith"
   );
 }
 

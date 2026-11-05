@@ -268,7 +268,7 @@ class FixtureHandler(BaseHTTPRequestHandler):
                 {
                     "device": {"model": "synthetic-fixture", "sdkInt": 34},
                     "gkdAppInfo": {
-                        "id": "li.songe.gkd.debug",
+                        "id": "li.songe.gkd",
                         "name": "GKD Fixture",
                         "versionName": "1.12.1",
                     },
@@ -541,6 +541,27 @@ try:
     assert "HTTP 服务" in js("document.querySelector('.android-home').innerText")
     add_check("home", "首页设备连接入口可用", "passed", "观察到 HTTP 服务输入框和连接按钮")
 
+    click('button[aria-label="模型配置"]')
+    wait_js("document.querySelector('.android-ai-config-form')")
+    config_top = js("document.querySelector('.android-ai-config-form').getBoundingClientRect().top")
+    click(".android-action-row button:nth-child(1)")
+    wait_js("document.querySelector('.android-ai-config-toast')")
+    time.sleep(.3)
+    page.screenshot(path=str(SCRATCH / "ai-config-toast.png"))
+    assert js("getComputedStyle(document.querySelector('.android-ai-config-toast')).position === 'fixed'")
+    assert abs(js("document.querySelector('.android-ai-config-form').getBoundingClientRect().top") - config_top) < 1
+    assert not js("Boolean(document.querySelector('.android-ai-message'))")
+    click('button[aria-label="关闭模型配置提示"]')
+    wait_js("!document.querySelector('.android-ai-config-toast')")
+    click('.android-dialog-head button[aria-label="关闭"]')
+    wait_js("!document.querySelector('.android-ai-config-form')")
+    add_check(
+        "ai-config-toast",
+        "模型配置提示使用不占布局的浮动气泡",
+        "passed",
+        "保存提示为 fixed 浮层，表单顶部位置未变化，可手动关闭",
+    )
+
     url_input = page.ele("css:.android-device-form input")
     assert url_input
     url_input.click()
@@ -552,7 +573,8 @@ try:
     )
     click(".android-device-form button")
     wait_js("document.querySelectorAll('.android-snapshot-check-row').length === 3")
-    assert "已连接" in js("document.body.innerText")
+    assert js("document.querySelector('.android-connection-indicator.connected')?.getAttribute('aria-label') === 'GKD 已连接'")
+    assert js("(() => { const indicator = document.querySelector('.android-connection-indicator.connected'); const update = document.querySelector('button[aria-label=\"检查更新\"]'); if (!indicator || !update) return false; const a = indicator.getBoundingClientRect(); const b = update.getBoundingClientRect(); return !indicator.textContent.trim() && Math.abs((a.top + a.height / 2) - (b.top + b.height / 2)) < 2; })()")
     add_check("connect", "外部 fixture 连接并返回三张快照", "passed", "getServerInfo 与 getSnapshots 均实际请求")
 
     checks_boxes = page.eles("css:.android-snapshot-check-row input[type=checkbox]")
@@ -603,6 +625,31 @@ try:
     add_check("summary", "规则摘要与点击范围同时可见", "passed", preview_text.splitlines()[0])
 
     wait_js("document.querySelector('.android-candidate-item')")
+    action_layout = js(
+        "(() => Array.from(document.querySelectorAll('.android-candidate-item')).flatMap((card) => {"
+        " const actions = card.querySelector('.android-candidate-actions');"
+        " if (!actions) return [];"
+        " return Array.from(actions.querySelectorAll('button')).map((button) => {"
+        "  button.scrollIntoView({block: 'center', inline: 'nearest'});"
+        "  const rect = button.getBoundingClientRect();"
+        "  const cardRect = card.getBoundingClientRect();"
+        "  const x = Math.max(0, Math.min(window.innerWidth - 1, rect.left + rect.width / 2));"
+        "  const y = Math.max(0, Math.min(window.innerHeight - 1, rect.top + rect.height / 2));"
+        "  const hit = document.elementFromPoint(x, y);"
+        "  return {label: button.innerText.trim(), width: rect.width, height: rect.height,"
+        "   inside: rect.left >= cardRect.left - 1 && rect.right <= cardRect.right + 1,"
+        "   hit: hit === button || button.contains(hit)};"
+        " });"
+        "}))()"
+    )
+    assert action_layout, "候选卡没有操作按钮"
+    assert all(item["width"] > 0 and item["height"] > 0 and item["inside"] and item["hit"] for item in action_layout), action_layout
+    add_check(
+        "candidate-actions-visible",
+        "候选卡操作按钮完整位于卡片内且可点击",
+        "passed",
+        ", ".join(f"{item['label']} {round(item['width'])}x{round(item['height'])}" for item in action_layout),
+    )
     candidate = page.ele("css:.android-candidate-item")
     assert candidate
     candidate.click()
@@ -660,7 +707,7 @@ try:
         add_check("test-identity", "加入测试后发送完整测试订阅身份", "pending", "当前页面未显示加入测试按钮")
 
     js("(() => { const item = document.querySelector('.android-candidate-item');"
-       " const button = Array.from(item.querySelectorAll('button')).find((item) => item.textContent.trim() === '编辑条件');"
+       " const button = Array.from(item.querySelectorAll('button')).find((item) => item.textContent.trim() === '修改定位');"
        " if (!button) return false; button.click(); return true; })()")
     wait_js("document.querySelector('.condition-editor')")
     editor_text = js("document.querySelector('.condition-editor').innerText")
@@ -693,7 +740,7 @@ try:
         wait_js("document.querySelector('.android-candidate-item')")
 
     js("(() => { const item = document.querySelector('.android-candidate-item');"
-       " const button = Array.from(item.querySelectorAll('button')).find((item) => item.textContent.trim() === '编辑条件');"
+       " const button = Array.from(item.querySelectorAll('button')).find((item) => item.textContent.trim() === '修改定位');"
        " if (!button) return false; button.click(); return true; })()")
     wait_js("document.querySelector('.condition-editor')")
     set_condition_value("close_region")
@@ -724,7 +771,7 @@ try:
     wait_js("document.querySelector('.android-candidate-item')")
     second_candidate = js("(() => { const card = document.querySelectorAll('.android-candidate-item')[1];"
         " if (!card) return null; const button = Array.from(card.querySelectorAll('button'))"
-        ".find((item) => item.textContent.trim() === '编辑条件');"
+        ".find((item) => item.textContent.trim() === '修改定位');"
         " return { text: card.innerText, enabled: Boolean(button) }; })()")
     assert second_candidate and second_candidate["enabled"], second_candidate
     second_candidate_button = page.ele("css:.android-candidate-item:nth-child(2) .android-candidate-detail")
@@ -773,7 +820,7 @@ try:
     click(".android-workspace-tabs button:nth-child(2)")
     wait_js("document.querySelector('.android-candidate-item')")
     js("(() => { const item = document.querySelector('.android-candidate-item');"
-       " const button = Array.from(item.querySelectorAll('button')).find((item) => item.textContent.trim() === '编辑条件');"
+       " const button = Array.from(item.querySelectorAll('button')).find((item) => item.textContent.trim() === '修改定位');"
        " if (!button) return false; button.click(); return true; })()")
     wait_js("document.querySelector('.condition-editor')")
     set_condition_value("不存在的文字")

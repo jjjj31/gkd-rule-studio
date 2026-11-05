@@ -437,7 +437,14 @@ export function UserFeedbackPanel({
           <h2 id="user-feedback-title" ref={title} tabIndex={-1}><MessageSquareWarning size={20} />{preview ? "预览反馈" : "反馈"}</h2>
           <button className="android-icon-button" type="button" aria-label="关闭反馈" onClick={close} disabled={busy}><X size={20} /></button>
         </header>
-        {notice && <p className="user-feedback-notice" role="status">{notice}</p>}
+        {notice && (
+          <div aria-live="polite" className="user-feedback-notice android-main-toast user-feedback-toast" role="status">
+            <span>{notice}</span>
+            <button className="android-icon-button" type="button" aria-label="关闭反馈提示" onClick={() => setNotice("")}>
+              <X size={16} />
+            </button>
+          </div>
+        )}
         {draftBroken && <button className="android-button" type="button" disabled={busy} onClick={() => void removeDraft()}>删除本地草稿</button>}
         {receipt ? <div className="user-feedback-receipt">
           <Check size={36} /><h3>反馈已收到</h3><p>反馈编号</p><code>{receipt}</code>

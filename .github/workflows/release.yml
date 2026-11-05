@@ -13,7 +13,11 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
 
@@ -23,24 +27,25 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: ./scripts/windows-pnpm.ps1 install --frozen-lockfile
 
       - name: Typecheck and test
         run: |
-          pnpm typecheck
-          pnpm test
+          ./scripts/windows-pnpm.ps1 typecheck
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./scripts/windows-pnpm.ps1 test
 
       - name: Build web assets into Android
-        run: pnpm run build:android-assets
+        run: ./scripts/windows-pnpm.ps1 run build:android-assets
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       - uses: android-actions/setup-android@v3
         with:
@@ -53,20 +58,16 @@ jobs:
 
       - name: Build debug APK
         working-directory: android
-        # 覆盖 gradle.properties 里机器专属的 org.gradle.java.home，改用 CI 的 JDK17。
-        # chmod 兜底：Windows 上提交的 gradlew 容易丢可执行位（exit 126）。
+        # 覆盖本机 Gradle 配置，使用 CI 安装的 JDK。
         run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug -Dorg.gradle.java.home="$JAVA_HOME"
+          ./gradlew.bat assembleDebug "-Dorg.gradle.java.home=$env:JAVA_HOME"
 
       - name: Generate update.json
         # --apk-name 必须与上传的资产名一致，否则清单里的下载直链会 404。
         run: |
-          node scripts/publish-update.mjs \
-            android/app/build/outputs/apk/debug/app-debug.apk \
-            --apk-name app-debug.apk \
-            --output update.json
-          cat update.json
+          node scripts/publish-update.mjs android/app/build/outputs/apk/debug/app-debug.apk --apk-name app-debug.apk --output update.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Content update.json
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2

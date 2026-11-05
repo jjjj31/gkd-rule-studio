@@ -47,30 +47,33 @@ class Handler(BaseHTTPRequestHandler):
         if key == "c": state["pause_c"].wait(10)
         if key in state["versions"]:
             self.reply(subscription(key), 503 if key in state["fail"] else 200)
+        elif key == "invalid": self.reply("not a subscription")
         else: self.reply({}, 404)
     def do_POST(self):
         data = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
         if self.path.endswith("getServerInfo"):
-            self.reply({"device": {}, "gkdAppInfo": {"id": "li.songe.gkd.debug", "name": "GKD", "versionName": "fixture"}})
+            self.reply({"device": {}, "gkdAppInfo": {"id": "li.songe.gkd", "name": "GKD", "versionName": "1.13.0-beta-2"}})
         elif self.path.endswith("getSnapshots"): self.reply([])
         elif self.path.endswith("updateSubscription"):
             if state["update_fail"]: self.reply({"error": "fixture failure"}, 500)
             else:
                 state["updates"].append(data)
                 self.reply({"message": "ok"})
-        elif self.path.endswith("localRules/append"):
+        elif self.path.endswith("appendRules"):
             state["appends"].append(data)
-            assert data["dedupe"] is False
-            app = data["app"]
-            count = 0
-            for raw in app["groups"]:
+            assert data["subsId"] == -2 and data["groupType"] == 2
+            source = json.loads(data["source"])
+            assert data["appId"] == "com.demo.library"
+            assert "id" not in source and isinstance(source.get("rules"), list)
+            imported_groups = []
+            for raw in [source]:
                 group = copy.deepcopy(raw)
                 if state["append_partial"]: group["rules"] = group["rules"][:1]
                 group["key"] = max([g["key"] for g in state["local_groups"]], default=-1) + 1
                 for i, rule in enumerate(group["rules"]): rule["key"] = i
                 state["local_groups"].append(group)
-                count += len(group["rules"])
-            self.reply({"ok": True, "action": "append", "appId": app["id"], "addedGroups": len(app["groups"]), "addedRules": count, "skippedDuplicates": 0})
+                imported_groups.append(group)
+            self.reply(imported_groups)
         else: self.reply({}, 404)
 
 server = ThreadingHTTPServer(("127.0.0.1", 8767), Handler)
@@ -108,6 +111,8 @@ def inject_bridge():
 def open_app():
     page.ele('css:input[aria-label="搜索应用名或包名"]').input(" 淘宝 ")
     wait_js("document.querySelectorAll('.library-app-button').length === 1")
+    assert "com.demo.library" not in js("document.querySelector('.library-app-button').innerText")
+    assert js("document.querySelector('.library-app-button').title === 'com.demo.library'")
     click(".library-app-button")
     wait_js("document.querySelectorAll('.library-group').length >= 2")
 def group_button(group_index, button_index):
@@ -132,20 +137,50 @@ def library_app():
 
 try:
     page = launch(headless=True, user_dir=str(ROOT / "firefox-profile"), window_size=(412, 915))
+    page.set_viewport(412, 915)
+    # External fonts must not block the offline, synthetic UI checks.
+    page.intercept.start(lambda req: req.mock("", headers={"content-type": "text/css"}), url_patterns=[{"type": "pattern", "protocol": "https", "hostname": "fonts.googleapis.com"}], phases=["beforeRequestSent"])
     page.get("http://127.0.0.1:5174/", wait="none")
     wait_js("document.querySelector('.library-entry')")
     generated = {"version": 1, "items": [{
         "id": "ordinary", "source": "offline-selector", "mode": "single", "sourceKey": "ordinary", "title": "普通候选", "summary": "原测试", "status": "testing", "canImport": False, "createdAt": 1, "updatedAt": 1,
         "app": {"id": "com.demo.library", "name": "淘宝", "groups": [{"key": 7, "name": "关闭更新弹窗", "rules": [{"key": 0, "matches": ['[text="普通候选"]']}]}]},
     }], "aiSessions": []}
-    page.run_js("localStorage.clear(); localStorage.setItem('gkd-rule-builder-device-url', " + json.dumps(FIXTURE) + "); localStorage.setItem('gkd-rule-studio-inline-testing', " + json.dumps(json.dumps(generated, ensure_ascii=False)) + ");")
+    page.run_js("localStorage.clear(); localStorage.setItem('gkd-rule-builder-device-url', " + json.dumps(FIXTURE) + "); localStorage.setItem('gkd-rule-studio-target-channel', 'beta'); localStorage.setItem('gkd-rule-studio-inline-testing', " + json.dumps(json.dumps(generated, ensure_ascii=False)) + ");")
     page.refresh()
     wait_js("document.querySelector('.library-entry')")
     inject_bridge()
     click(".library-entry")
     wait_js("document.querySelector('.rule-library')")
     check("独立入口，无设备或快照门槛")
+    ensure_sources()
+    click("form.library-form button[type=submit]")
+    wait_js("document.querySelector('#library-link-error')")
+    wait_js("document.activeElement === document.querySelector('#library-link')")
+    assert js("document.activeElement === document.querySelector('.library-form input')")
+    assert js("document.querySelector('.library-form input').getAttribute('aria-invalid') === 'true'")
+    assert not js("Boolean(document.querySelector('.library-notice'))")
+    field = page.ele('css:input[aria-label="订阅文件链接"]')
+    field.input("not-a-subscription-url")
+    assert not js("Boolean(document.querySelector('#library-link-error'))")
+    click("form.library-form button[type=submit]")
+    wait_js("document.querySelector('#library-link-error')")
+    wait_js("document.activeElement === document.querySelector('#library-link')")
+    assert js("document.activeElement.value === 'not-a-subscription-url'")
+    assert not any(path.endswith(".json5") for path in state["requests"])
+    field.input(f"{FIXTURE}/missing.json5")
+    click("form.library-form button[type=submit]")
+    wait_js("document.querySelector('#library-link-error')?.innerText.includes('404')")
+    wait_js("document.activeElement === document.querySelector('#library-link')")
+    assert js("document.activeElement.value.endsWith('/missing.json5')")
+    field.input(f"{FIXTURE}/invalid.json5")
+    click("form.library-form button[type=submit]")
+    wait_js("document.querySelector('#library-link-error')")
+    wait_js("document.activeElement === document.querySelector('#library-link')")
+    assert js("document.activeElement.value.endsWith('/invalid.json5')")
+    check("必填、链接格式和下载失败在字段旁提示、保留内容并聚焦，修改后清除")
     add("a")
+    assert not js("Boolean(document.querySelector('#library-link-error'))")
     add("b")
     assert len(sources()) == 2
     ensure_sources()
@@ -184,39 +219,66 @@ try:
 
     home()
     click(".android-device-form button")
-    wait_js("document.querySelector('.status-badge').innerText.includes('已连接')")
+    wait_js("document.querySelector('.android-connection-indicator.connected')")
     library_app()
     check("规则库不重复提供连接设置，测试和导入复用首页连接")
+    heading_before_import = js("document.querySelector('.library-heading').getBoundingClientRect().top")
     group_button(0, 3)
     wait_js("JSON.parse(localStorage.getItem('gkd-rule-studio-library-imports') || '[]').length === 1")
-    assert state["appends"][0]["dedupe"] is False
-    assert state["local_groups"][0]["rules"][1]["preKeys"] == [0]
-    assert state["local_groups"][0]["actionCdKey"] == 0
-    assert state["local_groups"][0]["actionMaximumKey"] == 1
+    wait_js("document.querySelector('.library-notice').innerText.includes('已导入')")
+    assert js("getComputedStyle(document.querySelector('.library-notice')).position === 'fixed'")
+    assert not js("Boolean(document.querySelector('.android-main-toast:not(.library-notice)'))")
+    assert abs(js("document.querySelector('.library-heading').getBoundingClientRect().top") - heading_before_import) < 1
+    page.screenshot(path=str(ROOT / "rule-library-bottom-toast.png"))
+    append_request = state["appends"][0]
+    assert append_request["subsId"] == -2 and append_request["groupType"] == 2
+    assert "groups" not in json.loads(append_request["source"])
+    assert state["local_groups"][0]["rules"][1]["preKeys"] == [10]
+    assert state["local_groups"][0]["actionCdKey"] == 10
+    assert state["local_groups"][0]["actionMaximumKey"] == 30
     assert state["local_groups"][0]["enable"] is False
     assert records()[0]["app"]["groups"][0]["rules"][1]["preKeys"] == [10]
-    check("未测试直接导入，兼容 fork 重编号且保留固定原副本")
+    check("未测试直接导入，保留官方 beta 原规则引用且保存固定原副本")
 
-    wait_js("!document.querySelectorAll('.library-group')[0].querySelector('button').disabled")
-    state["append_partial"] = True
-    group_button(0, 3)
-    wait_js("document.querySelector('.library-notice').innerText.includes('只写入')")
-    assert records()[0]["complete"] is False
-    assert "部分写入" in js("document.querySelectorAll('.library-group')[0].innerText")
-    check("接口部分写入显示不完整状态，不假称完整副本")
-    state["append_partial"] = False
+    wait_js("document.querySelectorAll('.library-group')[0].querySelector('.library-imported-button').disabled")
+    assert js("document.querySelectorAll('.library-group')[0].querySelector('.library-imported-button').innerText.trim() === '已导入'")
+    appends_after_import = len(state["appends"])
+    time.sleep(.3)
+    assert len(state["appends"]) == appends_after_import
+    check("导入成功后固定为已导入，不再提供再次追加入口")
+
     page.run_js("window.__originalStorageSetItem = Storage.prototype.setItem; Storage.prototype.setItem = function(key,value) {if(key === 'gkd-rule-studio-library-imports') throw new DOMException('quota','QuotaExceededError'); return window.__originalStorageSetItem.call(this,key,value);};")
     group_button(1, 3)
     wait_js("document.querySelector('.library-notice').innerText.includes('GKD 已写入')")
-    assert len(state["appends"]) == 3
+    assert len(state["appends"]) == 2
     time.sleep(.3)
-    assert len(state["appends"]) == 3
+    assert len(state["appends"]) == 2
     page.run_js("Storage.prototype.setItem = window.__originalStorageSetItem;")
     check("设备已写入但记录保存失败时明确提示，不自动重复写入")
+
+    page.refresh()
+    wait_js("document.querySelector('.library-entry')")
+    inject_bridge()
+    click(".android-device-form button")
+    wait_js("document.querySelector('.android-connection-indicator.connected')")
+    library_app()
+    state["append_partial"] = True
+    group_button(1, 3)
+    wait_js("document.querySelector('.library-notice').innerText.includes('导入结果不完整')")
+    assert len(records()) == 1
+    assert "已导入固定副本" not in js("document.querySelectorAll('.library-group')[1].innerText")
+    check("接口返回不完整时明确报错，不保存假完整记录")
+    state["append_partial"] = False
 
     wait_js("!document.querySelectorAll('.library-group')[0].querySelector('button').disabled")
     group_button(0, 1)
     wait_js("document.querySelector('.library-active-test').innerText.includes('测试中')")
+    wait_js("document.querySelector('.android-main-toast:not(.library-notice)').innerText.includes('所选规则组已发送')")
+    assert js("getComputedStyle(document.querySelector('.android-main-toast:not(.library-notice)')).position === 'fixed'")
+    assert not js("Boolean(document.querySelector('.library-notice'))")
+    heading_with_test_toast = js("document.querySelector('.library-heading').getBoundingClientRect().top")
+    wait_js("!document.querySelector('.android-main-toast:not(.library-notice)')")
+    assert abs(js("document.querySelector('.library-heading').getBoundingClientRect().top") - heading_with_test_toast) < 1
     groups = state["updates"][-1]["apps"][0]["groups"]
     assert len(groups) == 2 and groups[0]["rules"][0]["matches"] == ['[text="普通候选"]']
     assert groups[1]["key"] != groups[0]["key"] and groups[1]["enable"] is True
@@ -251,9 +313,7 @@ try:
     before_mismatch = len(state["updates"])
     home()
     click(".android-target-switch button:nth-child(2)")
-    wait_js("document.querySelector('.status-badge').innerText.includes('未连接')")
-    click(".android-device-form button")
-    wait_js("document.querySelector('.status-badge').innerText.includes('已连接')")
+    wait_js("document.querySelector('.android-connection-indicator.disconnected')")
     library_app()
     assert js("document.querySelectorAll('.library-group')[0].querySelector('button').disabled")
     time.sleep(.3)
@@ -261,7 +321,7 @@ try:
     home()
     click(".android-target-switch button:nth-child(1)")
     click(".android-device-form button")
-    wait_js("document.querySelector('.status-badge').innerText.includes('已连接')")
+    wait_js("document.querySelector('.android-connection-indicator.connected')")
     library_app()
     wait_js("!document.querySelectorAll('.library-group')[0].querySelector('button').disabled")
     check("目标版本不匹配时不写入错误服务，重连正确目标可同步")
@@ -326,6 +386,16 @@ try:
     assert len(records()) == 1 and len(state["appends"]) == posts_before
     check("删除来源不修改 GKD 或固定副本记录")
     assert js("window.__qaErrors.length === 0"), js("window.__qaErrors")
+    home()
+    page.run_js("localStorage.setItem('gkd-rule-studio-library-sources', 'corrupt-cache'); localStorage.setItem('gkd-rule-studio-target-channel', 'beta');")
+    page.refresh()
+    wait_js("document.querySelector('.library-entry')")
+    click(".android-device-form button")
+    wait_js("document.querySelector('.android-main-toast:not(.library-notice)')")
+    click(".library-entry")
+    wait_js("document.querySelector('.library-notice')")
+    assert not js("Boolean(document.querySelector('.android-main-toast:not(.library-notice)'))")
+    check("首次打开时缓存错误清除首页浮层，两个提示不重叠")
     (ROOT / "browser-qa.json").write_text(json.dumps({"passed": checks, "viewport": {"width": js("window.innerWidth"), "height": js("window.innerHeight"), "pixelRatio": js("window.devicePixelRatio")}, "sourceRequests": state["requests"], "memoryWrites": len(state["updates"]), "localWrites": len(state["appends"]), "hardware": "simulated GKD fork; no adb device"}, ensure_ascii=False, indent=2), encoding="utf-8")
     print("ALL PASSED:", len(checks), flush=True)
 except Exception:

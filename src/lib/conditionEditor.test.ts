@@ -135,6 +135,46 @@ describe("condition editor public behavior", () => {
     expect(result.candidate?.rule.matches).toEqual(serializePlan(plan));
   });
 
+  it("edits startsWith and endsWith conditions used by generated candidates", () => {
+    const snapshot = buildSnapshot();
+    const plan: SelectorPlan = {
+      kind: "simple",
+      selector: {
+        typeName: "TextView",
+        conditions: [
+          { attr: "vid", op: "eq", value: "confirm" },
+          { attr: "desc", op: "startsWith", value: "确认" },
+          { attr: "visibleToUser", op: "eq", value: true },
+        ],
+      },
+    };
+    const candidate = makeCandidate(snapshot, plan);
+    const model = createConditionEditorModel(candidate);
+
+    expect(model.supported).toBe(true);
+    if (!model.supported) return;
+    expect(model.draft.target.conditions).toContainEqual({
+      attr: "desc",
+      op: "startsWith",
+      value: "确认",
+    });
+    expect(model.draft.target.visibleToUser).toBe(true);
+
+    const edited = structuredClone(model.draft);
+    edited.target.conditions = edited.target.conditions.map((condition) =>
+      condition.attr === "desc"
+        ? { ...condition, op: "endsWith", value: "操作" }
+        : condition,
+    );
+    const result = applyConditionEditorDraft({ snapshot, candidate, draft: edited });
+
+    expect(result.error).toBeUndefined();
+    expect(result.candidate?.rule.matches).toEqual([
+      'TextView[vid="confirm"][desc$="操作"][visibleToUser=true]',
+    ]);
+    expect(result.candidate?.validation.hitCount).toBe(1);
+  });
+
   it("rejects a type name that could inject selector syntax", () => {
     const snapshot = buildSnapshot();
     const candidate = makeCandidate(snapshot, {
@@ -191,7 +231,7 @@ describe("condition editor public behavior", () => {
       selector: {
         typeName: "TextView",
         conditions: [
-          { attr: "text", op: "startsWith", value: "确认" },
+          { attr: "text", op: "notStartsWith", value: "删除" },
           { attr: "visibleToUser", op: "eq", value: true },
         ],
       },
@@ -200,7 +240,7 @@ describe("condition editor public behavior", () => {
     const model = createConditionEditorModel(complex);
     expect(model.supported).toBe(false);
     if (model.supported) return;
-    expect(model.reason).toContain("startsWith");
+    expect(model.reason).toContain("notStartsWith");
 
     const markup = renderToStaticMarkup(
       createElement(ConditionEditor, {
@@ -210,7 +250,7 @@ describe("condition editor public behavior", () => {
       }),
     );
     expect(markup).toContain("高级 JSON");
-    expect(markup).toContain("startsWith");
+    expect(markup).toContain("notStartsWith");
     expect(markup).toContain("只读");
   });
 

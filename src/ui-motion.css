@@ -1,0 +1,181 @@
+:root {
+  --ui-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Keep the original HUD skin, but retain the newer interaction motion. */
+.android-button,
+.android-import-button,
+.android-icon-button {
+  transition:
+    color 160ms var(--ui-ease),
+    background-color 160ms var(--ui-ease),
+    border-color 160ms var(--ui-ease),
+    transform 120ms var(--ui-ease);
+}
+
+.android-button:active:not(:disabled),
+.android-import-button:active:not(:disabled),
+.android-icon-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.android-input,
+.android-select,
+.android-textarea {
+  transition:
+    border-color 160ms var(--ui-ease),
+    box-shadow 160ms var(--ui-ease);
+}
+
+/* New floating status message, rendered on top of the original skin. */
+.android-main-toast {
+  position: fixed;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  z-index: 80;
+  display: flex;
+  width: min(calc(100vw - 24px), 560px);
+  max-height: min(40vh, 260px);
+  align-items: flex-start;
+  gap: 8px;
+  overflow: auto;
+  padding: 10px 10px 10px 14px;
+  border: 1px solid rgba(0, 240, 255, 0.36);
+  border-radius: 0;
+  background: rgba(7, 12, 18, 0.97);
+  box-shadow:
+    0 18px 52px rgba(0, 0, 0, 0.44),
+    0 0 16px rgba(0, 240, 255, 0.08);
+  color: var(--cp-text-primary);
+  text-align: left;
+  transform: translateX(-50%);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  animation: ui-toast-in 180ms var(--ui-ease) both;
+}
+
+.android-main-toast-body {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.android-main-toast-close {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--cp-text-dim);
+  cursor: pointer;
+}
+
+.android-main-toast-close:hover {
+  background: rgba(0, 240, 255, 0.08);
+  color: var(--cp-neon-cyan);
+}
+
+/* Keep the newer AI header/button layout without overriding the old skin. */
+.android-ai-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.android-ai-heading .android-section-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.android-ai-session-trigger {
+  flex: 0 0 auto;
+}
+
+.android-ai-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 8px;
+}
+
+.android-ai-actions .android-button {
+  width: 100%;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+@keyframes ui-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.android-home > *,
+.rule-library > *,
+.android-workspace-stage,
+.android-workspace-tabs,
+.android-tab-panel {
+  animation: ui-rise 220ms var(--ui-ease) both;
+}
+
+.android-home > :nth-child(2),
+.rule-library > :nth-child(2) {
+  animation-delay: 30ms;
+}
+
+.android-home > :nth-child(3),
+.rule-library > :nth-child(3) {
+  animation-delay: 60ms;
+}
+
+.android-home > :nth-child(n + 4),
+.rule-library > :nth-child(n + 4) {
+  animation-delay: 90ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .android-home > *,
+  .rule-library > *,
+  .android-workspace-stage,
+  .android-workspace-tabs,
+  .android-tab-panel,
+  .android-main-toast {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .android-button,
+  .android-import-button,
+  .android-icon-button,
+  .android-input,
+  .android-select,
+  .android-textarea {
+    transition-duration: 0.01ms !important;
+  }
+}

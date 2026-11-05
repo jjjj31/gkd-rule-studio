@@ -1230,6 +1230,7 @@ try:
         " && JSON.parse(sessionStorage.getItem('__syntheticFeedbackAudit')).length === 1"
     )
     wait_js("document.querySelector('.user-feedback-notice')?.innerText.includes('已保留脱敏草稿')")
+    assert js("getComputedStyle(document.querySelector('.user-feedback-notice')).position === 'fixed'")
     audit = feedback_audit()
     first = audit[0]
     assert first["url"] == PRODUCTION_ENDPOINT

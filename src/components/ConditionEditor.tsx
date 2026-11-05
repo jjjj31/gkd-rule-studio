@@ -27,7 +27,12 @@ const ATTR_LABELS = {
   vid: "VID",
 } as const;
 
-const OP_LABELS = { eq: "等于", contains: "包含" } as const;
+const OP_LABELS = {
+  eq: "等于",
+  contains: "包含",
+  startsWith: "开头是",
+  endsWith: "结尾是",
+} as const;
 const EXECUTION_LABELS: Record<string, string> = {
   activityIds: "适用页面", fastQuery: "快速查询", action: "动作",
   actionDelay: "动作延迟（毫秒）", matchTime: "匹配窗口（毫秒）",
@@ -116,7 +121,7 @@ export function ConditionEditor({
     <section className="condition-editor" aria-label="条件编辑器">
       <header>
         <div>
-          <strong>编辑候选条件</strong>
+          <strong>修改定位规则</strong>
           <span>
             条件默认全部满足；每个候选点击最后一个目标。执行设置完整展示并随规则保留。
           </span>
@@ -464,7 +469,16 @@ function nodeMatches(node: NormalizedSnapshotNode, selector: ConditionEditorSele
   return selector.conditions.every((condition) => {
     const value = node.attr[condition.attr];
     if (typeof value !== "string") return false;
-    return condition.op === "eq" ? value === condition.value : value.includes(condition.value);
+    switch (condition.op) {
+      case "eq":
+        return value === condition.value;
+      case "contains":
+        return value.includes(condition.value);
+      case "startsWith":
+        return value.startsWith(condition.value);
+      case "endsWith":
+        return value.endsWith(condition.value);
+    }
   });
 }
 

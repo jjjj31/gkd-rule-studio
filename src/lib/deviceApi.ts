@@ -338,9 +338,7 @@ export async function probeDeviceOrigin(input: string): Promise<DeviceAddressPro
 
 export function formatSnapshotOption(snapshot: DeviceSnapshotSummary): string {
   const appName = snapshot.appInfo?.name ?? snapshot.appName ?? snapshot.appId;
-  return `${formatSnapshotTime(snapshot.id)} · ${appName} · ${shortActivity(
-    snapshot.activityId,
-  )}`;
+  return `${formatSnapshotTime(snapshot.id)} · ${appName}`;
 }
 
 export function formatServerTitle(serverInfo: DeviceServerInfo): string {

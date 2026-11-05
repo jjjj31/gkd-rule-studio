@@ -5,7 +5,7 @@ import { debugLog } from "./lib/debugLog";
 import { loadAiConfig, loadAiProfileStore } from "./lib/aiModel";
 import { UserFeedbackPanel } from "./components/UserFeedbackPanel";
 import "./styles.css";
-import "./ui-polish.css";
+import "./ui-motion.css";
 
 /**
  * 渲染层兜底：React 渲染抛出未捕获异常时会卸载整棵组件树，页面变成空白/黑屏（
@@ -82,7 +82,7 @@ class RenderErrorBoundary extends Component<
           >
             重新加载
           </button>
-          <button type="button" className="android-button" onClick={() => this.setState({ feedbackOpen: true })}>反馈问题</button>
+          <button type="button" className="android-button" onClick={() => this.setState({ feedbackOpen: true })}>反馈</button>
           {this.state.feedbackOpen && <UserFeedbackPanel snapshot={null} ruleText="" page="界面错误页"
             errors={String(this.state.error.stack || this.state.error.message).slice(-4000)}
             secrets={configuredFeedbackSecrets()} onClose={() => this.setState({ feedbackOpen: false })} />}

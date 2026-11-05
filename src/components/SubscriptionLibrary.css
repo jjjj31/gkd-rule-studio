@@ -7,6 +7,8 @@
 .library-heading h2 { margin: 0; font-size: 20px; }
 .library-heading p { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; overflow-wrap: anywhere; }
 .library-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.library-form label, .library-link-error { grid-column: 1 / -1; }
+.library-form [aria-invalid="true"] { border-color: var(--accent-warn); }
 .rule-library .android-input { width: 100%; min-width: 0; }
 .rule-library .android-button { min-height: 44px; justify-content: center; }
 .rule-library summary { cursor: pointer; padding: 8px 0; color: var(--text-main); }
@@ -36,6 +38,34 @@
 .library-active-test > span { font-size: 12px; color: var(--text-muted); }
 .library-raw summary { font-size: 12px; color: var(--text-muted); }
 .library-raw pre { max-height: 300px; margin: 0; padding: 10px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-3); font-size: 11px; }
-.library-notice { display: flex; justify-content: space-between; gap: 10px; overflow-wrap: anywhere; }
-.library-notice > button { flex-shrink: 0; align-self: start; min-width: 24px; min-height: 24px; background: transparent; color: inherit; cursor: pointer; }
+.library-notice {
+  position: fixed;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  z-index: 70;
+  display: flex;
+  width: min(calc(100vw - 20px), 640px);
+  max-height: min(40vh, 260px);
+  justify-content: space-between;
+  gap: 12px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  background: rgba(5, 12, 20, 0.94);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.46), 0 0 0 1px rgba(0, 240, 255, 0.08);
+  transform: translateX(-50%);
+  overflow-wrap: anywhere;
+  animation: library-notice-rise 180ms ease-out;
+}
+.library-notice > span { min-width: 0; flex: 1; }
+.library-notice > button { flex-shrink: 0; align-self: start; min-width: 28px; min-height: 28px; background: transparent; color: inherit; cursor: pointer; }
+.library-imported-button { color: var(--text-muted); cursor: default; opacity: 0.62; }
 .rule-library button:focus-visible, .rule-library input:focus-visible, .rule-library summary:focus-visible, .library-entry:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
+
+@keyframes library-notice-rise {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-notice { animation: none; }
+}

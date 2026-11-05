@@ -1,5 +1,5 @@
 import JSON5 from "json5";
-import { BookOpen, ChevronLeft, ClipboardCopy, Download, Loader2, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { BookOpen, ChevronLeft, ClipboardCopy, Download, Loader2, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "../lib/clipboard";
 import type { DeviceApiClient } from "../lib/deviceApi";
@@ -19,6 +19,7 @@ interface Props {
   loading: boolean;
   tests: LibraryTest[];
   onClose: () => void;
+  onClearMainToast: () => void;
   onTest: (selection: LibrarySelection) => Promise<void>;
   onTestResult: (status: "ended" | "valid" | "invalid") => Promise<void>;
   onSync: () => Promise<unknown>;
@@ -30,10 +31,13 @@ export function SubscriptionLibrary(props: Props) {
   const [sources, setSources] = useState(cached.sources);
   const [records, setRecords] = useState(savedImports.records);
   const [link, setLink] = useState("");
+  const [linkError, setLinkError] = useState("");
+  const linkInput = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [groupQuery, setGroupQuery] = useState("");
   const [appId, setAppId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(cached.error ?? savedImports.error ?? null);
+  const [noticePersistent, setNoticePersistent] = useState(Boolean(cached.error ?? savedImports.error));
   const [task, setTask] = useState<string | null>(null);
   const taskRef = useRef(false);
   const apps = useMemo(() => searchLibraryApps(sources, query), [sources, query]);
@@ -52,35 +56,75 @@ export function SubscriptionLibrary(props: Props) {
   }) : [];
 
   useEffect(() => {
+    if (props.active && notice) props.onClearMainToast();
+  }, [props.active, notice]);
+
+  useEffect(() => {
+    if (!notice || noticePersistent) return;
+    const timer = window.setTimeout(() => {
+      setNotice(null);
+      setNoticePersistent(false);
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [notice, noticePersistent]);
+
+  useEffect(() => {
     const pop = (event: PopStateEvent) => { setAppId(event.state?.libraryAppId ?? null); setGroupQuery(""); };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
   }, []);
 
+  function showNotice(text: string, persistent = false) {
+    props.onClearMainToast();
+    setNotice(text);
+    setNoticePersistent(persistent);
+  }
+
+  function dismissNotice() {
+    setNotice(null);
+    setNoticePersistent(false);
+  }
+
+  function testGroup(selection: LibrarySelection) {
+    dismissNotice();
+    void props.onTest(selection);
+  }
+
+  function reportTestResult(status: "ended" | "valid" | "invalid") {
+    dismissNotice();
+    void props.onTestResult(status);
+  }
+
+  function syncTests() {
+    dismissNotice();
+    void props.onSync();
+  }
+
   function openApp(id: string) {
     window.history.pushState({ ...window.history.state, gkdRuleBuilderView: "library", libraryAppId: id }, "", window.location.href);
     setAppId(id);
     setGroupQuery("");
-    setNotice(null);
+    dismissNotice();
   }
 
   async function runTask(id: string, action: () => Promise<void>) {
     if (taskRef.current) return;
     taskRef.current = true;
     setTask(id);
-    setNotice(null);
+    dismissNotice();
     try { await action(); }
-    catch (cause) { setNotice(cause instanceof Error ? cause.message : "操作失败，请重试"); }
+    catch (cause) { showNotice(cause instanceof Error ? cause.message : "操作失败，请重试", true); }
     finally { taskRef.current = false; setTask(null); }
   }
 
-  async function refresh(input: string) {
+  async function refresh(input: string, fromInput = false) {
+    if (fromInput) setLinkError("");
     await runTask(input, async () => {
       try {
         const updated = await refreshLibrarySource(sources, input);
         setSources(updated);
         setLink("");
-        setNotice("订阅已保存");
+        showNotice("订阅已保存");
       } catch (cause) {
         const error = cause instanceof Error ? cause.message : "下载失败";
         let url = input;
@@ -88,7 +132,10 @@ export function SubscriptionLibrary(props: Props) {
         const failed = sources.map((source) => source.url === url ? { ...source, error } : source);
         setSources(failed);
         try { saveLibrarySources(failed); } catch { /* The last successful cache remains available. */ }
-        throw cause;
+        if (fromInput) {
+          setLinkError(`${error}。请检查订阅文件链接后重试。`);
+          window.requestAnimationFrame(() => linkInput.current?.focus());
+        } else { throw cause; }
       }
     });
   }
@@ -99,25 +146,25 @@ export function SubscriptionLibrary(props: Props) {
       const updated = sources.filter((item) => item.url !== source.url);
       saveLibrarySources(updated);
       setSources(updated);
-      setNotice("来源已删除");
-    } catch (cause) { setNotice(cause instanceof Error ? cause.message : "删除来源失败"); }
+      showNotice("来源已删除");
+    } catch (cause) { showNotice(cause instanceof Error ? cause.message : "删除来源失败", true); }
   }
 
   async function copy(selection: LibrarySelection) {
     try {
       await copyTextToClipboard(stringifyLibrarySelection(selection));
-      setNotice("已复制");
-    } catch (cause) { setNotice(cause instanceof Error ? cause.message : "复制失败，请重试"); }
+      showNotice("已复制");
+    } catch (cause) { showNotice(cause instanceof Error ? cause.message : "复制失败，请重试", true); }
   }
 
-  async function importGroup(selection: LibrarySelection, force = false) {
+  async function importGroup(selection: LibrarySelection) {
     const client = props.client;
     if (!isBetaTarget(props.targetChannel)) { await copy(selection); return; }
-    if (!client || !targetMatches) { setNotice("未连接对应版本的 GKD"); return; }
-    if (savedImports.error) { setNotice(savedImports.error); return; }
+    if (!client || !targetMatches) { showNotice("未连接对应版本的 GKD", true); return; }
+    if (savedImports.error) { showNotice(savedImports.error, true); return; }
     const existing = records.find((record) => record.deviceOrigin === client.origin &&
       record.targetPackage === props.targetChannel && libraryContentKey(record) === libraryContentKey(selection));
-    if (existing && !force) { setNotice("已导入"); return; }
+    if (existing) { showNotice("已导入"); return; }
     await runTask(`import:${selection.id}`, async () => {
       const submittedApp = prepareLibraryAppend(selection);
       const result = await client.appendLocalRules(submittedApp).catch((cause) => {
@@ -125,7 +172,7 @@ export function SubscriptionLibrary(props: Props) {
         throw new Error(`${detail}。可使用“复制”手动添加；请求中断时请先在 GKD 核对是否已写入。`);
       });
       if (result.addedRules === 0) {
-        setNotice(`没有新增规则，跳过 ${result.skippedDuplicates} 条。请在 GKD 核对；新版追加不会覆盖旧副本。`);
+        showNotice(`没有新增规则，跳过 ${result.skippedDuplicates} 条。请在 GKD 核对；新版追加不会覆盖旧副本。`, true);
         return;
       }
       const record: LibraryImportRecord = {
@@ -139,32 +186,39 @@ export function SubscriptionLibrary(props: Props) {
       if (!record.complete) {
         throw new Error(`GKD 只写入 ${result.addedGroups} 组 / ${result.addedRules} 条，跳过 ${result.skippedDuplicates} 条；请核对规则完整性，勿盲目再次追加。`);
       }
-      setNotice(`已导入 ${result.addedGroups} 组 · ${result.addedRules} 条${submittedApp.groups[0].enable === false ? " · 默认禁用" : ""}`);
+      showNotice(`已导入 ${result.addedGroups} 组 · ${result.addedRules} 条${submittedApp.groups[0].enable === false ? " · 默认禁用" : ""}`);
     });
   }
 
   if (!props.active) return null;
 
   return (
-    <section className="rule-library" aria-label="订阅规则库">
+    <>
+      {notice && (
+        <div aria-live="polite" className="android-message android-main-toast library-notice" role="status">
+          <span className="android-main-toast-body">{notice}</span>
+          <button className="android-main-toast-close" type="button" aria-label="关闭规则库提示" onClick={dismissNotice}>
+            <X size={15} />
+          </button>
+        </div>
+      )}
+      <section className="rule-library" aria-label="订阅规则库">
       <div className="library-heading">
         <button className="android-icon-button" aria-label={appId ? "返回应用列表" : "返回首页"} type="button" onClick={() => appId ? window.history.back() : props.onClose()}><ChevronLeft size={18} /></button>
         <div><h2>{selectedApp?.name ?? "订阅规则库"}</h2>{selectedApp && <p>{selectedApp.id}</p>}</div>
       </div>
-
-      {notice && <div className="android-message library-notice" role="status">{notice}<button type="button" aria-label="关闭规则库提示" onClick={() => setNotice(null)}>×</button></div>}
 
       {activeTest && <section className="android-card library-active-test" aria-label="规则库当前测试">
         <strong>{activeTest.app.name} · {activeTest.app.groups[0].name}</strong>
         <span>{activeTest.subscriptionName} · v{activeTest.version} · {testStatusLabel(activeTest.status)}</span>
         {activeTest.error && <p className="library-error">{activeTest.error}</p>}
         <div className="library-actions">
-          <button className="android-button" disabled={busy || activeTest.status !== "testing"} onClick={() => void props.onTestResult("valid")} type="button">有效</button>
-          <button className="android-button" disabled={busy || activeTest.status !== "testing"} onClick={() => void props.onTestResult("invalid")} type="button">无效</button>
-          <button className="android-button" disabled={busy} onClick={() => void props.onTestResult("ended")} type="button">结束测试</button>
+          <button className="android-button" disabled={busy || activeTest.status !== "testing"} onClick={() => reportTestResult("valid")} type="button">有效</button>
+          <button className="android-button" disabled={busy || activeTest.status !== "testing"} onClick={() => reportTestResult("invalid")} type="button">无效</button>
+          <button className="android-button" disabled={busy} onClick={() => reportTestResult("ended")} type="button">结束测试</button>
         </div>
       </section>}
-      {props.tests.some((test) => test.error) && <button className="android-button" disabled={busy || !props.client} onClick={() => void props.onSync()} type="button">重试同步当前测试集合</button>}
+      {props.tests.some((test) => test.error) && <button className="android-button" disabled={busy || !props.client} onClick={syncTests} type="button">重试同步当前测试集合</button>}
 
       {!selectedApp && <>
         <section className="android-card library-toolbar">
@@ -173,9 +227,11 @@ export function SubscriptionLibrary(props: Props) {
         </section>
         <details className="android-card library-sources" open={sources.length === 0}>
           <summary>管理订阅来源（{sources.length}）</summary>
-          <form className="library-form" onSubmit={(event) => { event.preventDefault(); void refresh(link); }}>
-            <input className="android-input" aria-label="订阅文件链接" type="url" placeholder="粘贴订阅 JSON/JSON5 文件链接" required value={link} onChange={(event) => setLink(event.target.value)} disabled={Boolean(task)} />
-            <button className="android-button android-button-primary" disabled={busy || !link.trim()} type="submit">{task ? <Loader2 size={16} className="spinning" /> : <Plus size={16} />}{task ? "处理中…" : "添加"}</button>
+          <form className="library-form" noValidate onSubmit={(event) => { event.preventDefault(); void refresh(link, true); }}>
+            <label htmlFor="library-link">订阅文件链接（必填）</label>
+            <input id="library-link" ref={linkInput} className="android-input" aria-label="订阅文件链接" type="url" placeholder="粘贴订阅 JSON/JSON5 文件链接" required value={link} aria-invalid={Boolean(linkError)} aria-describedby={linkError ? "library-link-error" : undefined} onChange={(event) => { setLink(event.target.value); setLinkError(""); }} disabled={Boolean(task)} />
+            <button className="android-button android-button-primary" disabled={busy} type="submit">{task ? <Loader2 size={16} className="spinning" /> : <Plus size={16} />}{task ? "处理中…" : "添加"}</button>
+            {linkError && <span id="library-link-error" className="library-error library-link-error" role="alert">{linkError}</span>}
           </form>
           {sources.map((source) => <div className="library-source" key={source.url}>
             <strong>{source.subscription.name} <small>v{source.subscription.version}</small></strong>
@@ -194,8 +250,8 @@ export function SubscriptionLibrary(props: Props) {
           <span>添加订阅来源后，应用和规则会显示在这里</span>
         </div>}
         {sources.length > 0 && apps.length === 0 && <p className="android-empty library-empty">未找到应用</p>}
-        <div className="library-app-list">{apps.map((app) => <button className="android-card library-app-button" key={app.id} type="button" onClick={() => openApp(app.id)}>
-          <strong>{app.name}</strong><span className="library-url">{app.id}</span><small>{app.sourceCount} 个来源 · {app.groupCount} 个规则组</small>
+        <div className="library-app-list">{apps.map((app) => <button className="android-card library-app-button" key={app.id} title={app.id} type="button" onClick={() => openApp(app.id)}>
+          <strong>{app.name}</strong><small>{app.sourceCount} 个来源 · {app.groupCount} 个规则组</small>
         </button>)}</div>
       </>}
 
@@ -218,21 +274,27 @@ export function SubscriptionLibrary(props: Props) {
             return <article className="android-card library-group" key={index}>
               <div className="library-group-title"><h3>{inspected.name}</h3><span>{test ? testStatusLabel(test.status) : "未测试"}</span></div>
               {inspected.group?.desc && <p className="library-description">{inspected.group.desc}</p>}
-              <div className="library-group-meta">{inspected.group && <span>{inspected.group.rules.length} 条规则</span>}{inspected.group?.enable === false && <span>源规则默认禁用</span>}{imported && <span>{imported.complete === false ? "部分写入，请核对" : "已追加固定副本"} · v{imported.version}</span>}</div>
+              <div className="library-group-meta">{inspected.group && <span>{inspected.group.rules.length} 条规则</span>}{inspected.group?.enable === false && <span>源规则默认禁用</span>}{imported && <span>{imported.complete === false ? "部分写入，请核对" : "已导入固定副本"} · v{imported.version}</span>}</div>
               {error && <p className="library-error">{error}</p>}
               {test?.error && <p className="library-error">{test.error}</p>}
               <div className="library-actions">
-                <button className="android-button" type="button" disabled={!selection || busy || !targetMatches} onClick={() => selection && void props.onTest(selection)}>测试</button>
+                <button className="android-button" type="button" disabled={!selection || busy || !targetMatches} onClick={() => selection && testGroup(selection)}>测试</button>
                 <button className="android-button" type="button" disabled={!selection} onClick={() => selection && void copy(selection)}><ClipboardCopy size={14} />复制</button>
-                <button className="android-button android-button-primary" type="button" disabled={!selection || busy || (isBetaTarget(props.targetChannel) && (Boolean(savedImports.error) || !targetMatches))} onClick={() => selection && void importGroup(selection, Boolean(imported))}><Download size={14} />{isBetaTarget(props.targetChannel) ? imported ? "再次追加" : "导入" : "手动添加"}</button>
+                {isBetaTarget(props.targetChannel) ? imported ? (
+                  <button className="android-button library-imported-button" type="button" disabled>已导入</button>
+                ) : (
+                  <button className="android-button android-button-primary" type="button" disabled={!selection || busy || Boolean(savedImports.error) || !targetMatches} onClick={() => selection && void importGroup(selection)}><Download size={14} />导入</button>
+                ) : (
+                  <button className="android-button android-button-primary" type="button" disabled={!selection || busy} onClick={() => selection && void importGroup(selection)}><Download size={14} />手动添加</button>
+                )}
               </div>
               <details className="library-raw"><summary>查看规则原文</summary><pre>{JSON5.stringify(raw, null, 2)}</pre></details>
             </article>;
           })}
         </section>;
       })}
-
-    </section>
+      </section>
+    </>
   );
 }
 

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "scope": "real Firefox against synthetic GKD and feedback data; not Android device acceptance",
-  "generatedAt": "2026-11-03T14:26:08.758219+00:00",
+  "generatedAt": "2026-11-05T09:12:51.038338+00:00",
   "status": "passed",
   "viewport": {
     "width": 412,
@@ -43,7 +43,7 @@
       "id": "feedback-entry-controls",
       "title": "首页反馈入口、功能建议与 GKD 版本",
       "status": "passed",
-      "detail": "首页和面板标题均为“反馈”；分类含“希望有的功能”；连接 fixture 后显示“GKD 版本：正式版 · 1.13.0 (1130)”；诊断采集指引为小字说明"
+      "detail": "首页和面板标题均为“反馈”；分类含“希望有的功能”；连接 fixture 后显示版本“正式版 · 1.13.0 (1130)”；材料默认折叠，展开后可查看诊断导出指引"
     },
     {
       "id": "feedback-file-inputs",
@@ -76,10 +76,40 @@
       "detail": "localStorage 注入合成 API key；描述与错误均含已知密钥；截图与节点树已勾选，敏感节点已手动选择"
     },
     {
-      "id": "pointer-mask",
-      "title": "真实 pointer 在截图上绘制打码框",
+      "id": "fullscreen-mask-entry",
+      "title": "截图默认只读，打码进入独立全屏层",
       "status": "passed",
-      "detail": "Firefox actions 从 (38, 255) 拖到 (374, 353)，界面显示手动框选 1 处"
+      "detail": "材料区仅显示静态截图和“打码”按钮；全屏层覆盖 412×915 视口，底层表单 inert，焦点进入编辑器"
+    },
+    {
+      "id": "pointer-mask",
+      "title": "轻触不落框，拖动才绘制，撤销和整图遮挡可撤回",
+      "status": "passed",
+      "detail": "微小拖动、第二指针与 pointercancel 均为 0 处；真实 pointer 从 (34, 237) 拖到 (378, 338) 后为 1 处；撤销、整图遮挡、再撤销均恢复正确；Escape 回滚并归还“打码”焦点"
+    },
+    {
+      "id": "small-screen-mask",
+      "title": "360×640 窄屏仍可完整编辑",
+      "status": "passed",
+      "detail": "全屏层随视口变为 360×640；画布与“完成”按钮均在可视范围内；随后恢复 412×915"
+    },
+    {
+      "id": "reenter-undo",
+      "title": "重新进入后可以撤销已保存的手动框",
+      "status": "passed",
+      "detail": "再次进入时撤销按钮可用；撤销后取消恢复原框；再次撤销并完成会清除已保存遮罩；可重新画框"
+    },
+    {
+      "id": "snapshot-mask-isolation",
+      "title": "更换快照清空旧遮罩与节点选择",
+      "status": "passed",
+      "detail": "先取消快照再重新选择；旧图的 1 处手动画框与已选节点均归零，新截图重新加载"
+    },
+    {
+      "id": "preview-without-mask-editor",
+      "title": "不进入打码编辑器也可预览截图",
+      "status": "passed",
+      "detail": "重新选择快照后直接整理材料，预览页仍生成脱敏截图，无需打开全屏编辑器"
     },
     {
       "id": "preview-save",
@@ -142,6 +172,12 @@
       "detail": "注入 schema 损坏记录后页面给出可删除提示；删除按钮清理 IndexedDB latest"
     },
     {
+      "id": "workspace-mask-back",
+      "title": "工作区打开打码时返回只退出编辑器",
+      "status": "passed",
+      "detail": "从工作区 history entry 进入全屏打码后回退；编辑器关闭、反馈面板保留、工作区不跳回首页，临时 history 标记已清理"
+    },
+    {
       "id": "escape-close",
       "title": "Escape 可关闭反馈对话框",
       "status": "passed",
@@ -158,9 +194,9 @@
     {
       "mode": "offline",
       "url": "https://120.25.221.144/gkd-feedback/api/feedback",
-      "clientId": "569cf90f-6610-459c-a661-52b07d35542f",
-      "idempotencyKey": "569cf90f-6610-459c-a661-52b07d35542f",
-      "bodySha256": "670c7ceeda0de1e98eefbac28a181ed616a2fd9ed620dcff2f29b5ccb4fd129e",
+      "clientId": "9363547f-8188-4b24-8bdc-5a99af9a28e1",
+      "idempotencyKey": "9363547f-8188-4b24-8bdc-5a99af9a28e1",
+      "bodySha256": "503dffd1f1eef8963b4638a54e3e0532d2a33a1e12cf99add016aa86c7178cfa",
       "attachmentNames": [
         "nodes.json",
         "screenshot.png"
@@ -169,9 +205,9 @@
     {
       "mode": "offline",
       "url": "https://120.25.221.144/gkd-feedback/api/feedback",
-      "clientId": "569cf90f-6610-459c-a661-52b07d35542f",
-      "idempotencyKey": "569cf90f-6610-459c-a661-52b07d35542f",
-      "bodySha256": "670c7ceeda0de1e98eefbac28a181ed616a2fd9ed620dcff2f29b5ccb4fd129e",
+      "clientId": "9363547f-8188-4b24-8bdc-5a99af9a28e1",
+      "idempotencyKey": "9363547f-8188-4b24-8bdc-5a99af9a28e1",
+      "bodySha256": "503dffd1f1eef8963b4638a54e3e0532d2a33a1e12cf99add016aa86c7178cfa",
       "attachmentNames": [
         "nodes.json",
         "screenshot.png"
@@ -180,9 +216,9 @@
     {
       "mode": "success",
       "url": "https://120.25.221.144/gkd-feedback/api/feedback",
-      "clientId": "569cf90f-6610-459c-a661-52b07d35542f",
-      "idempotencyKey": "569cf90f-6610-459c-a661-52b07d35542f",
-      "bodySha256": "670c7ceeda0de1e98eefbac28a181ed616a2fd9ed620dcff2f29b5ccb4fd129e",
+      "clientId": "9363547f-8188-4b24-8bdc-5a99af9a28e1",
+      "idempotencyKey": "9363547f-8188-4b24-8bdc-5a99af9a28e1",
+      "bodySha256": "503dffd1f1eef8963b4638a54e3e0532d2a33a1e12cf99add016aa86c7178cfa",
       "attachmentNames": [
         "nodes.json",
         "screenshot.png"
