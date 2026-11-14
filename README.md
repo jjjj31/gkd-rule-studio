@@ -117,7 +117,7 @@
 ### 9. 应用内更新
 
 - App 内可检查新版本、下载 APK、校验 SHA256 并拉起系统安装。
-- 更新清单读取 GitHub Release 的 `latest/download/update.json`，直连失败时自动尝试镜像。
+- 更新清单读取 GitHub Release 的 `latest/download/update.json`，直连失败时依次尝试多个国内镜像；APK 下载也会按清单中的镜像回退。
 - Android 端会再次校验下载文件，校验失败会删除临时文件。
 - 本地和 CI 使用固定签名，保证覆盖安装的签名一致；发布前仍应核对版本、包名、签名和最终 APK 哈希。
 

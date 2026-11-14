@@ -14,6 +14,13 @@ export const UPDATE_CHECK_TIMEOUT_MS = 15000;
 /** 下载 APK 时的本地文件名(写入应用外部私有目录)。 */
 export const UPDATE_APK_FILE_NAME = "gkd-rule-studio-update.apk";
 
+/** GitHub Release 的国内代理前缀，顺序即回退顺序。 */
+export const UPDATE_MIRROR_PREFIXES = [
+  "https://ghproxy.net/",
+  "https://gh-proxy.com/",
+  "https://ghfast.top/",
+] as const;
+
 export interface UpdateManifest {
   versionCode: number;
   versionName: string;
@@ -115,9 +122,7 @@ export function buildDownloadUrls(manifest: UpdateManifest): string[] {
 export function buildManifestUrls(): string[] {
   return [
     UPDATE_MANIFEST_URL,
-    `https://ghproxy.net/${UPDATE_MANIFEST_URL}`,
-    `https://gh-proxy.com/${UPDATE_MANIFEST_URL}`,
-    `https://ghfast.top/${UPDATE_MANIFEST_URL}`,
+    ...UPDATE_MIRROR_PREFIXES.map((prefix) => `${prefix}${UPDATE_MANIFEST_URL}`),
   ];
 }
 

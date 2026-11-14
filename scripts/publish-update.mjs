@@ -114,12 +114,18 @@ const assetName = apkNameOverride || basename(apkPath);
 
 // 构造版本清单
 const downloadUrl = `https://github.com/${repo}/releases/download/v${versionName}/${assetName}`;
+// 与 App 的清单镜像保持一致；只发一个代理时，代理被限流会让更新下载失败。
+const mirrorPrefixes = [
+  "https://ghproxy.net/",
+  "https://gh-proxy.com/",
+  "https://ghfast.top/",
+];
 const manifest = {
   versionCode,
   versionName,
   forced: forced ? 1 : 0,
   apkUrl: downloadUrl,
-  mirrors: [`https://ghproxy.net/${downloadUrl}`],
+  mirrors: mirrorPrefixes.map((prefix) => `${prefix}${downloadUrl}`),
   sha256,
   notes: notes.length > 0 ? notes.join("\n") : undefined,
 };

@@ -20,6 +20,7 @@ import {
   KeyRound,
   ListChecks,
   Loader2,
+  Megaphone,
   MessageSquareWarning,
   Music2,
   Pencil,
@@ -190,11 +191,6 @@ import {
   type InlineTestStatus,
 } from "../lib/inlineRuleTesting";
 import { nodeLabel } from "../types/gkdSnapshot";
-import {
-  fetchUpdateManifest,
-  getAppVersionInfo,
-  isUpdateAvailable,
-} from "../lib/androidUpdater";
 import type {
   DeviceSnapshotSummary,
   NormalizedSnapshotNode,
@@ -213,8 +209,16 @@ import { RulePreviewPanel } from "./RulePreviewPanel";
 import { NodeSelectionPanel } from "./NodeSelectionPanel";
 import { ConditionEditor } from "./ConditionEditor";
 import AndroidUpdatePanel from "./AndroidUpdatePanel";
+import AnnouncementModal from "./AnnouncementModal";
 import { SubscriptionLibrary } from "./SubscriptionLibrary";
 import { UserFeedbackPanel } from "./UserFeedbackPanel";
+import {
+  type Announcement,
+  fetchAnnouncement,
+  getStoredLastReadId,
+  hasUnreadAnnouncement,
+  shouldShowAnnouncement,
+} from "../lib/announcement";
 import { buildLibraryTestSubscription } from "../lib/subscriptionTesting";
 import { libraryContentKey } from "../lib/subscriptionLibrary";
 import type { LibrarySelection, LibraryTest } from "../types/subscriptionLibrary";
@@ -358,6 +362,9 @@ export function AndroidLiteApp() {
   const [logPageOpen, setLogPageOpen] = useState(false);
   const [testPageOpen, setTestPageOpen] = useState(false);
   const [updatePanelOpen, setUpdatePanelOpen] = useState(false);
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null);
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [hasUnreadAnnouncementDot, setHasUnreadAnnouncementDot] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [userFeedback, setUserFeedback] = useState<{
     snapshot: ParsedGkdSnapshot | null;
@@ -370,7 +377,6 @@ export function AndroidLiteApp() {
   } | null>(null);
   const feedbackSnapshotRequestRef = useRef(0);
   const feedbackSnapshotUrlRef = useRef<string | null>(null);
-  const [updateSilentChecked, setUpdateSilentChecked] = useState(false);
   const [flowPreparing, setFlowPreparing] = useState(false);
   const pushedWorkspaceHistoryRef = useRef(false);
   const aiMessageTimerRef = useRef<number | null>(null);
@@ -644,38 +650,29 @@ export function AndroidLiteApp() {
     }
   }, [workspaceMode, activeTab]);
 
-  // 启动时静默检查一次更新;仅 Android 桥可用时生效。
+  // 启动时异步静默拉取软件公告（严格 2.5 秒超时与弱网保护）
   useEffect(() => {
-    if (updateSilentChecked) return;
-    if (
-      typeof window === "undefined" ||
-      typeof window.GkdAndroidBridge?.getAppUpdateInfo !== "function"
-    ) {
-      setUpdateSilentChecked(true);
-      return;
-    }
     let cancelled = false;
     void (async () => {
       try {
-        const [info, remote] = await Promise.all([
-          getAppVersionInfo(),
-          fetchUpdateManifest(),
-        ]);
-        if (cancelled) return;
-        if (isUpdateAvailable(remote, info)) {
-          setUpdatePanelOpen(true);
-          setUpdateSilentChecked(true);
+        const data = await fetchAnnouncement();
+        if (cancelled || !data) return;
+        setAnnouncement(data);
+        const lastRead = getStoredLastReadId();
+        const unread = hasUnreadAnnouncement(data, lastRead);
+        setHasUnreadAnnouncementDot(unread);
+
+        if (shouldShowAnnouncement(data, lastRead)) {
+          setAnnouncementModalOpen(true);
         }
       } catch {
-        // 静默检查失败不打扰用户,手动入口在 header。
-      } finally {
-        if (!cancelled) setUpdateSilentChecked(true);
+        // 静默保护，启动绝不报错
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [updateSilentChecked]);
+  }, []);
 
   useEffect(() => {
     if (!aiLoading || !aiRequestStartedAt) {
@@ -1093,6 +1090,23 @@ export function AndroidLiteApp() {
       showMainTransient(`已导入场景：${scenario.name}`);
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : "导入自定义场景失败");
+    }
+  }
+
+  function deleteCustomScenario(scenarioId: string): void {
+    const scenario = customScenarios.find((item) => item.id === scenarioId);
+    if (!scenario || !window.confirm(
+      `确定删除自定义场景「${scenario.name}」吗？\n仅删除场景模板，当前规则和流程步骤已应用的参数会保留。`,
+    )) return;
+
+    try {
+      const nextScenarios = customScenarios.filter((item) => item.id !== scenarioId);
+      // 持久化成功后再更新界面，写入失败时仍可重试。
+      saveCustomScenarios(nextScenarios);
+      setCustomScenarios(nextScenarios);
+      showMainTransient(`已删除场景：${scenario.name}，已应用的规则参数已保留`);
+    } catch {
+      showMainTransient("删除场景失败，请检查设备存储空间后重试。");
     }
   }
 
@@ -2421,6 +2435,29 @@ export function AndroidLiteApp() {
             >
               <Download size={16} />
             </button>
+            <button
+              aria-label="软件公告"
+              className="android-icon-button announcement-header-button"
+              type="button"
+              title="软件公告"
+              onClick={() => {
+                if (announcement) {
+                  setAnnouncementModalOpen(true);
+                } else {
+                  void fetchAnnouncement().then((data) => {
+                    if (data) {
+                      setAnnouncement(data);
+                      setAnnouncementModalOpen(true);
+                    } else {
+                      setMessage("暂无公告内容");
+                    }
+                  });
+                }
+              }}
+            >
+              <Megaphone size={16} />
+              {hasUnreadAnnouncementDot && <span className="announcement-unread-dot" />}
+            </button>
             <span
               className={`ai-status-dot ai-status-${aiConnectionStatus.status}`}
               title={
@@ -2654,6 +2691,7 @@ export function AndroidLiteApp() {
             onCustomScenarioNameChange={setCustomScenarioName}
             onCustomScenarioTextChange={setCustomScenarioText}
             onImportCustomScenario={importCustomScenario}
+            onDeleteCustomScenario={deleteCustomScenario}
             onScenarioChange={selectScenario}
           />
         )}
@@ -2859,6 +2897,13 @@ export function AndroidLiteApp() {
       )}
       {updatePanelOpen && (
         <AndroidUpdatePanel onClose={() => setUpdatePanelOpen(false)} />
+      )}
+      {announcementModalOpen && announcement && (
+        <AnnouncementModal
+          announcement={announcement}
+          onClose={() => setAnnouncementModalOpen(false)}
+          onAcknowledge={() => setHasUnreadAnnouncementDot(false)}
+        />
       )}
       {userFeedback && <UserFeedbackPanel
         snapshot={userFeedback.snapshot}
@@ -3772,6 +3817,7 @@ function AndroidScenePanel({
   onCustomScenarioNameChange,
   onCustomScenarioTextChange,
   onImportCustomScenario,
+  onDeleteCustomScenario,
 }: {
   scenarioId: string;
   customScenarios: CustomScenario[];
@@ -3785,7 +3831,12 @@ function AndroidScenePanel({
   onCustomScenarioNameChange: (value: string) => void;
   onCustomScenarioTextChange: (value: string) => void;
   onImportCustomScenario: () => void;
+  onDeleteCustomScenario: (scenarioId: string) => void;
 }) {
+  const selectedCustomScenario = customScenarios.find((item) => item.id === scenarioId);
+  const deletedScenarioSelected = !customScenarioEditorOpen && !selectedCustomScenario &&
+    !RULE_SETTINGS_PRESETS.some((item) => item.id === scenarioId);
+
   return (
     <div className="android-tab-content">
       <div className="android-section-title">
@@ -3796,6 +3847,9 @@ function AndroidScenePanel({
         value={scenarioId}
         onChange={(event) => onScenarioChange(event.target.value)}
       >
+        {deletedScenarioSelected && (
+          <option value={scenarioId} disabled>原场景已删除（保留当前参数）</option>
+        )}
         {RULE_SETTINGS_PRESETS.map((preset) => (
           <option key={preset.id} value={preset.id}>
             {preset.label}
@@ -3812,6 +3866,16 @@ function AndroidScenePanel({
         )}
         <option value={CUSTOM_SCENARIO_OPTION_ID}>添加自定义场景...</option>
       </select>
+      {selectedCustomScenario && (
+        <button
+          className="android-button android-button-danger"
+          type="button"
+          onClick={() => onDeleteCustomScenario(selectedCustomScenario.id)}
+        >
+          <Trash2 size={16} />
+          删除当前自定义场景
+        </button>
+      )}
       <RuntimeSummary settings={ruleSettings} />
       {customScenarioEditorOpen && (
         <div className="android-custom-scenario-box">
@@ -5057,6 +5121,10 @@ function AndroidFlowEditor({
               onStepScenarioChange(activeStep.id, event.target.value)
             }
           >
+            {!RULE_SETTINGS_PRESETS.some((item) => item.id === activeStep.scenarioId) &&
+              !customScenarios.some((item) => item.id === activeStep.scenarioId) && (
+                <option value={activeStep.scenarioId} disabled>原场景已删除（保留当前参数）</option>
+              )}
             {RULE_SETTINGS_PRESETS.map((preset) => (
               <option key={preset.id} value={preset.id}>
                 {preset.label}

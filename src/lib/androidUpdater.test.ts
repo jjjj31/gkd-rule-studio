@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDownloadUrls,
+  buildManifestUrls,
   downloadApk,
   isUpdateAvailable,
   parseUpdateManifest,
@@ -138,6 +139,19 @@ describe("buildDownloadUrls", () => {
       apkUrl: "https://github.com/a.apk",
     });
     expect(urls).toEqual(["https://github.com/a.apk"]);
+  });
+});
+
+describe("buildManifestUrls", () => {
+  it("直连后依次包含全部国内镜像", () => {
+    const urls = buildManifestUrls();
+    expect(urls).toHaveLength(4);
+    expect(urls[0]).toBe("https://github.com/jjjj31/gkd-rule-studio/releases/latest/download/update.json");
+    expect(urls.slice(1)).toEqual([
+      "https://ghproxy.net/https://github.com/jjjj31/gkd-rule-studio/releases/latest/download/update.json",
+      "https://gh-proxy.com/https://github.com/jjjj31/gkd-rule-studio/releases/latest/download/update.json",
+      "https://ghfast.top/https://github.com/jjjj31/gkd-rule-studio/releases/latest/download/update.json",
+    ]);
   });
 });
 

@@ -1,0 +1,101 @@
+[
+  {
+    "id": "ann-20261114075739",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "您们好",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:57:39"
+  },
+  {
+    "id": "ann-20261114075722",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "您们好",
+    "type": "notice",
+    "forced": true,
+    "updatedAt": "2026-11-14 07:57:22"
+  },
+  {
+    "id": "ann-20261114075404",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "您们好",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:54:04"
+  },
+  {
+    "id": "ann-20261114075145",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "您们好",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:51:45"
+  },
+  {
+    "id": "ann-20261114075113",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "test",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:51:13"
+  },
+  {
+    "id": "ann-20261114073734",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "这是一条来自测试的通知",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:37:34"
+  },
+  {
+    "id": "ann-20261114073120",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "test",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:31:20"
+  },
+  {
+    "id": "ann-20261114073058",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "test",
+    "type": "notice",
+    "forced": true,
+    "updatedAt": "2026-11-14 07:30:58"
+  },
+  {
+    "id": "ann-20261114072920",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "test",
+    "type": "notice",
+    "forced": true,
+    "updatedAt": "2026-11-14 07:29:20"
+  },
+  {
+    "id": "ann-20261114065944",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "这是一条来自测试的通知",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 06:59:44"
+  },
+  {
+    "id": "ann-20261114065850",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "这是一条来自测试的通知",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 06:58:50"
+  }
+]
