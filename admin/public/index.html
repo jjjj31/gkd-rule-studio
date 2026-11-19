@@ -661,7 +661,11 @@
         });
         const data = await res.json();
         if (data.success) {
-          showToast("🎉 发布成功！所有用户的手机将立即同步新内容。");
+          if (data.pushed) {
+            showToast("🎉 发布并已推送到 GitHub！由于 CDN 缓存，手机端约 1-3 分钟内收到。");
+          } else {
+            showToast("⚠️ 已保存到本地，但自动推送 GitHub 失败：" + (data.pushError || "请手动 git push"));
+          }
           loadStatus();
         } else {
           showToast(data.message || "发布失败");

@@ -25,7 +25,8 @@
     "bench:extract-rank": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts extract-rank",
     "bench:rank": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts bench/rank.bench",
     "bench:cross-version": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts bench/cross-version.bench",
-    "bench:llm": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts bench/llm.bench"
+    "bench:llm": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts bench/llm.bench",
+    "admin": "node admin/server.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

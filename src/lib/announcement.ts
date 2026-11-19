@@ -189,23 +189,30 @@ export async function fetchAnnouncement(
     ? options.endpoints
     : [...DEFAULT_ANNOUNCEMENT_ENDPOINTS];
 
-  const controller = new AbortController();
-  const timeoutTimer = setTimeout(() => {
-    controller.abort();
+  const overallController = new AbortController();
+  const overallTimer = setTimeout(() => {
+    overallController.abort();
   }, timeoutMs);
 
   if (options.signal) {
-    options.signal.addEventListener("abort", () => controller.abort());
+    options.signal.addEventListener("abort", () => overallController.abort());
   }
 
   try {
     for (const url of endpoints) {
-      if (controller.signal.aborted) break;
+      if (overallController.signal.aborted) break;
+      // 单个端点独立超时控制（1200ms），避免第一个卡死把整体时间全耗尽
+      const itemController = new AbortController();
+      const onAbort = () => itemController.abort();
+      overallController.signal.addEventListener("abort", onAbort, { once: true });
+      const itemTimer = setTimeout(() => itemController.abort(), 1200);
+
       try {
-        const res = await fetch(url, {
+        const fetchUrl = url.includes("?") ? `${url}&_t=${Date.now()}` : `${url}?_t=${Date.now()}`;
+        const res = await fetch(fetchUrl, {
           method: "GET",
           headers: { Accept: "application/json" },
-          signal: controller.signal,
+          signal: itemController.signal,
           cache: "no-cache",
         });
         if (res.ok) {
@@ -216,13 +223,16 @@ export async function fetchAnnouncement(
           }
         }
       } catch {
-        // 单个端点失败（如国内连不上直接换下一个镜像），继续尝试下一个备用地址
+        // 单个端点失败或超时，继续尝试下一个备用地址
+      } finally {
+        clearTimeout(itemTimer);
+        overallController.signal.removeEventListener("abort", onAbort);
       }
     }
   } catch {
     // 整个过程静默保护
   } finally {
-    clearTimeout(timeoutTimer);
+    clearTimeout(overallTimer);
   }
 
   // 线上全部拉取失败或超时时，降级使用离线缓存

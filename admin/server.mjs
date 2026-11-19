@@ -2,6 +2,7 @@
  * GKD Rule Studio 公告与版本管理后台服务。
  * 纯 Node 原生标准库，零外部依赖，任何服务器或本地环境即开即用。
  */
+import { exec } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -202,7 +203,31 @@ export function createAppServer() {
 
         saveAnnouncement(announcement);
         appendHistory(announcement);
-        jsonResponse(res, 200, { success: true, announcement });
+
+        // 尝试自动提交并推送到 GitHub，使手机端即刻同步（单测环境下跳过）
+        let pushed = false;
+        let pushError = "";
+        if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
+          try {
+            await new Promise((resolvePush, rejectPush) => {
+              const rootDir = resolve(__dirname, "..");
+              exec(
+                'git add announcement.json announcement-history.json && git commit -m "chore(announcement): 发布新公告 ' + newId + '" && git push origin main',
+                { cwd: rootDir },
+                (err, stdout, stderr) => {
+                  if (err) rejectPush(new Error(stderr || err.message));
+                  else resolvePush(stdout);
+                }
+              );
+            });
+            pushed = true;
+          } catch (err) {
+            pushError = err instanceof Error ? err.message : String(err);
+            console.warn("[Admin] Auto push failed:", pushError);
+          }
+        }
+
+        jsonResponse(res, 200, { success: true, announcement, pushed, pushError });
       } catch (err) {
         jsonResponse(res, 500, { success: false, message: err instanceof Error ? err.message : "保存失败" });
       }
@@ -220,7 +245,28 @@ export function createAppServer() {
         const current = loadAnnouncement();
         current.enabled = Boolean(body.enabled);
         saveAnnouncement(current);
-        jsonResponse(res, 200, { success: true, enabled: current.enabled });
+
+        let pushed = false;
+        if (process.env.NODE_ENV !== "test" && !process.env.VITEST) {
+          try {
+            await new Promise((resolvePush, rejectPush) => {
+              const rootDir = resolve(__dirname, "..");
+              exec(
+                'git add announcement.json && git commit -m "chore(announcement): 切换公告开关 (' + (current.enabled ? '启用' : '停用') + ')" && git push origin main',
+                { cwd: rootDir },
+                (err, stdout, stderr) => {
+                  if (err) rejectPush(new Error(stderr || err.message));
+                  else resolvePush(stdout);
+                }
+              );
+            });
+            pushed = true;
+          } catch (err) {
+            console.warn("[Admin] Toggle auto push failed:", err);
+          }
+        }
+
+        jsonResponse(res, 200, { success: true, enabled: current.enabled, pushed });
       } catch {
         jsonResponse(res, 400, { success: false, message: "操作失败" });
       }

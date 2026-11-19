@@ -2496,16 +2496,18 @@ export function AndroidLiteApp() {
               onClick={() => {
                 if (announcement) {
                   setAnnouncementModalOpen(true);
-                } else {
-                  void fetchAnnouncement().then((data) => {
-                    if (data) {
-                      setAnnouncement(data);
-                      setAnnouncementModalOpen(true);
-                    } else {
-                      setMessage("暂无公告内容");
-                    }
-                  });
                 }
+                // 每次点击小喇叭，异步刷新远端最新公告
+                void fetchAnnouncement().then((data) => {
+                  if (data) {
+                    setAnnouncement(data);
+                    if (!announcement) {
+                      setAnnouncementModalOpen(true);
+                    }
+                  } else if (!announcement) {
+                    setMessage("暂无公告内容");
+                  }
+                });
               }}
             >
               <Megaphone size={16} />
