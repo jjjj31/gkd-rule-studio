@@ -1,6 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">GKD Rule Studio</string>
-    <string name="skip_capture_label">跳过记录（实验）</string>
-    <string name="skip_capture_description">记录你手动点击关闭广告的控件和点击前后的界面，用于生成规则。数据只保存在本机，可随时清空或导出。</string>
 </resources>

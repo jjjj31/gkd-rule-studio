@@ -217,7 +217,6 @@ import { ConditionEditor } from "./ConditionEditor";
 import AndroidUpdatePanel from "./AndroidUpdatePanel";
 import AnnouncementModal from "./AnnouncementModal";
 import { SubscriptionLibrary } from "./SubscriptionLibrary";
-import { SkipCapturePanel } from "./SkipCapturePanel";
 import { UserFeedbackPanel } from "./UserFeedbackPanel";
 import {
   type Announcement,
@@ -276,7 +275,7 @@ export function AndroidLiteApp() {
   const clientRef = useRef<DeviceApiClient | null>(null);
   const connectionAttemptRef = useRef(0);
   const previewAutoConnectRef = useRef(false);
-  const [view, setView] = useState<"home" | "workspace" | "library" | "capture">(
+  const [view, setView] = useState<"home" | "workspace" | "library">(
     "home",
   );
   const [libraryTests, setLibraryTests] = useState<LibraryTest[]>([]);
@@ -2566,14 +2565,6 @@ export function AndroidLiteApp() {
             </span>
             <ChevronRight size={18} />
           </button>
-          <button className="android-card library-entry" type="button" onClick={() => setView("capture")}>
-            <ListChecks size={22} strokeWidth={1.5} />
-            <span>
-              <strong>跳过记录</strong>
-              <small>记录你手动关闭广告的点击，攒成规则样本</small>
-            </span>
-            <ChevronRight size={18} />
-          </button>
           <div className="android-card android-connect-card">
             <div className="android-section-title">
               <h2>HTTP 服务</h2>
@@ -2636,10 +2627,6 @@ export function AndroidLiteApp() {
         onTest={startLibraryTest} onTestResult={finishLibraryTest}
         onSync={() => syncInlineTestsToGkd(inlineTestingRef.current)}
       />
-
-      {view === "capture" && (
-        <SkipCapturePanel onClose={backHome} gkdChannel={targetChannel} />
-      )}
 
       {view === "workspace" && (
       <>
