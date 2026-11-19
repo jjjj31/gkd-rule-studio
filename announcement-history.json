@@ -1,0 +1,119 @@
+[
+  {
+    "id": "ann-20261119060341",
+    "enabled": true,
+    "title": "🎉 GKD Rule Studio 0.2.2 版本更新公告",
+    "content": "欢迎使用 GKD Rule Studio v0.2.2！\n\n【本次核心更新】\n1. 规则生成引擎全面升级：\n   - 动态识别混淆与哈希 ID 并自动降级，提取静态安全前缀；\n   - 引入跨版本层级收窄（narrowByDescendant），大幅提升跨版本规则稳定性；\n   - 端侧内置 77.5 KB 案例库与事实注入，拒绝 AI 幻觉；\n   - 外部/本地规则后置自动纠偏与静态重排打分。\n2. 纯净体验与包体瘦身：\n   - 剥离后台无障碍录制实验功能，运行更轻便安全。\n3. 新增应用内公告与更新通知体系。",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-19 06:03:41"
+  },
+  {
+    "id": "ann-20261119060322",
+    "enabled": true,
+    "title": "🎉 GKD Rule Studio 0.2.2 版本更新公告",
+    "content": "欢迎使用 GKD Rule Studio v0.2.2！\n\n【本次核心更新】\n1. 规则生成引擎全面升级：\n   - 动态识别混淆与哈希 ID 并自动降级，提取静态安全前缀；\n   - 引入跨版本层级收窄（narrowByDescendant），大幅提升跨版本规则稳定性；\n   - 端侧内置 77.5 KB 案例库与事实注入，拒绝 AI 幻觉；\n   - 外部/本地规则后置自动纠偏与静态重排打分。\n2. 纯净体验与包体瘦身：\n   - 剥离后台无障碍录制实验功能，运行更轻便安全。\n3. 新增应用内公告与更新通知体系。",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-19 06:03:22"
+  },
+  {
+    "id": "ann-20261114075739",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "您们好",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:57:39"
+  },
+  {
+    "id": "ann-20261114075722",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "您们好",
+    "type": "notice",
+    "forced": true,
+    "updatedAt": "2026-11-14 07:57:22"
+  },
+  {
+    "id": "ann-20261114075404",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "您们好",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:54:04"
+  },
+  {
+    "id": "ann-20261114075145",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "您们好",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:51:45"
+  },
+  {
+    "id": "ann-20261114075113",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "test",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:51:13"
+  },
+  {
+    "id": "ann-20261114073734",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "这是一条来自测试的通知",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:37:34"
+  },
+  {
+    "id": "ann-20261114073120",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "test",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 07:31:20"
+  },
+  {
+    "id": "ann-20261114073058",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "test",
+    "type": "notice",
+    "forced": true,
+    "updatedAt": "2026-11-14 07:30:58"
+  },
+  {
+    "id": "ann-20261114072920",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "test",
+    "type": "notice",
+    "forced": true,
+    "updatedAt": "2026-11-14 07:29:20"
+  },
+  {
+    "id": "ann-20261114065944",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "这是一条来自测试的通知",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 06:59:44"
+  },
+  {
+    "id": "ann-20261114065850",
+    "enabled": true,
+    "title": "自动化测试公告",
+    "content": "这是一条来自测试的通知",
+    "type": "notice",
+    "forced": false,
+    "updatedAt": "2026-11-14 06:58:50"
+  }
+]
