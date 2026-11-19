@@ -112,6 +112,18 @@ const sha256 = createHash("sha256").update(apkData).digest("hex");
 // 默认取 APK 路径的文件名,可用 --apk-name 覆盖。
 const assetName = apkNameOverride || basename(apkPath);
 
+// 若未显式传入 --notes，则尝试读取 announcement.json 作为默认发版说明
+if (notes.length === 0) {
+  try {
+    const ann = JSON.parse(readFileSync("announcement.json", "utf8"));
+    if (ann && typeof ann.content === "string") {
+      notes.push(ann.title ? `${ann.title}\n\n${ann.content}` : ann.content);
+    }
+  } catch {
+    // 忽略读取错误
+  }
+}
+
 // 构造版本清单
 const downloadUrl = `https://github.com/${repo}/releases/download/v${versionName}/${assetName}`;
 // 与 App 的清单镜像保持一致；只发一个代理时，代理被限流会让更新下载失败。

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <base href="__ADMIN_BASE_HREF__">
-  <title>GKD 反馈后台</title>
+  <title>GKD 管理后台</title>
   <link rel="stylesheet" href="admin/static/admin.css">
   <script src="admin/static/admin.js" defer></script>
 </head>
@@ -13,7 +13,7 @@
   <header class="topbar">
     <div>
       <p class="eyebrow">GKD RULE BUILDER</p>
-      <h1>反馈后台</h1>
+      <h1>管理后台</h1>
     </div>
     <button id="logoutButton" class="button ghost" type="button" hidden>退出登录</button>
   </header>
@@ -36,7 +36,13 @@
       </form>
     </section>
 
-    <section id="appView" class="dashboard" hidden>
+    <section id="appView" hidden>
+      <nav id="viewTabs" class="tabs" aria-label="后台功能">
+        <button class="tab active" data-view="feedback" type="button">反馈收件箱</button>
+        <button class="tab" data-view="announcement" type="button">公告与更新</button>
+      </nav>
+
+      <div id="feedbackView" class="dashboard">
       <aside class="list-panel" aria-labelledby="listTitle">
         <div class="panel-heading">
           <div>
@@ -67,6 +73,113 @@
           <p class="muted">正文、联系方式和附件只在这里向已登录管理员显示。</p>
         </div>
       </article>
+      </div>
+
+      <div id="announcementView" class="announcement-layout" hidden>
+        <section class="card" aria-labelledby="announcementFormTitle">
+          <div class="card-heading">
+            <div>
+              <p class="eyebrow">BROADCAST</p>
+              <h2 id="announcementFormTitle">发布公告 / 版本更新</h2>
+            </div>
+            <label class="switch">
+              <input id="announcementEnabled" type="checkbox">
+              <span>全网弹窗总开关</span>
+            </label>
+          </div>
+          <p id="announcementStatus" class="status-line" role="status"></p>
+
+          <div class="segmented" role="group" aria-label="公告类型">
+            <button id="typeNotice" class="segment active" data-type="notice" type="button">普通公告</button>
+            <button id="typeUpdate" class="segment" data-type="update" type="button">版本更新</button>
+          </div>
+
+          <label>
+            公告标题
+            <input id="announcementTitle" maxlength="120" placeholder="例如：关于规则库更新的说明">
+          </label>
+          <label>
+            公告正文
+            <textarea id="announcementContent" rows="7" maxlength="8000" placeholder="输入想对用户说的话；换行会保留，网址会自动变成可点击链接。"></textarea>
+          </label>
+
+          <div id="updateFields" class="field-grid" hidden>
+            <label>
+              版本号
+              <input id="announcementVersionName" maxlength="40" placeholder="0.2.2">
+            </label>
+            <label>
+              版本代码
+              <input id="announcementVersionCode" inputmode="numeric" placeholder="202">
+            </label>
+            <label class="span-2">
+              APK 下载链接
+              <input id="announcementApkUrl" placeholder="https://github.com/.../app-release.apk">
+            </label>
+            <label class="span-2">
+              APK 校验值 SHA-256
+              <input id="announcementSha256" maxlength="64" placeholder="64 位十六进制；打包脚本会输出，留空则客户端拒绝自动安装">
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label>
+              附加按钮名称（选填）
+              <input id="announcementActionText" maxlength="20" placeholder="例如：加入交流群">
+            </label>
+            <label>
+              附加按钮链接（选填）
+              <input id="announcementActionUrl" placeholder="https://...">
+            </label>
+          </div>
+
+          <label class="check">
+            <input id="announcementForced" type="checkbox">
+            <span>紧急强提醒（日常请勿勾选；开启后每次启动都会弹出）</span>
+          </label>
+
+          <div class="form-actions">
+            <button id="publishAnnouncement" class="button primary" type="button">立即发布到全网</button>
+            <button id="reloadAnnouncement" class="button ghost" type="button">重新载入</button>
+          </div>
+          <p id="announcementError" class="error" role="alert"></p>
+        </section>
+
+        <aside class="announcement-side">
+          <section class="card" aria-labelledby="previewTitle">
+            <p class="eyebrow">PREVIEW</p>
+            <h2 id="previewTitle">手机端效果</h2>
+            <div class="phone-frame">
+              <div class="phone-bar"><span>12:00</span><span>5G 100%</span></div>
+              <div class="phone-popup">
+                <div class="phone-head">
+                  <span id="previewBadge" class="phone-badge notice">📢</span>
+                  <div class="phone-title">
+                    <strong id="previewTitleText">公告标题</strong>
+                    <div class="phone-tags">
+                      <span id="previewTypeTag" class="tag">普通公告</span>
+                      <span id="previewForcedTag" class="tag danger" hidden>强提醒</span>
+                    </div>
+                  </div>
+                </div>
+                <p id="previewContent" class="phone-content">正文预览</p>
+                <div class="phone-actions">
+                  <span id="previewAction" class="button ghost small" hidden>查看详情</span>
+                  <span id="previewLater" class="button ghost small" hidden>稍后再说</span>
+                  <span id="previewMain" class="button primary small">我知道了</span>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" aria-labelledby="historyTitle">
+            <p class="eyebrow">HISTORY</p>
+            <h2 id="historyTitle">历史发布记录</h2>
+            <p class="muted">最多保留最近 50 条，可一键载入重新发布。</p>
+            <div id="announcementHistory" class="history-list"></div>
+          </section>
+        </aside>
+      </div>
     </section>
   </main>
 </body>

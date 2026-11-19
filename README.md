@@ -246,7 +246,7 @@ $env:FEEDBACK_DATA_DIR = (Join-Path $PWD 'data')
 .\.venv\Scripts\python -m unittest discover -s tests -v
 ```
 
-部署、环境变量、Docker、HTTPS 和后台管理说明见 [server/feedback/README.md](server/feedback/README.md)。
+这个服务同时是反馈收件箱和公告/版本弹窗后台：登录 `/admin` 后可在两个标签间切换，App 通过 `GET /api/announcement` 读取公告。部署、环境变量、Docker、HTTPS 和后台管理说明见 [server/feedback/README.md](server/feedback/README.md)。
 
 ## 项目结构
 
@@ -272,7 +272,7 @@ docs/               规格、研究、截图和验证记录
 4. 打 `vX.Y.Z` tag 并推送，Release workflow 会构建 APK、生成 `update.json` 并上传到 GitHub Release。
 5. 发布后从 Windows PowerShell 运行 `./scripts/windows-pnpm.ps1 run check:update`，再核对 APK 的版本、包名、签名和 SHA256。
 
-> `android/debug.keystore` 是保证覆盖安装可用的固定签名文件，不要删除或更换。本次发行版本为 `0.2.1`；安装前仍应核对 APK、`update.json` 和签名是否一致。
+> `android/debug.keystore` 是保证覆盖安装可用的固定签名文件，不要删除或更换。本次发行版本为 `0.2.2`；安装前仍应核对 APK、`update.json` 和签名是否一致。
 
 ## 当前边界与已知限制
 

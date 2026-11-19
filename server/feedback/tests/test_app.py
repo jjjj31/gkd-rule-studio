@@ -1183,6 +1183,177 @@ class FeedbackServiceTest(unittest.IsolatedAsyncioTestCase):
             ).fetchone()[0]
         self.assertIn("contact", schema)
 
+    def announcement_payload(self, **overrides) -> dict:
+        payload = {
+            "enabled": True,
+            "type": "notice",
+            "title": "测试公告",
+            "content": "这是一条测试公告正文。",
+            "forced": False,
+            "versionName": "",
+            "versionCode": "",
+            "apkUrl": "",
+            "sha256": "",
+            "actionText": "",
+            "actionUrl": "",
+        }
+        payload.update(overrides)
+        return payload
+
+    async def publish_announcement(self, cookie: str, csrf: str, **overrides) -> ASGIResponse:
+        return await self.request(
+            "POST",
+            "/admin/api/announcement",
+            body=json.dumps(self.announcement_payload(**overrides)).encode("utf-8"),
+            headers=json_headers({"Cookie": cookie, "X-CSRF-Token": csrf}),
+        )
+
+    async def test_announcement_public_endpoint_and_cors(self) -> None:
+        response = await self.request("GET", "/api/announcement")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.headers["access-control-allow-origin"], "*")
+        self.assertIn("max-age=15", response.headers["cache-control"])
+        data = response.json()
+        self.assertFalse(data["enabled"])
+        self.assertEqual(data["type"], "notice")
+
+        preflight = await self.request(
+            "OPTIONS",
+            "/api/announcement",
+            headers={"Origin": "null", "Access-Control-Request-Method": "GET"},
+        )
+        self.assertEqual(preflight.status, 204)
+        self.assertEqual(preflight.headers["access-control-allow-origin"], "*")
+        self.assertIn("GET", preflight.headers["access-control-allow-methods"])
+
+    async def test_announcement_publish_requires_login_and_csrf(self) -> None:
+        unauthenticated = await self.request(
+            "POST",
+            "/admin/api/announcement",
+            body=json.dumps(self.announcement_payload()).encode("utf-8"),
+            headers=json_headers(),
+        )
+        self.assertEqual(unauthenticated.status, 401)
+
+        cookie, _csrf = await self.login()
+        missing_csrf = await self.request(
+            "POST",
+            "/admin/api/announcement",
+            body=json.dumps(self.announcement_payload()).encode("utf-8"),
+            headers=json_headers({"Cookie": cookie}),
+        )
+        self.assertEqual(missing_csrf.status, 403)
+
+    async def test_announcement_publish_history_and_toggle(self) -> None:
+        cookie, csrf = await self.login()
+        published = await self.publish_announcement(cookie, csrf)
+        self.assertEqual(published.status, 200)
+        first = published.json()["announcement"]
+        self.assertTrue(first["id"].startswith("ann-"))
+        self.assertEqual(first["title"], "测试公告")
+        self.assertTrue(first["enabled"])
+
+        public = await self.request("GET", "/api/announcement")
+        self.assertEqual(public.json()["id"], first["id"])
+        self.assertEqual(public.json()["content"], "这是一条测试公告正文。")
+
+        status = await self.request(
+            "GET",
+            "/admin/api/announcement",
+            headers={"Cookie": cookie},
+        )
+        self.assertEqual(status.status, 200)
+        self.assertEqual(status.json()["current"]["id"], first["id"])
+        self.assertEqual(len(status.json()["history"]), 1)
+        self.assertTrue(status.json()["publicUrl"].endswith("/api/announcement"))
+
+        toggled = await self.request(
+            "POST",
+            "/admin/api/announcement/toggle",
+            body=json.dumps({"enabled": False}).encode("utf-8"),
+            headers=json_headers({"Cookie": cookie, "X-CSRF-Token": csrf}),
+        )
+        self.assertEqual(toggled.status, 200)
+        self.assertFalse(toggled.json()["enabled"])
+        public = await self.request("GET", "/api/announcement")
+        self.assertFalse(public.json()["enabled"])
+        self.assertEqual(public.json()["id"], first["id"])
+
+        republished = await self.publish_announcement(cookie, csrf, title="第二条公告")
+        self.assertEqual(republished.status, 200)
+        self.assertNotEqual(republished.json()["announcement"]["id"], first["id"])
+        status = await self.request(
+            "GET",
+            "/admin/api/announcement",
+            headers={"Cookie": cookie},
+        )
+        self.assertEqual(len(status.json()["history"]), 2)
+
+    async def test_announcement_validation(self) -> None:
+        cookie, csrf = await self.login()
+        empty_title = await self.publish_announcement(cookie, csrf, title="   ")
+        self.assertEqual(empty_title.status, 422)
+
+        update_without_apk = await self.publish_announcement(
+            cookie, csrf, type="update", versionName="0.2.2"
+        )
+        self.assertEqual(update_without_apk.status, 422)
+
+        bad_url = await self.publish_announcement(
+            cookie,
+            csrf,
+            type="update",
+            versionName="0.2.2",
+            apkUrl="javascript:alert(1)",
+        )
+        self.assertEqual(bad_url.status, 422)
+
+        bad_code = await self.publish_announcement(cookie, csrf, versionCode="abc")
+        self.assertEqual(bad_code.status, 422)
+
+    async def test_announcement_update_adds_github_mirrors(self) -> None:
+        cookie, csrf = await self.login()
+        checksum = "a" * 64
+        published = await self.publish_announcement(
+            cookie,
+            csrf,
+            type="update",
+            versionName="0.2.2",
+            versionCode="202",
+            apkUrl="https://github.com/jjjj31/gkd-rule-studio/releases/download/v0.2.2/app-release.apk",
+            sha256=checksum,
+        )
+        self.assertEqual(published.status, 200)
+        mirrors = published.json()["announcement"]["mirrors"]
+        self.assertEqual(len(mirrors), 3)
+        self.assertTrue(mirrors[0].startswith("https://ghproxy.net/https://github.com/"))
+
+        public = await self.request("GET", "/api/announcement")
+        self.assertEqual(public.json()["versionName"], "0.2.2")
+        self.assertEqual(public.json()["versionCode"], 202)
+        self.assertEqual(len(public.json()["mirrors"]), 3)
+        self.assertEqual(public.json()["sha256"], checksum)
+
+        bad_checksum = await self.publish_announcement(
+            cookie,
+            csrf,
+            type="update",
+            versionName="0.2.2",
+            apkUrl="https://example.com/app.apk",
+            sha256="not-a-checksum",
+        )
+        self.assertEqual(bad_checksum.status, 422)
+
+    async def test_announcement_toggle_without_publish_returns_404(self) -> None:
+        cookie, csrf = await self.login()
+        response = await self.request(
+            "POST",
+            "/admin/api/announcement/toggle",
+            body=json.dumps({"enabled": True}).encode("utf-8"),
+            headers=json_headers({"Cookie": cookie, "X-CSRF-Token": csrf}),
+        )
+        self.assertEqual(response.status, 404)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,12 +10,22 @@ const detailPanel = document.getElementById("detailPanel");
 const listStatus = document.getElementById("listStatus");
 const totalCount = document.getElementById("totalCount");
 const filters = Array.from(document.querySelectorAll(".filter"));
+const feedbackView = document.getElementById("feedbackView");
+const announcementView = document.getElementById("announcementView");
+const viewTabs = Array.from(document.querySelectorAll(".tab"));
+const announcementStatus = document.getElementById("announcementStatus");
+const announcementError = document.getElementById("announcementError");
+const announcementHistoryList = document.getElementById("announcementHistory");
 
 let csrfToken = "";
 let currentFilter = "all";
 let selectedId = "";
 let currentPage = 1;
 const pageSize = 50;
+let announcementType = "notice";
+let announcementHistory = [];
+let announcementLoaded = false;
+let announcementExists = false;
 
 function element(tag, className, text) {
   const node = document.createElement(tag);
@@ -69,6 +79,7 @@ async function api(path, options) {
 function showLogin() {
   csrfToken = "";
   selectedId = "";
+  announcementLoaded = false;
   appView.hidden = true;
   logoutButton.hidden = true;
   loginView.hidden = false;
@@ -268,6 +279,198 @@ function renderEmptyDetail() {
   detailPanel.append(empty);
 }
 
+function switchView(view) {
+  for (const tab of viewTabs) {
+    tab.classList.toggle("active", tab.dataset.view === view);
+  }
+  feedbackView.hidden = view !== "feedback";
+  announcementView.hidden = view !== "announcement";
+  if (view === "announcement") {
+    if (!announcementLoaded) {
+      loadAnnouncement(true);
+    } else {
+      loadAnnouncementStatus();
+    }
+  }
+}
+
+function setAnnouncementType(type) {
+  announcementType = type === "update" ? "update" : "notice";
+  document.getElementById("typeNotice").classList.toggle("active", announcementType === "notice");
+  document.getElementById("typeUpdate").classList.toggle("active", announcementType === "update");
+  document.getElementById("updateFields").hidden = announcementType !== "update";
+  renderAnnouncementPreview();
+}
+
+function announcementFormValue() {
+  return {
+    enabled: document.getElementById("announcementEnabled").checked,
+    type: announcementType,
+    title: document.getElementById("announcementTitle").value,
+    content: document.getElementById("announcementContent").value,
+    forced: document.getElementById("announcementForced").checked,
+    versionName: document.getElementById("announcementVersionName").value,
+    versionCode: document.getElementById("announcementVersionCode").value,
+    apkUrl: document.getElementById("announcementApkUrl").value,
+    sha256: document.getElementById("announcementSha256").value,
+    actionText: document.getElementById("announcementActionText").value,
+    actionUrl: document.getElementById("announcementActionUrl").value
+  };
+}
+
+function renderAnnouncementPreview() {
+  const value = announcementFormValue();
+  const isUpdate = value.type === "update";
+  document.getElementById("previewTitleText").textContent =
+    value.title.trim() || "公告标题";
+  document.getElementById("previewContent").textContent =
+    value.content.trim() || "在此处输入想传达给用户的内容…";
+  const badge = document.getElementById("previewBadge");
+  badge.textContent = isUpdate ? "🚀" : "📢";
+  badge.className = "phone-badge " + (isUpdate ? "update" : "notice");
+  const typeTag = document.getElementById("previewTypeTag");
+  typeTag.textContent = isUpdate
+    ? (value.versionName.trim() ? "v" + value.versionName.trim() : "版本更新")
+    : "普通公告";
+  typeTag.className = "tag" + (isUpdate ? " update" : "");
+  document.getElementById("previewForcedTag").hidden = !value.forced;
+  const action = document.getElementById("previewAction");
+  action.hidden = !value.actionText.trim();
+  action.textContent = (value.actionText.trim() || "查看详情") + " ↗";
+  document.getElementById("previewLater").hidden = !isUpdate || value.forced;
+  document.getElementById("previewMain").textContent = isUpdate ? "立即更新" : "我知道了";
+}
+
+function fillAnnouncementForm(current) {
+  const data = current || {};
+  const isPlaceholder = data.id === "init";
+  document.getElementById("announcementEnabled").checked = Boolean(data.enabled);
+  document.getElementById("announcementTitle").value = isPlaceholder ? "" : data.title || "";
+  document.getElementById("announcementContent").value = isPlaceholder ? "" : data.content || "";
+  document.getElementById("announcementForced").checked = Boolean(data.forced);
+  document.getElementById("announcementVersionName").value = data.versionName || "";
+  document.getElementById("announcementVersionCode").value =
+    data.versionCode === undefined || data.versionCode === null ? "" : String(data.versionCode);
+  document.getElementById("announcementApkUrl").value = data.apkUrl || "";
+  document.getElementById("announcementSha256").value = data.sha256 || "";
+  document.getElementById("announcementActionText").value = data.actionText || "";
+  document.getElementById("announcementActionUrl").value = data.actionUrl || "";
+  setAnnouncementType(data.type === "update" ? "update" : "notice");
+}
+
+function renderAnnouncementHistory() {
+  announcementHistoryList.replaceChildren();
+  if (!announcementHistory.length) {
+    announcementHistoryList.append(element("p", "muted", "还没有历史记录。"));
+    return;
+  }
+  announcementHistory.forEach(function (item, index) {
+    const row = element("div", "history-row");
+    const meta = element("div", "history-meta");
+    meta.append(
+      element("strong", "", item.title || "未命名公告"),
+      element(
+        "span",
+        "muted",
+        (item.updatedAt || "") + " · " + (item.type === "update" ? "版本更新" : "普通公告")
+      )
+    );
+    const loadButton = element("button", "button ghost small", "载入");
+    loadButton.type = "button";
+    loadButton.addEventListener("click", function () {
+      fillAnnouncementForm(item);
+      announcementError.textContent = "";
+      announcementStatus.textContent = "已载入历史内容，点击【立即发布到全网】才会生效。";
+    });
+    row.append(meta, loadButton);
+    announcementHistoryList.append(row);
+  });
+}
+
+function describeAnnouncementStatus(current) {
+  if (!current || current.id === "init") {
+    return "还没有发布过公告，用户端不会出现弹窗。";
+  }
+  if (!current.enabled) {
+    return "当前状态：已停用，全网用户看不到弹窗。";
+  }
+  if (current.forced) {
+    return "当前状态：已启用（紧急强提醒），用户每次启动都会看到。";
+  }
+  return "当前状态：已启用，用户读过后不再重复弹窗。";
+}
+
+async function loadAnnouncementStatus() {
+  try {
+    const data = await api("admin/api/announcement");
+    announcementHistory = data.history || [];
+    announcementExists = Boolean(data.current && data.current.id !== "init");
+    renderAnnouncementHistory();
+    announcementStatus.textContent = describeAnnouncementStatus(data.current);
+    return data;
+  } catch (error) {
+    announcementStatus.textContent = error.message;
+    return null;
+  }
+}
+
+async function loadAnnouncement(fillForm) {
+  announcementStatus.textContent = "加载中…";
+  const data = await loadAnnouncementStatus();
+  announcementLoaded = true;
+  if (data && fillForm) {
+    fillAnnouncementForm(data.current);
+    renderAnnouncementPreview();
+  }
+}
+
+async function publishAnnouncement() {
+  announcementError.textContent = "";
+  const value = announcementFormValue();
+  if (!value.title.trim() || !value.content.trim()) {
+    announcementError.textContent = "标题和正文都不能为空。";
+    return;
+  }
+  if (value.type === "update" && (!value.versionName.trim() || !value.apkUrl.trim())) {
+    announcementError.textContent = "版本更新必须填写版本号和 APK 下载链接。";
+    return;
+  }
+  if (value.sha256.trim() && !/^[0-9a-fA-F]{64}$/.test(value.sha256.trim())) {
+    announcementError.textContent = "SHA-256 必须是 64 位十六进制字符。";
+    return;
+  }
+  const button = document.getElementById("publishAnnouncement");
+  button.disabled = true;
+  try {
+    await api("admin/api/announcement", {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: value
+    });
+    announcementStatus.textContent = "发布成功，用户端下次打开软件即可看到。";
+    await loadAnnouncement(true);
+  } catch (error) {
+    announcementError.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function toggleAnnouncement(enabled) {
+  announcementError.textContent = "";
+  try {
+    await api("admin/api/announcement/toggle", {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+      body: { enabled: enabled }
+    });
+    await loadAnnouncementStatus();
+  } catch (error) {
+    document.getElementById("announcementEnabled").checked = !enabled;
+    announcementError.textContent = error.message;
+  }
+}
+
 async function loadDetail(id) {
   selectedId = id;
   try {
@@ -287,6 +490,7 @@ async function boot() {
     csrfToken = session.csrfToken;
     showApp();
     await loadList();
+    await loadAnnouncementStatus();
     const requestedId = new URLSearchParams(window.location.search).get("feedback");
     if (requestedId) await loadDetail(requestedId);
   } catch (error) {
@@ -358,5 +562,38 @@ for (const entry of [["previousPage", -1], ["nextPage", 1]]) {
     loadList();
   });
 }
+
+for (const tab of viewTabs) {
+  tab.addEventListener("click", function () {
+    switchView(tab.dataset.view);
+  });
+}
+
+for (const typeButton of [document.getElementById("typeNotice"), document.getElementById("typeUpdate")]) {
+  typeButton.addEventListener("click", function () {
+    setAnnouncementType(typeButton.dataset.type);
+  });
+}
+
+for (const inputId of [
+  "announcementTitle",
+  "announcementContent",
+  "announcementVersionName",
+  "announcementApkUrl",
+  "announcementActionText"
+]) {
+  document.getElementById(inputId).addEventListener("input", renderAnnouncementPreview);
+}
+document.getElementById("announcementForced").addEventListener("change", renderAnnouncementPreview);
+document.getElementById("publishAnnouncement").addEventListener("click", publishAnnouncement);
+document.getElementById("reloadAnnouncement").addEventListener("click", function () {
+  announcementError.textContent = "";
+  loadAnnouncement(true);
+});
+document.getElementById("announcementEnabled").addEventListener("change", function (event) {
+  if (announcementExists) {
+    toggleAnnouncement(event.target.checked);
+  }
+});
 
 boot();

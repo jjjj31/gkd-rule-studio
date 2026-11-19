@@ -43,11 +43,10 @@ export const ANNOUNCEMENT_DEFAULT_TIMEOUT_MS = 2500;
 
 /** 默认公告拉取地址（主站及备用源）。 */
 export const DEFAULT_ANNOUNCEMENT_ENDPOINTS = [
-  "http://127.0.0.1:8421/api/announcement",
-  "https://notice.kmttjnm.me/api/announcement",
   "https://raw.githubusercontent.com/jjjj31/gkd-rule-studio/main/announcement.json",
   "https://ghproxy.net/https://raw.githubusercontent.com/jjjj31/gkd-rule-studio/main/announcement.json",
   "https://ghfast.top/https://raw.githubusercontent.com/jjjj31/gkd-rule-studio/main/announcement.json",
+  "https://feedback.kmttjnm.me/api/announcement",
 ] as const;
 
 /** 读取本地存储的已读公告 ID。 */

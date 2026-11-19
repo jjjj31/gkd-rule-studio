@@ -172,14 +172,30 @@ docker start gkd-feedback
 
 回滚应用时重新运行上一版镜像即可；数据库结构由服务启动时的幂等建表语句初始化。生产升级前仍应先做上述冷备份。
 
+## 公告与版本弹窗
+
+反馈服务同时托管 App 的公告弹窗数据，反馈与公告共用同一个后台、同一次登录和同一套 CSRF 校验。
+
+- 后台入口仍是 `/admin`，登录后可在「反馈收件箱」和「公告与更新」两个标签之间切换。
+- 公开读取接口是 `GET /api/announcement`，返回 `id / enabled / title / content / type / forced / updatedAt`，版本更新时附带 `versionName / versionCode / apkUrl / mirrors`。该接口允许任意 Origin 读取（数据本身公开），并带 15 秒缓存。
+- 公告数据存在同一个 SQLite 的 `announcement`（当前生效一条）和 `announcement_history`（最近 50 条）表中，不额外引入文件或服务。
+- 每次发布都会生成新的 `announcement.id`，App 只在发现新 id 时弹一次；`forced` 为真时每次启动都弹。
+- 后台顶部的「全网弹窗总开关」调用 `POST /admin/api/announcement/toggle`，只改 `enabled`、不换 id，因此重新开启不会让已读用户再弹一次。
+- 版本更新选择 GitHub Release 直链时，服务端自动补上 ghproxy.net、gh-proxy.com、ghfast.top 三个镜像，App 下载失败会依次回退。
+- 客户端没有可用的公告数据时会静默回退到本地缓存，绝不因为拉取失败弹网络错误。
+
 ## 接口
 
 - GET /healthz
+- GET /api/announcement
 - POST /api/feedback
 - GET /admin
 - POST /admin/api/login
 - GET /admin/api/session
 - POST /admin/api/logout
+- GET /admin/api/announcement
+- POST /admin/api/announcement
+- POST /admin/api/announcement/toggle
 - GET /admin/api/feedback
 - GET/PATCH/DELETE /admin/api/feedback/{id}
 - GET /admin/api/feedback/{id}/attachments/{attachmentId}

@@ -111,6 +111,44 @@ CREATE TABLE IF NOT EXISTS feedback_budget (
 );
 CREATE INDEX IF NOT EXISTS feedback_budget_day_idx
     ON feedback_budget(utc_day);
+
+CREATE TABLE IF NOT EXISTS announcement (
+    slot INTEGER PRIMARY KEY CHECK (slot = 1),
+    id TEXT NOT NULL,
+    enabled INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('notice', 'update')),
+    forced INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    version_name TEXT,
+    version_code INTEGER,
+    apk_url TEXT,
+    mirrors_json TEXT,
+    sha256 TEXT,
+    action_url TEXT,
+    action_text TEXT
+);
+
+CREATE TABLE IF NOT EXISTS announcement_history (
+    id TEXT PRIMARY KEY,
+    enabled INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    type TEXT NOT NULL,
+    forced INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    version_name TEXT,
+    version_code INTEGER,
+    apk_url TEXT,
+    mirrors_json TEXT,
+    sha256 TEXT,
+    action_url TEXT,
+    action_text TEXT,
+    published_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS announcement_history_published_idx
+    ON announcement_history(published_at DESC);
 """
 
 
@@ -1289,6 +1327,295 @@ def _attachment_headers(name: str) -> dict[str, str]:
     }
 
 
+ANNOUNCEMENT_TITLE_LIMIT = 120
+ANNOUNCEMENT_CONTENT_LIMIT = 8000
+ANNOUNCEMENT_URL_LIMIT = 500
+ANNOUNCEMENT_MIRROR_LIMIT = 5
+ANNOUNCEMENT_HISTORY_LIMIT = 50
+GITHUB_MIRROR_PREFIXES = (
+    "https://ghproxy.net/",
+    "https://gh-proxy.com/",
+    "https://ghfast.top/",
+)
+ANNOUNCEMENT_FIELDS = (
+    "enabled",
+    "type",
+    "title",
+    "content",
+    "forced",
+    "versionName",
+    "versionCode",
+    "apkUrl",
+    "sha256",
+    "actionText",
+    "actionUrl",
+)
+ANNOUNCEMENT_DEFAULT = {
+    "id": "init",
+    "enabled": False,
+    "title": "暂无公告",
+    "content": "作者暂时没有发布新的公告。",
+    "type": "notice",
+    "forced": False,
+    "updatedAt": "",
+}
+
+
+def _http_url(value: str, field: str) -> str:
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise HTTPException(422, f"{field} 必须是 HTTP(S) 链接")
+    if parsed.username or parsed.password:
+        raise HTTPException(422, f"{field} 不能包含账号信息")
+    return value
+
+
+def _announcement_public(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        return dict(ANNOUNCEMENT_DEFAULT)
+    mirrors: list[str] = []
+    if row["mirrors_json"]:
+        try:
+            parsed = json.loads(row["mirrors_json"])
+            if isinstance(parsed, list):
+                mirrors = [item for item in parsed if isinstance(item, str)]
+        except (TypeError, json.JSONDecodeError):
+            mirrors = []
+    result: dict[str, Any] = {
+        "id": row["id"],
+        "enabled": bool(row["enabled"]),
+        "title": row["title"],
+        "content": row["content"],
+        "type": row["type"],
+        "forced": bool(row["forced"]),
+        "updatedAt": row["updated_at"],
+    }
+    if row["version_name"]:
+        result["versionName"] = row["version_name"]
+    if row["version_code"]:
+        result["versionCode"] = row["version_code"]
+    if row["apk_url"]:
+        result["apkUrl"] = row["apk_url"]
+    if mirrors:
+        result["mirrors"] = mirrors
+    if row["sha256"]:
+        result["sha256"] = row["sha256"]
+    if row["action_url"]:
+        result["actionUrl"] = row["action_url"]
+    if row["action_text"]:
+        result["actionText"] = row["action_text"]
+    return result
+
+
+def _current_announcement_row(settings: Settings) -> sqlite3.Row | None:
+    with closing(connect_db(settings.db_path)) as db:
+        return db.execute(
+            "SELECT * FROM announcement WHERE slot = 1"
+        ).fetchone()
+
+
+def _announcement_history(settings: Settings) -> list[dict[str, Any]]:
+    with closing(connect_db(settings.db_path)) as db:
+        rows = db.execute(
+            """
+            SELECT * FROM announcement_history
+            ORDER BY published_at DESC
+            LIMIT ?
+            """,
+            (ANNOUNCEMENT_HISTORY_LIMIT,),
+        ).fetchall()
+    return [_announcement_public(row) for row in rows]
+
+
+def validate_announcement_payload(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise HTTPException(422, "请求体必须是 JSON 对象")
+    _exact_keys(value, set(ANNOUNCEMENT_FIELDS), "请求体")
+    if type(value["enabled"]) is not bool:
+        raise HTTPException(422, "enabled 必须是布尔值")
+    if type(value["forced"]) is not bool:
+        raise HTTPException(422, "forced 必须是布尔值")
+    kind = value["type"]
+    if not isinstance(kind, str) or kind not in {"notice", "update"}:
+        raise HTTPException(422, "type 必须为 notice 或 update")
+    title = _valid_text(value["title"], ANNOUNCEMENT_TITLE_LIMIT, "title", allow_empty=False).strip()
+    content = _valid_text(
+        value["content"], ANNOUNCEMENT_CONTENT_LIMIT, "content", allow_empty=False
+    ).strip()
+
+    version_name = _valid_text(value["versionName"], 40, "versionName").strip()
+    apk_url = _valid_text(value["apkUrl"], ANNOUNCEMENT_URL_LIMIT, "apkUrl").strip()
+    sha256 = _valid_text(value["sha256"], 64, "sha256").strip().lower()
+    action_text = _valid_text(value["actionText"], 20, "actionText").strip()
+    action_url = _valid_text(value["actionUrl"], ANNOUNCEMENT_URL_LIMIT, "actionUrl").strip()
+    if sha256 and not re.fullmatch(r"[0-9a-f]{64}", sha256):
+        raise HTTPException(422, "sha256 必须是 64 位十六进制字符串")
+
+    raw_code = value["versionCode"]
+    version_code: int | None = None
+    if isinstance(raw_code, str) and raw_code.strip():
+        if not raw_code.strip().isdigit():
+            raise HTTPException(422, "versionCode 必须是正整数")
+        version_code = int(raw_code.strip())
+    elif isinstance(raw_code, int) and type(raw_code) is int:
+        version_code = raw_code
+    elif raw_code not in (None, ""):
+        raise HTTPException(422, "versionCode 必须是正整数")
+    if version_code is not None and not 1 <= version_code <= 2_100_000_000:
+        raise HTTPException(422, "versionCode 超出范围")
+
+    if kind == "update":
+        if not version_name:
+            raise HTTPException(422, "版本更新必须填写 versionName")
+        if not apk_url:
+            raise HTTPException(422, "版本更新必须填写 apkUrl")
+    if apk_url:
+        _http_url(apk_url, "apkUrl")
+    if action_url:
+        _http_url(action_url, "actionUrl")
+    if action_text and not action_url:
+        raise HTTPException(422, "填写按钮名称时必须同时填写链接")
+    if action_url and not action_text:
+        raise HTTPException(422, "填写链接时必须同时填写按钮名称")
+
+    mirrors: list[str] = []
+    if apk_url.startswith("https://github.com/"):
+        mirrors = [prefix + apk_url for prefix in GITHUB_MIRROR_PREFIXES]
+    if len(mirrors) > ANNOUNCEMENT_MIRROR_LIMIT:
+        mirrors = mirrors[:ANNOUNCEMENT_MIRROR_LIMIT]
+
+    return {
+        "enabled": value["enabled"],
+        "type": kind,
+        "title": title,
+        "content": content,
+        "forced": value["forced"],
+        "versionName": version_name or None,
+        "versionCode": version_code,
+        "apkUrl": apk_url or None,
+        "sha256": sha256 or None,
+        "mirrors": mirrors,
+        "actionText": action_text or None,
+        "actionUrl": action_url or None,
+    }
+
+
+def publish_announcement(
+    settings: Settings, payload: dict[str, Any]
+) -> dict[str, Any]:
+    now = time.gmtime()
+    stamp = time.strftime("%Y%m%d%H%M%S", now)
+    announcement_id = "ann-" + stamp + "-" + secrets.token_hex(2)
+    updated_at = time.strftime("%Y-%m-%d %H:%M:%S", now)
+    mirrors_json = (
+        json.dumps(payload["mirrors"], ensure_ascii=False)
+        if payload["mirrors"]
+        else None
+    )
+    with closing(connect_db(settings.db_path)) as db:
+        db.execute(
+            """
+            INSERT INTO announcement (
+                slot, id, enabled, title, content, type, forced, updated_at,
+                version_name, version_code, apk_url, mirrors_json, sha256,
+                action_url, action_text
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(slot) DO UPDATE SET
+                id = excluded.id,
+                enabled = excluded.enabled,
+                title = excluded.title,
+                content = excluded.content,
+                type = excluded.type,
+                forced = excluded.forced,
+                updated_at = excluded.updated_at,
+                version_name = excluded.version_name,
+                version_code = excluded.version_code,
+                apk_url = excluded.apk_url,
+                mirrors_json = excluded.mirrors_json,
+                sha256 = excluded.sha256,
+                action_url = excluded.action_url,
+                action_text = excluded.action_text
+            """,
+            (
+                announcement_id,
+                int(payload["enabled"]),
+                payload["title"],
+                payload["content"],
+                payload["type"],
+                int(payload["forced"]),
+                updated_at,
+                payload["versionName"],
+                payload["versionCode"],
+                payload["apkUrl"],
+                mirrors_json,
+                payload["sha256"],
+                payload["actionUrl"],
+                payload["actionText"],
+            ),
+        )
+        db.execute(
+            """
+            INSERT OR REPLACE INTO announcement_history (
+                id, enabled, title, content, type, forced, updated_at,
+                version_name, version_code, apk_url, mirrors_json, sha256,
+                action_url, action_text, published_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                announcement_id,
+                int(payload["enabled"]),
+                payload["title"],
+                payload["content"],
+                payload["type"],
+                int(payload["forced"]),
+                updated_at,
+                payload["versionName"],
+                payload["versionCode"],
+                payload["apkUrl"],
+                mirrors_json,
+                payload["sha256"],
+                payload["actionUrl"],
+                payload["actionText"],
+                _now(),
+            ),
+        )
+        db.execute(
+            """
+            DELETE FROM announcement_history WHERE id NOT IN (
+                SELECT id FROM announcement_history
+                ORDER BY published_at DESC
+                LIMIT ?
+            )
+            """,
+            (ANNOUNCEMENT_HISTORY_LIMIT,),
+        )
+        db.commit()
+    return {
+        "id": announcement_id,
+        "enabled": payload["enabled"],
+        "title": payload["title"],
+        "content": payload["content"],
+        "type": payload["type"],
+        "forced": payload["forced"],
+        "updatedAt": updated_at,
+        **(
+            {"versionName": payload["versionName"]}
+            if payload["versionName"]
+            else {}
+        ),
+        **(
+            {"versionCode": payload["versionCode"]}
+            if payload["versionCode"]
+            else {}
+        ),
+        **({"apkUrl": payload["apkUrl"]} if payload["apkUrl"] else {}),
+        **({"mirrors": payload["mirrors"]} if payload["mirrors"] else {}),
+        **({"sha256": payload["sha256"]} if payload["sha256"] else {}),
+        **({"actionUrl": payload["actionUrl"]} if payload["actionUrl"] else {}),
+        **({"actionText": payload["actionText"]} if payload["actionText"] else {}),
+    }
+
+
 def _session_from_request(
     request: Request, settings: Settings
 ) -> tuple[sqlite3.Row | None, str | None]:
@@ -1400,6 +1727,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         public_feedback = request.url.path == "/api/feedback"
         public_cors = public_feedback and origin_allowed
+        public_announcement = request.url.path == "/api/announcement"
+        announcement_headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Accept",
+            "Access-Control-Max-Age": "600",
+        }
         cors_headers = {
             "Access-Control-Allow-Origin": origin or "null",
             "Access-Control-Allow-Methods": "POST, OPTIONS",
@@ -1411,6 +1745,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return Response(status_code=204, headers=cors_headers)
         if public_cors and request.method == "OPTIONS":
             return Response(status_code=204, headers=cors_headers)
+        if public_announcement and request.method == "OPTIONS":
+            return Response(status_code=204, headers=announcement_headers)
 
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -1434,6 +1770,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 response.headers["Cache-Control"] = "no-store"
         if public_cors:
             response.headers.update(cors_headers)
+        if public_announcement:
+            response.headers.update(announcement_headers)
+            response.headers["Cache-Control"] = (
+                "public, max-age=15, stale-while-revalidate=60"
+            )
         return response
 
     @app.get("/healthz")
@@ -1442,6 +1783,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "status": "ok",
             "smtp_configured": smtp_configured(settings),
         }
+
+    @app.get("/api/announcement")
+    async def public_announcement() -> dict[str, Any]:
+        row = await asyncio.to_thread(_current_announcement_row, settings)
+        return _announcement_public(row)
 
     @app.post("/api/feedback")
     async def submit_feedback(request: Request) -> JSONResponse:
@@ -1542,6 +1888,54 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response = Response(status_code=204)
         _clear_session_cookie(response, settings)
         return response
+
+    @app.get("/admin/api/announcement")
+    async def admin_announcement(request: Request) -> dict[str, Any]:
+        _require_session(request, settings)
+        row = await asyncio.to_thread(_current_announcement_row, settings)
+        history = await asyncio.to_thread(_announcement_history, settings)
+        return {
+            "current": _announcement_public(row),
+            "history": history,
+            "publicUrl": urljoin(
+                settings.public_base_url, "api/announcement"
+            ),
+        }
+
+    @app.post("/admin/api/announcement")
+    async def admin_publish_announcement(request: Request) -> dict[str, Any]:
+        session = _require_session(request, settings)
+        _require_csrf(request, session)
+        payload = await read_json_body(request, limit=64 * 1024)
+        normalized = validate_announcement_payload(payload)
+        announcement = await asyncio.to_thread(
+            publish_announcement, settings, normalized
+        )
+        return {"ok": True, "announcement": announcement}
+
+    @app.post("/admin/api/announcement/toggle")
+    async def admin_toggle_announcement(request: Request) -> dict[str, Any]:
+        session = _require_session(request, settings)
+        _require_csrf(request, session)
+        payload = await read_json_body(request, limit=4096)
+        if not isinstance(payload, dict) or set(payload) != {"enabled"}:
+            raise HTTPException(422, "只接受 enabled 字段")
+        if type(payload["enabled"]) is not bool:
+            raise HTTPException(422, "enabled 必须是布尔值")
+
+        def apply_toggle() -> bool:
+            with closing(connect_db(settings.db_path)) as db:
+                updated = db.execute(
+                    "UPDATE announcement SET enabled = ? WHERE slot = 1",
+                    (int(payload["enabled"]),),
+                )
+                db.commit()
+                return updated.rowcount == 1
+
+        exists = await asyncio.to_thread(apply_toggle)
+        if not exists:
+            raise HTTPException(404, "还没有发布过公告")
+        return {"ok": True, "enabled": payload["enabled"]}
 
     @app.get("/admin/api/feedback")
     async def admin_feedback_list(
