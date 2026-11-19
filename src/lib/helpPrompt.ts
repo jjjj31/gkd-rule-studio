@@ -10,6 +10,46 @@ import type {
 } from "../types/gkdSnapshot";
 import type { PromptScenarioInfo, RuleSettings } from "../types/ruleDraft";
 import { AI_RULE_OUTPUT_CONTRACT, AI_RULE_OUTPUT_EXAMPLE } from "./aiRuleContract";
+import {
+  formatFewShotExamples,
+  retrieveOnDeviceFewShot,
+  type FewShotHit,
+} from "./fewShotRetrieval";
+import { buildVisualTargetIds } from "./visualTarget";
+
+const GKD_RULE_HARD_RULES = [
+  "硬规则（违反任一条都视为无效输出）：",
+  "- 第一条候选（candidate-a）必须命中 pickedNode 本身、与它矩形重合的视觉摞，或它的 clickable 父容器；禁止用同屏标题、兄弟 CTA、无关关闭图标代替目标。",
+  "- 属性名和值必须原样照抄节点树：树里写 id=... 就用 [id=\"...\"]；树里写 vid=... 才用 [vid=\"...\"]。不要把 id 的包名前缀去掉改成 vid。",
+  "- 本任务只允许使用材料中出现的 selector 属性：id、vid、text、desc、clickable、visibleToUser、childCount、index、depth、left、top、right、bottom、width、height。禁止 [bounds=...]、[class=...]；控件类名只能作为类型前缀。",
+  "- 点击目标：如果文字节点的 clickable=false，而父/祖先有 clickable=true，优先写 @[clickable=true] > [text=\"...\"]，或直接选可点击父容器；不要只选不可点击的文字子节点。",
+  "- 如果写成 Parent > Child，且 Parent 是 clickable=true、Child 是 clickable=false，必须在 Parent 前加 @；没有 @ 时点击目标是 Child。",
+  "- > 只匹配直接子节点；文字在孙节点时，用 @[clickable=true] > * > [text=\"...\"] 或 @[clickable=true] [text=\"...\"]（空格后代），不要盲写 > 导致 0 命中。",
+  "- 正向 CTA（下载/安装/打开/查看详情/立即购买等）只能作为上下文锚点，不能作为点击目标；如果 selector 的唯一命中是正向 CTA，action 必须是 back 或 none，不能 click/clickCenter。",
+  "- 几何属性只能作为已有 text/id/vid/desc 锚点之后的次级过滤；不要单独用 [clickable=true][right=...][top=...] 作为主选择器。",
+  "- 多分支请用 anyMatches 数组；不要把顶层逗号写进单条 selector。",
+  "- 输出要短：summary 和 risk 各不超过 1 句话；默认 3 个候选，不要为了凑数输出第 4 个；接近长度限制时优先保证 JSON 完整闭合。",
+];
+
+const GKD_RULE_CONTRAST_EXAMPLES = [
+  "高频错误对照（只学写法，不要照抄示例里的值）：",
+  "- 树里是 #8 Button id=com.demo:id/tv_cancel text=\"取消\"：写 [id=\"com.demo:id/tv_cancel\"]，不要写 [vid=\"tv_cancel\"]。",
+  "- 目标是 #13 LinearLayout clickable=true，文字在 #15 TextView clickable=false：写 @[clickable=true] > [text=\"不感兴趣\"]，不要只写 [text=\"不感兴趣\"]。",
+  "- 树里只给 bounds=...：不要写 [bounds=...]；用 text/id/vid/desc，几何属性只做次级过滤。",
+];
+
+const GKD_RULE_SELF_CHECK = [
+  "输出前自检（在内部完成，不要输出自检过程）：",
+  "1. 每个 [vid=...] 对应的节点行真的有 vid= 吗？只有 id= 的必须写 [id=...]。",
+  "2. selector 里有没有 bounds/class？",
+  "3. 第一条候选是否命中 pickedNode 本身、视觉摞或 clickable 父容器？有没有跳到同屏标题、兄弟 CTA、无关关闭图标？",
+  "4. 如果用了 Parent > Child，Parent clickable 且 Child 不可点击，Parent 前有没有 @？",
+  "5. > 是否只用于直接子节点？文字在孙节点时有没有用 > * > 或空格后代？",
+  "6. 最终点击节点是 clickable=true 吗？如果是 clickable=false 的文字子节点，父链有 clickable=true 吗？有就写 @[clickable=true] > ...。",
+  "7. 有没有把正向 CTA 当成点击目标？",
+  "8. 多分支是否放进了 anyMatches，而不是单条 selector 的顶层逗号？",
+  "9. 只输出一个 json5 代码块，candidates 2-4 个。",
+];
 
 interface PromptInput {
   snapshot: ParsedGkdSnapshot | null;
@@ -17,13 +57,25 @@ interface PromptInput {
   ruleSettings: RuleSettings;
   /** false 时省略内嵌节点树（复制给外部 AI 时用，节点树由导出文件携带），默认 true。 */
   includeNodeTree?: boolean;
+  /** true 时输出完整节点树，不按 220 节点截断；仅用于全树实验。 */
+  includeFullTree?: boolean;
   /** 当前选择的场景（预设/自定义）名称与说明，帮助 AI 理解运行参数的来由。 */
   scenario?: PromptScenarioInfo;
+  /** 从官方真值库检索到的相似案例；只教写法，不替代当前快照上下文。 */
+  fewShotExamples?: FewShotHit[];
 }
 
 /** 单步求助 prompt 入口：快照+选点+候选+设置 → 格式化文字。包装了场景、节点树、现有候选和兜底策略。 */
 export function buildHelpPrompt(input: PromptInput): string {
-  const { snapshot, pickResult, ruleSettings, includeNodeTree = true, scenario } = input;
+  const {
+    snapshot,
+    pickResult,
+    ruleSettings,
+    includeNodeTree = true,
+    includeFullTree = false,
+    scenario,
+    fewShotExamples,
+  } = input;
 
   if (!snapshot) {
     return "请先导入或连接设备加载一个 GKD 快照。";
@@ -33,7 +85,7 @@ export function buildHelpPrompt(input: PromptInput): string {
     "你是 GKD 规则专家。请根据下面的快照信息，为我生成稳定、低误触、尽量省电的 GKD 应用规则 JSON5。",
     "",
     "重要原则：",
-    "- 不要把当前 pickedNode 当成唯一正确目标。用户点击只是手指常点的大概区域，同一可视区域可能有多个节点、父子层、遮罩层和真实按钮层，必须结合节点树、bounds、clickable、id/vid/text、父子关系判断哪个节点最像真实点击目标。",
+    "- pickedNode 是用户选中的目标区域，不是可以随意跳过的参考。第一条候选必须命中 pickedNode 本身，或与它矩形重合的视觉摞/它的 clickable 父容器；只有材料明确显示遮罩层、WebView 遮挡或真实按钮层时，才允许改点父子层。禁止用同屏标题、兄弟 CTA、无关关闭图标代替目标。",
     "- 不要因为单次 exact text 命中就忽略倒计时、WebView 遮挡、广告热区和 action 执行策略。",
     "",
     "要求：",
@@ -45,14 +97,19 @@ export function buildHelpPrompt(input: PromptInput): string {
     "- 说明 selector 为什么稳定，以及还需要人工确认的风险。",
     "- 输出可放入订阅仓库的 JSON5 规则片段，并保留必要的省电参数。",
     "",
+    ...GKD_RULE_HARD_RULES,
+    "",
+    ...GKD_RULE_CONTRAST_EXAMPLES,
+    "",
     "输出格式（严格按此格式输出，否则提取失败）：",
     "1. 所有测试版必须放在唯一一个 ```json5 代码块中，块内是一个 JSON 对象：{ candidates: [{ id, title, summary, risk, app }] }。candidates 数量 2-4 个。",
     "2. 每个候选的 id 使用 candidate-a/candidate-b 稳定短 id；title 使用“测试版 A / 测试版 B / 测试版 C”这种唯一短名称。",
     "3. app 必须是完整的 GKD 规则对象 { id, name, groups }，groups[].rules[].matches 是字符串数组。",
-    "4. summary 用 1-2 句说明验证思路和可能失败点；risk 说明误触风险。",
-    "5. 测试版应覆盖：A=保守方案(高置信稳定 selector)，B=同框节点/父节点/真实按钮层验证，C=调整 actionDelay/actionCd/actionMaximum 等执行参数；如有 WebView/遮罩证据才加 D=广告容器兜底。",
-    "6. 代码块之后附上“测试反馈格式”，要求用户反馈测试版编号、是否触发、是否关闭、是否误触、失败页面等信息。",
-    "7. 不要输出节点树复述、不要输出无关长解释。不要加多个代码块——只允许一个 ```json5 块。",
+    "4. summary 用 1 句话（≤60 字）说明验证思路和可能失败点；risk 用 1 句话（≤60 字）说明误触风险。",
+    "5. 测试版默认 3 个：A=保守方案(高置信稳定 selector)，B=同框节点/父节点/真实按钮层验证，C=调整 actionDelay/actionCd/actionMaximum 等执行参数；只有材料明确显示需要广告容器兜底时才加 D，不要为了凑数输出 4 个。",
+    "6. 如果内容接近长度限制，优先保证 JSON 完整闭合；不要重复节点树或规则解释。",
+    "7. 代码块之后附上“测试反馈格式”，要求用户反馈测试版编号、是否触发、是否关闭、是否误触、失败页面等信息。",
+    "8. 不要输出节点树复述、不要输出无关长解释。不要加多个代码块——只允许一个 ```json5 块。",
     "",
     AI_RULE_OUTPUT_CONTRACT,
     "",
@@ -80,10 +137,87 @@ export function buildHelpPrompt(input: PromptInput): string {
   ];
 
   if (pickResult) {
+    const pickedNode = pickResult.pickedNode;
     lines.push(
       "用户点击的目标节点：",
-      formatNodeDetail(pickResult.pickedNode),
+      formatNodeDetail(pickedNode),
       "",
+    );
+
+    // 客观事实 1: 视觉摞与可点击性事实
+    const visualStackNodeIds = buildVisualTargetIds({
+      snapshot,
+      pickedNode,
+      clickableAncestor: pickResult.ancestors.find((n) => n.attr.clickable) ?? null,
+    });
+    const visualStackNodes = Array.from(visualStackNodeIds)
+      .map((id) => snapshot.nodeById.get(id))
+      .filter((n): n is NormalizedSnapshotNode => Boolean(n));
+
+    const clickableInStack = visualStackNodes.find((n) => n.attr.clickable);
+    const clickableAncestor = pickResult.ancestors.find((n) => n.attr.clickable);
+    const clickableTarget = clickableInStack ?? clickableAncestor;
+
+    lines.push(
+      "目标区域与可点击性事实：",
+      `- pickedNode 可点击性: clickable=${pickedNode.attr.clickable}`,
+    );
+    if (visualStackNodes.length > 1) {
+      lines.push(
+        `- 视觉摞（同坐标重合层）：共 ${visualStackNodes.length} 个节点：`,
+        ...visualStackNodes.map(
+          (n) =>
+            `  * #${n.id} ${shortName(n.attr.name)} clickable=${n.attr.clickable} text=${n.attr.text ? JSON.stringify(n.attr.text) : "-"} vid=${n.attr.vid ?? "-"} id=${n.attr.id ?? "-"}`,
+        ),
+      );
+    }
+    if (!pickedNode.attr.clickable) {
+      if (clickableTarget) {
+        lines.push(
+          `⚠️ 【关键警示】当前选中的 pickedNode (#${pickedNode.id}) clickable=false，无障碍服务直接点击它通常无效！`,
+          `  可响应点击的父容器/同层节点为 #${clickableTarget.id} ${shortName(clickableTarget.attr.name)} (clickable=true)。`,
+          `  如果用子节点文本收窄，必须使用 @ 抬升语法点击父容器，例如 @[clickable=true] > [text=${JSON.stringify(pickedNode.attr.text || "...")}] 或 @[clickable=true] [text=${JSON.stringify(pickedNode.attr.text || "...")}]，绝对不能只写不可点击的文本子节点。`,
+        );
+      } else {
+        lines.push(
+          `⚠️ 【关键警示】pickedNode clickable=false，且父链未发现明确 clickable=true。请考虑 clickCenter 执行策略或在周围寻找真实点击按钮。`,
+        );
+      }
+    }
+    lines.push("");
+
+    // 客观事实 2: 局部节点真实属性白名单（防编造与 vid/id 混淆）
+    const localNodes = [
+      ...visualStackNodes,
+      pickedNode,
+      ...pickResult.ancestors.slice(0, 6),
+      ...pickResult.siblings.slice(0, 10),
+      ...pickResult.nearbyTextNodes.slice(0, 10),
+    ];
+    const realVids = Array.from(
+      new Set(
+        localNodes
+          .map((n) => n.attr.vid)
+          .filter((v): v is string => Boolean(v && v.trim().length > 0)),
+      ),
+    );
+    const realIds = Array.from(
+      new Set(
+        localNodes
+          .map((n) => n.attr.id)
+          .filter((id): id is string => Boolean(id && id.trim().length > 0)),
+      ),
+    );
+
+    lines.push(
+      "局部节点真实属性白名单（防属性编造与 vid/id 混淆）：",
+      `- 真实 vid 清单: ${realVids.length > 0 ? realVids.map((v) => `vid="${v}"`).join(", ") : "无（该局部区域节点均无 vid 属性）"}`,
+      `- 真实 id 清单: ${realIds.length > 0 ? realIds.slice(0, 8).map((id) => `id="${id}"`).join(", ") : "无"}`,
+      "- ⚠️ 严格约束：树中只有 id= 的节点严禁改写为 [vid=\"...\"]；绝对不要编造上述清单或树中未出现的 vid 名称！",
+      "",
+    );
+
+    lines.push(
       "祖先链（从近到远）：",
       ...pickResult.ancestors.slice(0, 8).map(formatNodeLine),
       "",
@@ -98,10 +232,33 @@ export function buildHelpPrompt(input: PromptInput): string {
     lines.push("用户尚未选择目标节点。请先提示用户点击截图上的目标按钮。", "");
   }
 
+  const effectiveFewShots =
+    fewShotExamples !== undefined
+      ? fewShotExamples
+      : snapshot && pickResult
+        ? retrieveOnDeviceFewShot({
+            snapshot,
+            pickResult,
+            k: 2,
+          })
+        : [];
+
+  if (effectiveFewShots && effectiveFewShots.length > 0) {
+    lines.push(
+      "相似历史案例（来自其它应用的官方标准答案，只学习属性选择、层级/兄弟/联合写法；案例里的 appId、vid、id、text、selector 都不能直接用于当前快照）：",
+      ...formatFewShotExamples(effectiveFewShots),
+      "",
+    );
+  }
+
   if (includeNodeTree) {
     lines.push(
       "节点树摘要：",
-      ...formatTreeExcerpt(snapshot, pickResult?.pickedNode ?? null),
+      ...formatTreeExcerpt(
+        snapshot,
+        pickResult?.pickedNode ?? null,
+        includeFullTree,
+      ),
     );
   } else {
     lines.push(
@@ -110,6 +267,8 @@ export function buildHelpPrompt(input: PromptInput): string {
       "- 若未收到导出文件附件，请先要求用户导出并上传，再生成规则。",
     );
   }
+
+  lines.push("", ...GKD_RULE_SELF_CHECK);
 
   return lines.join("\n");
 }
@@ -133,7 +292,15 @@ export function formatRuleSettingsLines(ruleSettings: RuleSettings): string[] {
 function formatTreeExcerpt(
   snapshot: ParsedGkdSnapshot,
   pickedNode: NormalizedSnapshotNode | null,
+  includeFullTree: boolean,
 ): string[] {
+  if (includeFullTree) {
+    return [
+      `节点数量 ${snapshot.nodes.length}，输出完整节点树：`,
+      ...snapshot.nodes.map((node) => formatIndentedNode(node)),
+    ];
+  }
+
   if (snapshot.nodes.length <= 220) {
     return snapshot.nodes.map((node) => formatIndentedNode(node));
   }
@@ -146,10 +313,11 @@ function formatTreeExcerpt(
   }
 
   const keep = new Set<number>();
-  const add = (node: NormalizedSnapshotNode | undefined) => {
+  const add = (node: NormalizedSnapshotNode | undefined | null) => {
     if (node) keep.add(node.id);
   };
 
+  // 1. 必保：目标自身与其所有祖先链
   add(pickedNode);
   let current: NormalizedSnapshotNode | undefined = pickedNode;
   while (current && current.pid >= 0) {
@@ -157,14 +325,65 @@ function formatTreeExcerpt(
     add(current);
   }
 
+  // 2. 目标的子节点与同父直接兄弟
   for (const node of snapshot.nodes) {
-    if (node.pid === pickedNode.pid || keep.has(node.pid)) {
+    if (node.pid === pickedNode.id || node.pid === pickedNode.pid) {
       keep.add(node.id);
     }
   }
 
+  // 3. 视觉摞重合节点及其祖先
+  const visualIds = buildVisualTargetIds({ snapshot, pickedNode });
+  for (const id of visualIds) {
+    let n: NormalizedSnapshotNode | undefined = snapshot.nodeById.get(id);
+    while (n) {
+      keep.add(n.id);
+      n = n.pid >= 0 ? snapshot.nodeById.get(n.pid) : undefined;
+    }
+  }
+
+  // 4. 保锚裁剪（Anchor Preserving）：
+  // 查找带有文本、描述或关键标识符的节点，优先选择同区域/同弹窗的关键节点
+  const targetX = (pickedNode.attr.left + pickedNode.attr.right) / 2;
+  const targetY = (pickedNode.attr.top + pickedNode.attr.bottom) / 2;
+  const anchorKeywords = /(?:title|close|cancel|skip|ad|btn|button|dialog|popup|banner|time|count)/i;
+
+  const candidateAnchors: Array<{ node: NormalizedSnapshotNode; distance: number }> = [];
+  for (const node of snapshot.nodes) {
+    if (keep.has(node.id)) continue;
+    const hasText = Boolean(node.attr.text && node.attr.text.trim().length > 0);
+    const hasDesc = Boolean(node.attr.desc && node.attr.desc.trim().length > 0);
+    const hasKeyId = Boolean(
+      (node.attr.vid && anchorKeywords.test(node.attr.vid)) ||
+      (node.attr.id && anchorKeywords.test(node.attr.id)),
+    );
+
+    if (hasText || hasDesc || hasKeyId) {
+      const nx = (node.attr.left + node.attr.right) / 2;
+      const ny = (node.attr.top + node.attr.bottom) / 2;
+      const distance = Math.hypot(nx - targetX, ny - targetY);
+      candidateAnchors.push({ node, distance });
+    }
+  }
+
+  candidateAnchors.sort((a, b) => a.distance - b.distance);
+
+  // 逐步加入保锚节点及其到根的祖先链，直到达到 220 节点上限
+  for (const { node } of candidateAnchors) {
+    if (keep.size >= 210) break;
+    let n: NormalizedSnapshotNode | undefined = node;
+    const pathToRoot: NormalizedSnapshotNode[] = [];
+    while (n && !keep.has(n.id)) {
+      pathToRoot.push(n);
+      n = n.pid >= 0 ? snapshot.nodeById.get(n.pid) : undefined;
+    }
+    if (keep.size + pathToRoot.length <= 220) {
+      for (const p of pathToRoot) keep.add(p.id);
+    }
+  }
+
   return [
-    `节点数量 ${snapshot.nodes.length}，展示目标节点相关子树：`,
+    `节点数量 ${snapshot.nodes.length}，展示目标节点相关子树（含关键文本/组件锚点）：`,
     ...snapshot.nodes
       .filter((node) => keep.has(node.id))
       .slice(0, 220)

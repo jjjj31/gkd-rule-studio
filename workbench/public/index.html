@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GKD 规则生成与调试工作站 · Rule Studio Workbench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #0f1117;
+      --bg-card: #181c27;
+      --bg-card-hover: #222736;
+      --bg-input: #0b0d13;
+      --border: #283044;
+      --border-focus: #3b82f6;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --text-dim: #64748b;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --purple: #a855f7;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', Consolas, monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: none;
+    }
+    header {
+      background: #141722;
+      border-bottom: 1px solid var(--border);
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 50;
+      flex-shrink: 0;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-logo {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 15px; color: #fff;
+    }
+    .brand-title { font-size: 16px; font-weight: 700; letter-spacing: -0.3px; }
+    .brand-subtitle {
+      font-size: 12px; color: var(--text-muted);
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2px 8px; border-radius: 12px; margin-left: 6px;
+    }
+    .header-stats { display: flex; align-items: center; gap: 16px; font-size: 13px; }
+    .stat-badge { display: flex; align-items: center; gap: 6px; color: var(--text-muted); }
+    .stat-badge strong { color: var(--text-main); }
+    .server-status {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 20px;
+      background: rgba(16, 185, 129, 0.12); color: #34d399; font-size: 12px; font-weight: 500;
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: #10b981; box-shadow: 0 0 8px #10b981;
+    }
+    .workspace { display: flex; flex: 1; height: calc(100vh - 56px); overflow: hidden; }
+    .sidebar {
+      width: 490px; background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; flex-shrink: 0;
+      overflow-y: auto; z-index: 30;
+    }
+    .sidebar-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .section-title {
+      font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px;
+      font-weight: 700; color: var(--text-dim); margin-bottom: 10px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .sample-nav { display: flex; gap: 8px; margin-bottom: 10px; }
+    .sample-select {
+      flex: 1; background: var(--bg-input); border: 1px solid var(--border);
+      color: var(--text-main); padding: 8px 12px; border-radius: 8px; font-size: 13px; outline: none;
+    }
+    .btn {
+      background: var(--bg-card-hover); color: var(--text-main); border: 1px solid var(--border);
+      padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s ease;
+    }
+    .btn:hover { background: #2b3345; border-color: #475569; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-sm { padding: 4px 8px; font-size: 11px; }
+    .sample-info-card {
+      background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px;
+      padding: 8px 12px; font-size: 12px; display: flex; flex-direction: column; gap: 5px;
+    }
+    .sample-row { display: flex; align-items: center; justify-content: space-between; }
+    .sample-label { color: var(--text-dim); }
+    .sample-value { font-family: var(--font-mono); color: var(--text-muted); }
+    .editor-container { position: relative; margin-top: 8px; }
+    .selector-textarea {
+      width: 100%; height: 85px; background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px; color: #38bdf8; font-family: var(--font-mono);
+      font-size: 13px; line-height: 1.5; resize: vertical; outline: none; user-select: text;
+    }
+    .selector-textarea:focus { border-color: var(--border-focus); box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+    .editor-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+    .match-status-bar {
+      margin-top: 10px; padding: 8px 12px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 12px; font-weight: 600;
+    }
+    .status-hit { background: rgba(16, 185, 129, 0.12); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; }
+    .status-multi { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
+    .status-nohit { background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; }
+    .status-error { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.5); color: #fca5a5; font-family: var(--font-mono); font-size: 11px; }
+    .compare-card {
+      background: rgba(168, 85, 247, 0.08); border: 1px solid rgba(168, 85, 247, 0.25);
+      border-radius: 8px; padding: 8px 12px; margin-top: 8px; font-size: 12px;
+    }
+    .compare-title { font-weight: 700; color: #c084fc; margin-bottom: 4px; display: flex; align-items: center; }
+    .compare-rule { font-family: var(--font-mono); color: #e9d5ff; background: rgba(0, 0, 0, 0.3); padding: 5px 8px; border-radius: 6px; word-break: break-all; margin-top: 4px; user-select: text; }
+    .node-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+    .node-table td { padding: 4px 6px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+    .node-table td.attr-key { color: var(--text-dim); width: 105px; font-weight: 500; }
+    .node-table td.attr-val { font-family: var(--font-mono); color: #e2e8f0; user-select: text; word-break: break-all; }
+    .badge-true { color: #34d399; background: rgba(16, 185, 129, 0.15); padding: 1px 6px; border-radius: 4px; }
+    .badge-false { color: #94a3b8; background: rgba(255, 255, 255, 0.05); padding: 1px 6px; border-radius: 4px; }
+    .viewport-panel { flex: 1; display: flex; flex-direction: column; background: #090a0f; position: relative; overflow: hidden; }
+    .canvas-toolbar {
+      height: 48px; background: #141722; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; padding: 0 16px; z-index: 20; flex-shrink: 0;
+    }
+    .toolbar-group { display: flex; align-items: center; gap: 12px; }
+    .toggle-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; }
+    .toggle-label input[type="checkbox"] { cursor: pointer; accent-color: var(--accent); }
+    .indicator-pill { font-size: 12px; padding: 3px 8px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); color: var(--text-muted); font-family: var(--font-mono); }
+    .stage-container {
+      flex: 1; position: relative; overflow: auto; display: flex; align-items: center; justify-content: center;
+      padding: 24px; background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px); background-size: 24px 24px;
+    }
+    .phone-mock {
+      position: relative; background: #000; border-radius: 28px; padding: 8px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), 0 0 0 2px #334155; display: inline-block;
+    }
+    .screen-wrapper { position: relative; border-radius: 20px; overflow: hidden; display: block; background: #000; }
+    .screenshot-img { display: block; max-height: 76vh; width: auto; object-fit: contain; pointer-events: none; }
+    .svg-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: all; }
+    .box-matched {
+      fill: rgba(16, 185, 129, 0.25); stroke: #10b981; stroke-width: 4;
+      filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.8)); cursor: pointer;
+    }
+    .box-target-groundtruth {
+      fill: none; stroke: #a855f7; stroke-width: 3.5; stroke-dasharray: 8 6;
+      filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.7)); pointer-events: none;
+    }
+    .box-wireframe { fill: transparent; stroke: rgba(255, 255, 255, 0.2); stroke-width: 1.5; cursor: pointer; }
+    .box-wireframe:hover { fill: rgba(59, 130, 246, 0.15); stroke: #60a5fa; stroke-width: 2.5; }
+    .box-hovered {
+      fill: rgba(245, 158, 11, 0.25) !important; stroke: #f59e0b !important;
+      stroke-width: 4 !important; filter: drop-shadow(0 0 8px rgba(245, 158, 11, 0.8)) !important;
+    }
+    .node-tooltip {
+      position: absolute; background: rgba(15, 23, 42, 0.95); border: 1px solid #334155;
+      color: #fff; padding: 6px 10px; border-radius: 6px; font-size: 11px; font-family: var(--font-mono);
+      pointer-events: none; z-index: 100; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5); white-space: nowrap; display: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-logo">G</div>
+      <div>
+        <span class="brand-title">GKD Rule Studio Workbench</span>
+        <span class="brand-subtitle">规则与控件实时调试工作站</span>
+      </div>
+    </div>
+    <div class="header-stats">
+      <div class="stat-badge">已抓取快照: <strong id="stat-total-snapshots">100+</strong></div>
+      <div class="stat-badge">已验证规则对: <strong id="stat-total-samples">115</strong></div>
+      <div class="server-status">
+        <span class="status-dot"></span>
+        <span>AST 选择器引擎就绪</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="workspace">
+    <aside class="sidebar">
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>① 选择测试快照与样例</span>
+          <span id="sample-counter" style="color: var(--text-muted); font-family: var(--font-mono);">1 / 115</span>
+        </div>
+        <div class="sample-nav">
+          <select id="sample-select" class="sample-select"></select>
+          <button id="btn-prev" class="btn" title="上一个样例">◀</button>
+          <button id="btn-next" class="btn" title="下一个样例">▶</button>
+          <button id="btn-random" class="btn" title="随机抽选">🎲</button>
+        </div>
+        <div class="sample-info-card">
+          <div class="sample-row">
+            <span class="sample-label">目标应用</span>
+            <span id="info-app" class="sample-value">-</span>
+          </div>
+          <div class="sample-row">
+            <span class="sample-label">包名 (appId)</span>
+            <span id="info-pkg" class="sample-value">-</span>
+          </div>
+          <div class="sample-row">
+            <span class="sample-label">规则组类别</span>
+            <span id="info-group" class="sample-value">-</span>
+          </div>
+          <div class="sample-row">
+            <span class="sample-label">快照 ID</span>
+            <span id="info-snapshot-id" class="sample-value">-</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>② 实时选择器调试</span>
+          <span style="color: #38bdf8; font-size: 10px;">实时输入实时匹配</span>
+        </div>
+        <div class="editor-container">
+          <textarea id="selector-input" class="selector-textarea" placeholder="输入或粘贴 GKD 选择器表达式..."></textarea>
+        </div>
+        <div class="editor-actions">
+          <button id="btn-reset-groundtruth" class="btn btn-sm btn-primary">📋 填入官方标准规则</button>
+          <button id="btn-copy-selector" class="btn btn-sm">📋 复制规则</button>
+          <button id="btn-clear-selector" class="btn btn-sm">🧹 清空</button>
+        </div>
+
+        <div id="match-status" class="match-status-bar status-hit">
+          <span id="match-status-text">🟢 命中 1 个控件</span>
+          <span id="match-elapsed" style="font-size: 11px; font-family: var(--font-mono); opacity: 0.8;">4ms</span>
+        </div>
+
+        <div class="compare-card">
+          <div class="compare-title">
+            <span>🎯 官方标准答案参考 (Ground Truth)</span>
+            <span id="compare-result-badge" style="margin-left: auto; font-size: 11px;"></span>
+          </div>
+          <div id="groundtruth-rule" class="compare-rule">-</div>
+        </div>
+      </div>
+
+      <div class="sidebar-section" style="flex: 1;">
+        <div class="section-title">
+          <span>③ 命中的目标控件详情</span>
+          <span id="matched-count-pill" class="indicator-pill">1 个目标</span>
+        </div>
+        <div id="matched-nodes-container"></div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="section-title">
+          <span>④ RAG 相似案例（方案 B）</span>
+          <button id="btn-copy-prompt" class="btn btn-sm">📋 复制 Prompt</button>
+        </div>
+        <div id="fewshot-container">
+          <div style="color: var(--text-dim); font-size: 12px;">加载中…</div>
+        </div>
+        <details id="prompt-details" style="margin-top: 8px;">
+          <summary style="cursor: pointer; font-size: 11px; color: var(--text-dim);">查看完整 Few-Shot Prompt</summary>
+          <pre id="prompt-preview" style="margin-top: 6px; white-space: pre-wrap; font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--text-muted); background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-height: 240px; overflow: auto; user-select: text;"></pre>
+        </details>
+      </div>
+
+      <div id="picked-node-section" class="sidebar-section" style="display: none; background: #131722;">
+        <div class="section-title" style="color: #60a5fa;">
+          <span>👆 画布点击拾取的控件</span>
+          <button id="btn-use-as-selector" class="btn btn-sm">填入 vid</button>
+        </div>
+        <div id="picked-node-details"></div>
+      </div>
+    </aside>
+
+    <main class="viewport-panel">
+      <div class="canvas-toolbar">
+        <div class="toolbar-group">
+          <label class="toggle-label">
+            <input type="checkbox" id="toggle-hit-boxes" checked>
+            <span>显示命中框 (绿)</span>
+          </label>
+          <label class="toggle-label">
+            <input type="checkbox" id="toggle-target-box" checked>
+            <span>显示标准答案目标 (紫虚线)</span>
+          </label>
+          <label class="toggle-label">
+            <input type="checkbox" id="toggle-all-boxes">
+            <span>显示全部控件边界 (灰框)</span>
+          </label>
+        </div>
+        <div class="toolbar-group">
+          <span id="canvas-coord" class="indicator-pill">X: -, Y: -</span>
+          <button id="btn-zoom-fit" class="btn btn-sm">适合高度</button>
+          <button id="btn-zoom-100" class="btn btn-sm">100%</button>
+        </div>
+      </div>
+
+      <div id="stage-container" class="stage-container">
+        <div id="phone-mock" class="phone-mock">
+          <div class="screen-wrapper" id="screen-wrapper">
+            <img id="screenshot-img" class="screenshot-img" src="" alt="Snapshot Screenshot">
+            <svg id="svg-overlay" class="svg-overlay" xmlns="http://www.w3.org/2000/svg">
+              <g id="svg-all-layer"></g>
+              <g id="svg-target-layer"></g>
+              <g id="svg-matched-layer"></g>
+              <g id="svg-hover-layer"></g>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div id="node-tooltip" class="node-tooltip"></div>
+  <script>
+    let samples = [];
+    let currentIndex = 0;
+    let currentSnapshot = null;
+    let matchDebounceTimer = null;
+    let currentMatchResult = null;
+    let hoveredNode = null;
+    let lastPickedNode = null;
+
+    const sampleSelect = document.getElementById('sample-select');
+    const sampleCounter = document.getElementById('sample-counter');
+    const infoApp = document.getElementById('info-app');
+    const infoPkg = document.getElementById('info-pkg');
+    const infoGroup = document.getElementById('info-group');
+    const infoSnapshotId = document.getElementById('info-snapshot-id');
+    const selectorInput = document.getElementById('selector-input');
+    const matchStatus = document.getElementById('match-status');
+    const matchStatusText = document.getElementById('match-status-text');
+    const matchElapsed = document.getElementById('match-elapsed');
+    const groundtruthRule = document.getElementById('groundtruth-rule');
+    const compareResultBadge = document.getElementById('compare-result-badge');
+    const matchedNodesContainer = document.getElementById('matched-nodes-container');
+    const matchedCountPill = document.getElementById('matched-count-pill');
+    
+    const screenshotImg = document.getElementById('screenshot-img');
+    const svgOverlay = document.getElementById('svg-overlay');
+    const svgAllLayer = document.getElementById('svg-all-layer');
+    const svgTargetLayer = document.getElementById('svg-target-layer');
+    const svgMatchedLayer = document.getElementById('svg-matched-layer');
+    const svgHoverLayer = document.getElementById('svg-hover-layer');
+    const nodeTooltip = document.getElementById('node-tooltip');
+    const canvasCoord = document.getElementById('canvas-coord');
+    const phoneMock = document.getElementById('phone-mock');
+
+    const toggleHitBoxes = document.getElementById('toggle-hit-boxes');
+    const toggleTargetBox = document.getElementById('toggle-target-box');
+    const toggleAllBoxes = document.getElementById('toggle-all-boxes');
+
+    const pickedNodeSection = document.getElementById('picked-node-section');
+    const pickedNodeDetails = document.getElementById('picked-node-details');
+    const btnUseAsSelector = document.getElementById('btn-use-as-selector');
+
+    async function init() {
+      try {
+        const resp = await fetch('/api/samples');
+        samples = await resp.json();
+        document.getElementById('stat-total-samples').textContent = samples.length;
+        
+        sampleSelect.innerHTML = samples.map((s, idx) => {
+          return `<option value="${idx}">[#${idx + 1}] ${s.appName || '应用'} · ${s.groupName || '规则'} (#${s.snapshotId})</option>`;
+        }).join('');
+
+        sampleSelect.addEventListener('change', (e) => {
+          loadSample(parseInt(e.target.value, 10));
+        });
+
+        document.getElementById('btn-prev').addEventListener('click', () => {
+          if (currentIndex > 0) loadSample(currentIndex - 1);
+        });
+        document.getElementById('btn-next').addEventListener('click', () => {
+          if (currentIndex < samples.length - 1) loadSample(currentIndex + 1);
+        });
+        document.getElementById('btn-random').addEventListener('click', () => {
+          const rand = Math.floor(Math.random() * samples.length);
+          loadSample(rand);
+        });
+
+        document.getElementById('btn-reset-groundtruth').addEventListener('click', () => {
+          const sample = samples[currentIndex];
+          if (sample) {
+            selectorInput.value = sample.selector;
+            triggerMatch();
+          }
+        });
+
+        document.getElementById('btn-clear-selector').addEventListener('click', () => {
+          selectorInput.value = '';
+          triggerMatch();
+        });
+
+        document.getElementById('btn-copy-selector').addEventListener('click', () => {
+          navigator.clipboard.writeText(selectorInput.value);
+          alert('规则已复制到剪贴板！');
+        });
+
+        document.getElementById('btn-copy-prompt').addEventListener('click', () => {
+          if (!currentPrompt) {
+            alert('当前样本没有可用的 Few-Shot Prompt');
+            return;
+          }
+          navigator.clipboard.writeText(currentPrompt);
+          alert('Few-Shot Prompt 已复制，可直接粘贴给大模型。');
+        });
+
+        selectorInput.addEventListener('input', () => {
+          clearTimeout(matchDebounceTimer);
+          matchDebounceTimer = setTimeout(triggerMatch, 120);
+        });
+
+        toggleHitBoxes.addEventListener('change', renderSvgBoxes);
+        toggleTargetBox.addEventListener('change', renderSvgBoxes);
+        toggleAllBoxes.addEventListener('change', renderSvgBoxes);
+
+        document.getElementById('btn-zoom-fit').addEventListener('click', () => {
+          phoneMock.style.transform = 'scale(1)';
+          screenshotImg.style.maxHeight = '76vh';
+        });
+        document.getElementById('btn-zoom-100').addEventListener('click', () => {
+          screenshotImg.style.maxHeight = 'none';
+          phoneMock.style.transform = 'scale(1)';
+        });
+
+        btnUseAsSelector.addEventListener('click', () => {
+          if (lastPickedNode) {
+            const a = lastPickedNode.attr || lastPickedNode;
+            if (a.vid) {
+              selectorInput.value = `[vid="${a.vid}"]`;
+            } else if (a.text) {
+              selectorInput.value = `[text="${a.text}"]`;
+            } else {
+              selectorInput.value = `${a.name || 'View'}[clickable=true]`;
+            }
+            triggerMatch();
+          }
+        });
+
+        if (samples.length > 0) {
+          loadSample(0);
+        }
+      } catch (err) {
+        console.error('Init error:', err);
+      }
+    }
+
+    async function loadSample(index) {
+      if (index < 0 || index >= samples.length) return;
+      currentIndex = index;
+      sampleSelect.value = index;
+      sampleCounter.textContent = `${index + 1} / ${samples.length}`;
+
+      const sample = samples[index];
+      infoApp.textContent = sample.appName || '-';
+      infoPkg.textContent = sample.appId || '-';
+      infoGroup.textContent = sample.groupName || '-';
+      infoSnapshotId.textContent = sample.snapshotId;
+
+      groundtruthRule.textContent = sample.selector;
+      selectorInput.value = sample.selector;
+
+      screenshotImg.src = `/api/screenshot/${sample.snapshotId}`;
+
+      const snapResp = await fetch(`/api/snapshot/${sample.snapshotId}`);
+      currentSnapshot = await snapResp.json();
+
+      const w = currentSnapshot.screenWidth || 1080;
+      const h = currentSnapshot.screenHeight || 2400;
+      svgOverlay.setAttribute('viewBox', `0 0 ${w} ${h}`);
+
+      triggerMatch();
+      loadFewShot(sample);
+    }
+
+    let currentPrompt = "";
+
+    async function loadFewShot(sample) {
+      const container = document.getElementById('fewshot-container');
+      const preview = document.getElementById('prompt-preview');
+      if (!sample || !sample.targetNode) {
+        container.innerHTML = '<div style="color: var(--text-dim); font-size: 12px;">该样本缺少目标控件。</div>';
+        return;
+      }
+      container.innerHTML = '<div style="color: var(--text-dim); font-size: 12px;">检索中…</div>';
+      try {
+        const resp = await fetch(
+          `/api/fewshot?snapshotId=${sample.snapshotId}&targetId=${sample.targetNode.id}&k=3`,
+        );
+        if (!resp.ok) {
+          const data = await resp.json().catch(() => ({}));
+          container.innerHTML = `<div style="color: var(--text-dim); font-size: 12px;">${data.error || '未检索到相似案例'}</div>`;
+          preview.textContent = '';
+          currentPrompt = '';
+          return;
+        }
+        const data = await resp.json();
+        currentPrompt = data.prompt || '';
+        preview.textContent = currentPrompt;
+        container.innerHTML = data.examples
+          .map(
+            (example, index) => `
+            <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-bottom: 6px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <strong style="color: #c084fc; font-size: 12px;">案例 ${index + 1} · ${example.appName || '未知'}</strong>
+                <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${example.score} · ${example.selectorKind}</span>
+              </div>
+              <div style="font-family: var(--font-mono); font-size: 11px; color: #e9d5ff; word-break: break-all; user-select: text;">${example.selector}</div>
+            </div>`,
+          )
+          .join('');
+      } catch (error) {
+        container.innerHTML = `<div style="color: var(--text-dim); font-size: 12px;">检索失败：${error.message}</div>`;
+      }
+    }
+
+    async function triggerMatch() {
+      const sample = samples[currentIndex];
+      if (!sample) return;
+
+      const expr = selectorInput.value;
+      const resp = await fetch('/api/match', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snapshotId: sample.snapshotId,
+          selector: expr,
+        }),
+      });
+      const res = await resp.json();
+      currentMatchResult = res;
+
+      renderMatchStatus(res);
+      renderMatchedNodes(res);
+      renderSvgBoxes();
+    }
+
+    function renderMatchStatus(res) {
+      matchStatus.className = 'match-status-bar';
+      if (res.error) {
+        matchStatus.classList.add('status-error');
+        matchStatusText.textContent = `⚠️ 语法异常: ${res.error}`;
+        matchElapsed.textContent = `${res.elapsedMs || 0}ms`;
+        compareResultBadge.textContent = '❌ 规则错误';
+        compareResultBadge.style.color = '#ef4444';
+      } else if (res.hitCount === 1) {
+        matchStatus.classList.add('status-hit');
+        matchStatusText.textContent = `🟢 命中 1 个控件 (精准命中)`;
+        matchElapsed.textContent = `${res.elapsedMs}ms`;
+      } else if (res.hitCount > 1) {
+        matchStatus.classList.add('status-multi');
+        matchStatusText.textContent = `🟡 命中 ${res.hitCount} 个控件 (范围过宽)`;
+        matchElapsed.textContent = `${res.elapsedMs}ms`;
+      } else {
+        matchStatus.classList.add('status-nohit');
+        matchStatusText.textContent = `🔴 未命中任何控件 (0 匹配)`;
+        matchElapsed.textContent = `${res.elapsedMs}ms`;
+      }
+
+      const sample = samples[currentIndex];
+      if (sample && sample.targetNode) {
+        const expectedId = sample.targetNode.id;
+        if (res.clickIds && res.clickIds.includes(expectedId)) {
+          compareResultBadge.textContent = `🎯 命中标准目标 (#${expectedId})`;
+          compareResultBadge.style.color = '#34d399';
+        } else if (res.hitCount > 0) {
+          compareResultBadge.textContent = `⚠️ 偏离标准目标 (目标应为 #${expectedId})`;
+          compareResultBadge.style.color = '#fbbf24';
+        } else {
+          compareResultBadge.textContent = `🔴 未命中标准目标 (#${expectedId})`;
+          compareResultBadge.style.color = '#f87171';
+        }
+      }
+    }
+
+    function renderMatchedNodes(res) {
+      matchedNodesContainer.innerHTML = '';
+      const nodes = res.targetNodes || [];
+      matchedCountPill.textContent = `${nodes.length} 个目标`;
+
+      if (nodes.length === 0) {
+        matchedNodesContainer.innerHTML = '<div style="color: var(--text-dim); font-size: 12px; padding: 12px 0;">当前选择器未命中任何节点。</div>';
+        return;
+      }
+
+      nodes.forEach((node) => {
+        const card = document.createElement('div');
+        card.style.background = 'var(--bg-input)';
+        card.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+        card.style.borderRadius = '8px';
+        card.style.padding = '8px 12px';
+        card.style.marginBottom = '8px';
+
+        const b = node.bounds;
+        card.innerHTML = `
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+            <strong style="color: #34d399; font-size: 13px;">#${node.id} · ${node.name.split('.').pop()}</strong>
+            <span style="font-size: 11px; color: var(--text-muted); font-family: var(--font-mono);">${b.width}×${b.height} px</span>
+          </div>
+          <table class="node-table">
+            <tr><td class="attr-key">vid</td><td class="attr-val">${node.vid ? `<span style="color: #38bdf8;">${node.vid}</span>` : '<span style="color:var(--text-dim);">null</span>'}</td></tr>
+            <tr><td class="attr-key">id</td><td class="attr-val">${node.id_attr || '<span style="color:var(--text-dim);">null</span>'}</td></tr>
+            <tr><td class="attr-key">text</td><td class="attr-val">${node.text ? `"${node.text}"` : '<span style="color:var(--text-dim);">null</span>'}</td></tr>
+            <tr><td class="attr-key">desc</td><td class="attr-val">${node.desc ? `"${node.desc}"` : '<span style="color:var(--text-dim);">null</span>'}</td></tr>
+            <tr><td class="attr-key">clickable</td><td class="attr-val"><span class="${node.clickable ? 'badge-true' : 'badge-false'}">${node.clickable}</span></td></tr>
+            <tr><td class="attr-key">visibleToUser</td><td class="attr-val"><span class="${node.visibleToUser ? 'badge-true' : 'badge-false'}">${node.visibleToUser}</span></td></tr>
+            <tr><td class="attr-key">bounds</td><td class="attr-val">[${b.left}, ${b.top}, ${b.right}, ${b.bottom}]</td></tr>
+          </table>
+        `;
+        matchedNodesContainer.appendChild(card);
+      });
+    }
+
+    function renderSvgBoxes() {
+      svgAllLayer.innerHTML = '';
+      svgTargetLayer.innerHTML = '';
+      svgMatchedLayer.innerHTML = '';
+      svgHoverLayer.innerHTML = '';
+
+      if (!currentSnapshot || !currentSnapshot.nodes) return;
+
+      const showAll = toggleAllBoxes.checked;
+      const showTarget = toggleTargetBox.checked;
+      const showMatched = toggleHitBoxes.checked;
+
+      if (showAll) {
+        currentSnapshot.nodes.forEach(node => {
+          const a = node.attr;
+          if (a.width <= 0 || a.height <= 0) return;
+          const rect = createSvgRect(a.left, a.top, a.width, a.height, 'box-wireframe');
+          attachNodeEvents(rect, node);
+          svgAllLayer.appendChild(rect);
+        });
+      }
+
+      const sample = samples[currentIndex];
+      if (showTarget && sample && sample.targetNode) {
+        const b = sample.targetNode.bounds;
+        const rect = createSvgRect(b.left, b.top, b.width, b.height, 'box-target-groundtruth');
+        svgTargetLayer.appendChild(rect);
+      }
+
+      if (showMatched && currentMatchResult && currentMatchResult.targetNodes) {
+        currentMatchResult.targetNodes.forEach(node => {
+          const b = node.bounds;
+          const rect = createSvgRect(b.left, b.top, b.width, b.height, 'box-matched');
+          attachNodeEvents(rect, node);
+          svgMatchedLayer.appendChild(rect);
+        });
+      }
+    }
+
+    function createSvgRect(x, y, w, h, className) {
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', w);
+      rect.setAttribute('height', h);
+      rect.setAttribute('rx', '4');
+      rect.setAttribute('class', className);
+      return rect;
+    }
+
+    function attachNodeEvents(rect, node) {
+      rect.addEventListener('mouseenter', (e) => {
+        hoveredNode = node;
+        showTooltip(e, node);
+        drawHoverBox(node);
+      });
+      rect.addEventListener('mousemove', (e) => {
+        updateTooltipPos(e);
+      });
+      rect.addEventListener('mouseleave', () => {
+        hoveredNode = null;
+        hideTooltip();
+        svgHoverLayer.innerHTML = '';
+      });
+      rect.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onNodeClicked(node);
+      });
+    }
+
+    function drawHoverBox(node) {
+      svgHoverLayer.innerHTML = '';
+      const b = node.bounds || node.attr;
+      if (!b) return;
+      const rect = createSvgRect(b.left, b.top, b.width, b.height, 'box-hovered');
+      svgHoverLayer.appendChild(rect);
+    }
+
+    function showTooltip(e, node) {
+      const a = node.attr || node;
+      const tag = (a.name || 'View').split('.').pop();
+      nodeTooltip.innerHTML = `<strong>#${node.id} ${tag}</strong><br>` +
+        (a.vid ? `vid: <span style="color:#38bdf8;">${a.vid}</span><br>` : '') +
+        (a.text ? `text: "${a.text}"<br>` : '') +
+        `clickable: ${a.clickable} | visible: ${a.visibleToUser}`;
+      nodeTooltip.style.display = 'block';
+      updateTooltipPos(e);
+    }
+
+    function updateTooltipPos(e) {
+      nodeTooltip.style.left = (e.clientX + 14) + 'px';
+      nodeTooltip.style.top = (e.clientY + 14) + 'px';
+    }
+
+    function hideTooltip() {
+      nodeTooltip.style.display = 'none';
+    }
+
+    function onNodeClicked(node) {
+      lastPickedNode = node;
+      const a = node.attr || node;
+      const b = node.bounds || a;
+      pickedNodeSection.style.display = 'block';
+      pickedNodeDetails.innerHTML = `
+        <table class="node-table">
+          <tr><td class="attr-key">ID</td><td class="attr-val">#${node.id}</td></tr>
+          <tr><td class="attr-key">class</td><td class="attr-val">${a.name || '-'}</td></tr>
+          <tr><td class="attr-key">vid</td><td class="attr-val">${a.vid ? `<span style="color:#38bdf8;">${a.vid}</span>` : 'null'}</td></tr>
+          <tr><td class="attr-key">text</td><td class="attr-val">${a.text ? `"${a.text}"` : 'null'}</td></tr>
+          <tr><td class="attr-key">desc</td><td class="attr-val">${a.desc ? `"${a.desc}"` : 'null'}</td></tr>
+          <tr><td class="attr-key">clickable</td><td class="attr-val">${a.clickable}</td></tr>
+          <tr><td class="attr-key">bounds</td><td class="attr-val">[${b.left}, ${b.top}, ${b.right}, ${b.bottom}]</td></tr>
+        </table>
+      `;
+    }
+
+    svgOverlay.addEventListener('mousemove', (e) => {
+      const rect = svgOverlay.getBoundingClientRect();
+      const w = currentSnapshot?.screenWidth || 1080;
+      const h = currentSnapshot?.screenHeight || 2400;
+      const scaleX = w / rect.width;
+      const scaleY = h / rect.height;
+      const x = Math.round((e.clientX - rect.left) * scaleX);
+      const y = Math.round((e.clientY - rect.top) * scaleY);
+      canvasCoord.textContent = `X: ${x}, Y: ${y}`;
+    });
+
+    init();
+  </script>
+</body>
+</html>

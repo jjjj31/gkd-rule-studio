@@ -173,8 +173,14 @@ function formatCondition(condition: SelectorCondition): string {
       if (typeof condition.value === "boolean") {
         return `[${condition.attr}=${condition.value ? "true" : "false"}]`;
       }
+      if (typeof condition.value === "number") {
+        return `[${condition.attr}=${condition.value}]`;
+      }
       return `[${condition.attr}="${escapeSelectorString(String(condition.value))}"]`;
     case "notEq":
+      if (typeof condition.value === "number") {
+        return `[${condition.attr}!=${condition.value}]`;
+      }
       return `[${condition.attr}!="${escapeSelectorString(String(condition.value))}"]`;
     case "contains":
       return `[${condition.attr}*="${escapeSelectorString(String(condition.value))}"]`;

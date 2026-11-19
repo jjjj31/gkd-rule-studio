@@ -29,7 +29,14 @@ import {
   exactSelector,
   serializePlan,
 } from "./selectorSerialize";
-import { validateAppRuleAgainstSnapshot } from "./selectorMatcher";
+import {
+  validateAppRuleAgainstSnapshot,
+  validateSelectorPlan,
+} from "./selectorMatcher";
+import {
+  buildVisualTargetIds,
+  isClickWithinVisualTarget,
+} from "./visualTarget";
 
 interface CandidateSeed {
   strategyName: MvpStrategyName;
@@ -39,6 +46,9 @@ interface CandidateSeed {
   groupName: string;
   debugReasons: string[];
 }
+
+/** 候选点击目标偏离用户所选控件（且不是其可点祖先）时的排序降权分。 */
+const OFF_TARGET_RANK_PENALTY = 25;
 
 export function generateSelectorCandidates(
   context: GenerationContext,
@@ -55,13 +65,29 @@ export function generateSelectorCandidates(
     ...clickParentByChildIdVid(context),
     ...simpleSiblingCancelVsCTA(context),
     ...simpleContextRelation(context),
+    ...ambiguousTargetNarrowing(context),
+    ...structuralTargetFallback(context),
     ...adContainerSkipFallback(context),
     ...clickableAncestorFallback(context),
     ...visibleNodeFallback(context),
     ...negativeActionVariantUnion(context),
   ];
 
-  const candidates = seeds.map((seed, index) => buildCandidate(context, seed, index));
+  const visualTargetIds = buildVisualTargetIds({
+    snapshot: context.snapshot,
+    pickedNode: context.pickedNode,
+    clickableAncestor: context.clickableAncestor,
+  });
+  const candidates = seeds
+    .map((seed, index) => buildCandidate(context, seed, index, visualTargetIds))
+    // 收窄候选必须真的收窄成功。动作计划可能在最后一步放宽选择器，
+    // 这里以最终规则验证为准，避免“收窄后反而点到别的控件”。
+    .filter(
+      (candidate) =>
+        candidate.strategyName !== "ambiguousTargetNarrowing" ||
+        (candidate.validation.hitCount === 1 &&
+          candidate.validation.clickNodes[0]?.id === context.pickedNode.id),
+    );
   return dedupeCandidates(candidates).sort((a, b) => {
     const bEffectiveScore = effectiveCandidateScore(b);
     const aEffectiveScore = effectiveCandidateScore(a);
@@ -78,26 +104,89 @@ export function generateSelectorCandidates(
 function exactVid(context: GenerationContext): CandidateSeed[] {
   const vid = context.pickedNode.attr.vid;
   if (!vid) return [];
-  return [
+  const seeds: CandidateSeed[] = [];
+  if (context.pickedNode.attr.visibleToUser) {
+    seeds.push(
+      singleSeed(
+        "exactVid",
+        "精确 vid（可见）",
+        96,
+        {
+          conditions: [
+            { attr: "vid", op: "eq", value: vid },
+            { attr: "visibleToUser", op: "eq", value: true },
+          ],
+        },
+        [`点击可见节点 vid=${vid}`],
+      ),
+    );
+    const stableText = semanticNodeText(context.pickedNode);
+    if (
+      stableText &&
+      !isDynamicCountdownText(stableText) &&
+      !hasDynamicNumericPart(stableText) &&
+      isHighCollisionGenericResource(vid)
+    ) {
+      seeds.push(
+        singleSeed(
+          "exactVid",
+          "精确 vid + 文本守卫",
+          97,
+          {
+            conditions: [
+              { attr: "vid", op: "eq", value: vid },
+              {
+                attr: context.pickedNode.attr.text ? "text" : "desc",
+                op: "eq",
+                value: stableText,
+              },
+              { attr: "visibleToUser", op: "eq", value: true },
+            ],
+          },
+          [`点击泛化 vid=${vid} 且匹配文本 ${stableText}`],
+        ),
+      );
+    }
+  }
+  seeds.push(
     singleSeed("exactVid", "精确 vid", 95, exactSelector("vid", vid), [
       `点击节点 vid=${vid}`,
     ]),
-  ];
+  );
+  return seeds;
 }
 
 function exactId(context: GenerationContext): CandidateSeed[] {
   const id = context.pickedNode.attr.id;
   if (!id) return [];
-  return [
+  const seeds: CandidateSeed[] = [];
+  if (context.pickedNode.attr.visibleToUser) {
+    seeds.push(
+      singleSeed(
+        "exactId",
+        "精确 id（可见）",
+        94,
+        {
+          conditions: [
+            { attr: "id", op: "eq", value: id },
+            { attr: "visibleToUser", op: "eq", value: true },
+          ],
+        },
+        [`点击可见节点 id=${id}`],
+      ),
+    );
+  }
+  seeds.push(
     singleSeed("exactId", "精确 id", 93, exactSelector("id", id), [
       `点击节点 id=${id}`,
     ]),
-  ];
+  );
+  return seeds;
 }
 
 function exactDesc(context: GenerationContext): CandidateSeed[] {
   const desc = context.pickedNode.attr.desc;
-  if (!desc) return [];
+  if (!desc || isMachineAssetText(desc)) return [];
   return [
     singleSeed("exactDesc", "精确 desc", 82, exactSelector("desc", desc), [
       `点击节点 desc=${desc}`,
@@ -109,18 +198,60 @@ function typePlusExactAttr(context: GenerationContext): CandidateSeed[] {
   const node = context.pickedNode;
   const typeName = shortTypeName(node);
   const attr = preferredTextualAttr(node);
-  if (!typeName || !attr) return [];
+  if (!attr) return [];
   if (attr.key === "text" && isDynamicCountdownText(attr.value)) return [];
 
-  return [
-    singleSeed(
-      "typePlusExactAttr",
-      "类型 + 精确属性",
-      84,
-      exactSelector(attr.key, attr.value, typeName),
-      [`使用 ${typeName} 限制裸 ${attr.key}`],
-    ),
-  ];
+  const seeds: CandidateSeed[] = [];
+  const dynamicPrefix =
+    attr.key === "text" ? extractDynamicNumericPrefix(attr.value) : null;
+  if (dynamicPrefix && node.attr.visibleToUser) {
+    seeds.push(
+      singleSeed(
+        "typePlusExactAttr",
+        "类型 + 稳定文本前缀",
+        86,
+        {
+          typeName,
+          conditions: [
+            { attr: "text", op: "startsWith", value: dynamicPrefix },
+            { attr: "visibleToUser", op: "eq", value: true },
+          ],
+        },
+        [`文本含动态数值，使用前缀 ${dynamicPrefix} 提升跨版本稳定性`],
+      ),
+    );
+  }
+
+  if (typeName && node.attr.visibleToUser) {
+    seeds.push(
+      singleSeed(
+        "typePlusExactAttr",
+        "类型 + 精确属性（可见）",
+        85,
+        {
+          typeName,
+          conditions: [
+            { attr: attr.key, op: "eq", value: attr.value },
+            { attr: "visibleToUser", op: "eq", value: true },
+          ],
+        },
+        [`使用 ${typeName} + visibleToUser 限制 ${attr.key}`],
+      ),
+    );
+  }
+
+  if (typeName) {
+    seeds.push(
+      singleSeed(
+        "typePlusExactAttr",
+        "类型 + 精确属性",
+        84,
+        exactSelector(attr.key, attr.value, typeName),
+        [`使用 ${typeName} 限制裸 ${attr.key}`],
+      ),
+    );
+  }
+  return seeds;
 }
 
 function exactTextWithContext(context: GenerationContext): CandidateSeed[] {
@@ -405,7 +536,8 @@ function simpleSiblingCancelVsCTA(context: GenerationContext): CandidateSeed[] {
 
 function simpleContextRelation(context: GenerationContext): CandidateSeed[] {
   const targetText = context.pickedNode.attr.text ?? context.pickedNode.attr.desc;
-  if (!targetText || context.pickedNode.pid < 0) return [];
+  if (!targetText) return anonymousClickableContextRelation(context);
+  if (context.pickedNode.pid < 0) return [];
 
   const contextSibling = context.siblings.find((node) => {
     const value = nodeText(node);
@@ -414,6 +546,7 @@ function simpleContextRelation(context: GenerationContext): CandidateSeed[] {
 
   if (!contextSibling) return [];
 
+  // contextSibling 序列化为「上下文 <关系符> 目标」，所以这里按目标相对上下文的方位取符号。
   const relation =
     context.pickedNode.attr.index > contextSibling.attr.index ? "next" : "previous";
   const distance = Math.abs(context.pickedNode.attr.index - contextSibling.attr.index);
@@ -468,6 +601,598 @@ function simpleContextRelation(context: GenerationContext): CandidateSeed[] {
   return seeds;
 }
 
+/**
+ * 匿名可点控件（无 vid/id/text/desc）用相邻文字做锚点。
+ * 官方真值里大量出现 `@ImageView[clickable=true] - [text="反馈"]` 这类写法：
+ * 关闭图标本身没有任何稳定属性，只能靠旁边的文案定位。
+ */
+function anonymousClickableContextRelation(
+  context: GenerationContext,
+): CandidateSeed[] {
+  const picked = context.pickedNode;
+  if (!picked.attr.clickable) return [];
+  if (picked.attr.vid || picked.attr.id || picked.attr.desc) return [];
+
+  const anchor = context.siblings
+    .filter((node) => node.attr.visibleToUser)
+    .map((node) => ({ node, value: nodeText(node) }))
+    .filter(
+      ({ value }) =>
+        Boolean(value) && value!.length <= 16 && !/^\d+$/.test(value!),
+    )
+    .sort((a, b) => a.value!.length - b.value!.length)[0];
+  if (!anchor) return [];
+
+  const distance = Math.abs(picked.attr.index - anchor.node.attr.index);
+  if (distance < 1 || distance > 4) return [];
+
+  const relation =
+    anchor.node.attr.index > picked.attr.index ? "next" : "previous";
+  const contextSel = selectorForTextNode(anchor.node);
+  const groupName = groupNameForContext(anchor.node, "功能类-自动生成");
+  const reason = `目标无稳定资源名，用相邻文字 ${anchor.value} 锚定`;
+
+  return [
+    {
+      strategyName: "simpleContextRelation",
+      title: "匿名图标 + 相邻文字锚点",
+      baseScore: 76,
+      plan: {
+        kind: "sibling",
+        target: { ...clickableSelector(true), typeName: shortTypeName(picked) },
+        neighbor: contextSel,
+        relation,
+        distance,
+      },
+      groupName,
+      debugReasons: [reason],
+    },
+    {
+      strategyName: "simpleContextRelation",
+      title: "匿名可点控件 + 相邻文字锚点",
+      baseScore: 74,
+      plan: {
+        kind: "sibling",
+        target: clickableSelector(true),
+        neighbor: contextSel,
+        relation,
+        distance,
+      },
+      groupName,
+      debugReasons: [reason],
+    },
+  ];
+}
+
+type NarrowStrength = "text" | "resource" | "structure";
+
+interface NarrowTarget {
+  selector: SimpleSelector;
+  label: string;
+}
+
+interface NarrowContext {
+  selector: SimpleSelector;
+  strength: NarrowStrength;
+}
+
+const NARROWING_MAX_TARGET_SELECTORS = 4;
+const NARROWING_MAX_CONTEXTS = 6;
+
+/**
+ * 多命中收窄：目标自身的选择器命中多个控件时，补一个唯一的祖先、兄弟或父容器
+ * 约束，直到只剩用户所选控件。只接受“收窄后精确点中目标”的结果。
+ */
+function ambiguousTargetNarrowing(context: GenerationContext): CandidateSeed[] {
+  const seeds: CandidateSeed[] = [];
+  let ambiguousTargets = 0;
+
+  for (const target of narrowingTargetSelectors(context.pickedNode)) {
+    if (ambiguousTargets >= NARROWING_MAX_TARGET_SELECTORS) break;
+    const hitCount = selectorHitCount(context.snapshot, target.selector);
+    if (hitCount <= 1) continue;
+    ambiguousTargets += 1;
+
+    seeds.push(
+      ...narrowByDescendant(context, target, hitCount),
+      ...narrowByAncestor(context, target, hitCount),
+      ...narrowBySibling(context, target, hitCount),
+      ...narrowByParent(context, target, hitCount),
+    );
+  }
+
+  return seeds;
+}
+
+/**
+ * 后代锚点收窄：当用户选中的是可点外层容器/悬浮窗（如 @[vid="frog_float"] 或 @[vid="reason1_layout"]），
+ * 自身在界面上重复出现时，用其内部唯一的子文本或子资源收窄并保持点击外层容器。
+ */
+function narrowByDescendant(
+  context: GenerationContext,
+  target: NarrowTarget,
+  targetHitCount: number,
+): CandidateSeed[] {
+  const picked = context.pickedNode;
+  if (picked.attr.childCount <= 0) return [];
+
+  const descendants = collectVisibleDescendants(context.snapshot, picked.id, 3);
+  const seeds: CandidateSeed[] = [];
+
+  for (const child of descendants.slice(0, 10)) {
+    const childCtx = narrowingContextSelector(child);
+    if (!childCtx || childCtx.strength === "structure") continue;
+
+    const isDirectChild = child.pid === picked.id;
+    const plan: SelectorPlan = isDirectChild
+      ? {
+          kind: "parentChild",
+          parent: target.selector,
+          child: childCtx.selector,
+          clickTarget: "parent",
+        }
+      : {
+          kind: "ancestorDescendant",
+          ancestor: { ...target.selector, at: true },
+          descendant: childCtx.selector,
+        };
+
+    if (!planHitsExactly(context.snapshot, plan, picked.id)) continue;
+
+    seeds.push({
+      strategyName: "ambiguousTargetNarrowing",
+      title: isDirectChild ? "子锚点收窄父容器" : "后代锚点收窄容器",
+      baseScore: childCtx.strength === "text" ? 88 : 86,
+      plan,
+      groupName: groupNameForContext(child, "功能类-自动生成"),
+      debugReasons: [
+        `目标${target.label}命中 ${targetHitCount} 个控件，用内部${isDirectChild ? "子节点" : "后代"} ${semanticNodeText(child) || child.attr.vid || child.attr.id || child.attr.name} 收窄`,
+      ],
+    });
+    break;
+  }
+
+  return seeds;
+}
+
+function collectVisibleDescendants(
+  snapshot: GenerationContext["snapshot"],
+  rootId: number,
+  maxDepth: number,
+): NormalizedSnapshotNode[] {
+  const out: NormalizedSnapshotNode[] = [];
+  const queue: Array<{ id: number; depth: number }> = [{ id: rootId, depth: 0 }];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current.depth >= maxDepth) continue;
+    const node = snapshot.nodeById.get(current.id);
+    if (!node) continue;
+    for (const childId of node.children) {
+      const child = snapshot.nodeById.get(childId);
+      if (!child) continue;
+      if (child.attr.visibleToUser) out.push(child);
+      queue.push({ id: childId, depth: current.depth + 1 });
+    }
+  }
+  return out;
+}
+
+/**
+ * 匿名控件的结构兜底：没有 text/desc/id/vid 时，用类型、可点性、
+ * childCount 和尺寸收窄；仍不唯一时再尝试 index / depth。
+ */
+function structuralTargetFallback(context: GenerationContext): CandidateSeed[] {
+  const node = context.pickedNode;
+  if (
+    preferredTextualAttr(node) ||
+    (node.attr.id && !isObfuscatedResourceId(node.attr.id)) ||
+    (node.attr.vid && !isObfuscatedResourceId(node.attr.vid))
+  ) {
+    return [];
+  }
+
+  const sizeFreeBase = structuralTargetSelectorWithoutSize(node);
+  const relaxedBase = structuralTargetSelector(node, "relaxed");
+  const tightBase = structuralTargetSelector(node, "tight");
+  const variants: Array<{
+    selector: SimpleSelector;
+    score: number;
+    suffix: string;
+  }> = [
+    { selector: sizeFreeBase, score: 69, suffix: "（无尺寸锁死）" },
+    { selector: relaxedBase, score: 68, suffix: "（宽松尺寸）" },
+    { selector: tightBase, score: 66, suffix: "" },
+    {
+      selector: {
+        ...relaxedBase,
+        conditions: [
+          ...relaxedBase.conditions,
+          { attr: "index", op: "eq", value: node.attr.index },
+        ],
+      },
+      score: 60,
+      suffix: " + index",
+    },
+    {
+      selector: {
+        ...relaxedBase,
+        conditions: [
+          ...relaxedBase.conditions,
+          { attr: "depth", op: "eq", value: node.attr.depth },
+        ],
+      },
+      score: 60,
+      suffix: " + depth",
+    },
+    {
+      selector: {
+        ...tightBase,
+        conditions: [
+          ...tightBase.conditions,
+          { attr: "index", op: "eq", value: node.attr.index },
+          { attr: "depth", op: "eq", value: node.attr.depth },
+        ],
+      },
+      score: 56,
+      suffix: " + index + depth",
+    },
+  ];
+
+  for (const variant of variants) {
+    const plan: SelectorPlan = { kind: "simple", selector: variant.selector };
+    if (!planHitsExactly(context.snapshot, plan, node.id)) continue;
+    return [
+      {
+        strategyName: "structuralTargetFallback",
+        title: "匿名控件结构定位",
+        baseScore: variant.score,
+        plan,
+        groupName: "功能类-自动生成",
+        debugReasons: [
+          `目标无稳定文字/资源名，用类型、childCount${variant.suffix}收窄到唯一控件；换版本后需复核`,
+        ],
+      },
+    ];
+  }
+
+  return [];
+}
+
+function narrowByAncestor(
+  context: GenerationContext,
+  target: NarrowTarget,
+  targetHitCount: number,
+): CandidateSeed[] {
+  for (const ancestor of context.ancestors.slice(0, NARROWING_MAX_CONTEXTS)) {
+    if (isWholeScreenAncestor(context.snapshot, ancestor)) continue;
+    const narrowContext = narrowingContextSelector(ancestor);
+    if (!narrowContext) continue;
+    // 祖先本身不唯一时，祖先 + 目标组合仍可能唯一，交给最终验证判断。
+    const ancestorHits = selectorHitCount(context.snapshot, narrowContext.selector);
+    if (ancestorHits === 0 || ancestorHits > 8) continue;
+
+    const plan: SelectorPlan = {
+      kind: "ancestorDescendant",
+      ancestor: narrowContext.selector,
+      descendant: target.selector,
+    };
+    if (!planHitsExactly(context.snapshot, plan, context.pickedNode.id)) continue;
+
+    return [
+      {
+        strategyName: "ambiguousTargetNarrowing",
+        title: "祖先上下文收窄",
+        baseScore: narrowScore("ancestor", narrowContext.strength),
+        plan,
+        groupName: groupNameForContext(ancestor, "功能类-自动生成"),
+        debugReasons: [
+          `目标${target.label}命中 ${targetHitCount} 个控件，用唯一祖先 ${nodeText(ancestor) || ancestor.attr.id || ancestor.attr.vid || ancestor.attr.name} 收窄`,
+        ],
+      },
+    ];
+  }
+
+  return [];
+}
+
+function narrowBySibling(
+  context: GenerationContext,
+  target: NarrowTarget,
+  targetHitCount: number,
+): CandidateSeed[] {
+  const siblings = [...context.siblings].sort(
+    (a, b) =>
+      Math.abs(a.attr.index - context.pickedNode.attr.index) -
+      Math.abs(b.attr.index - context.pickedNode.attr.index),
+  );
+
+  for (const sibling of siblings.slice(0, NARROWING_MAX_CONTEXTS)) {
+    const distance = Math.abs(
+      sibling.attr.index - context.pickedNode.attr.index,
+    );
+    if (distance < 1 || distance > 6) continue;
+    const narrowContext = narrowingContextSelector(sibling);
+    if (!narrowContext) continue;
+    if (selectorHitCount(context.snapshot, narrowContext.selector) !== 1) continue;
+
+    const relation =
+      context.pickedNode.attr.index > sibling.attr.index ? "next" : "previous";
+    // 距离 ≥2 时优先尝试弹性距离 +n/-n：在当前快照仍能唯一命中时，跨版本增删兄弟节点不易断裂
+    if (distance >= 2 && narrowContext.strength !== "structure") {
+      const flexiblePlan: SelectorPlan = {
+        kind: "contextSibling",
+        context: narrowContext.selector,
+        target: target.selector,
+        relation,
+        distance: "n",
+      };
+      if (planHitsExactly(context.snapshot, flexiblePlan, context.pickedNode.id)) {
+        return [
+          {
+            strategyName: "ambiguousTargetNarrowing",
+            title: "相邻兄弟弹性收窄",
+            baseScore: narrowScore("sibling", narrowContext.strength) + 1,
+            plan: flexiblePlan,
+            groupName: groupNameForContext(sibling, "功能类-自动生成"),
+            debugReasons: [
+              `目标${target.label}命中 ${targetHitCount} 个控件，用唯一兄弟 ${semanticNodeText(sibling) || sibling.attr.id || sibling.attr.vid || sibling.attr.name} 弹性距离收窄`,
+            ],
+          },
+        ];
+      }
+    }
+
+    const plan: SelectorPlan = {
+      kind: "contextSibling",
+      context: narrowContext.selector,
+      target: target.selector,
+      relation,
+      distance,
+    };
+    if (!planHitsExactly(context.snapshot, plan, context.pickedNode.id)) continue;
+
+    return [
+      {
+        strategyName: "ambiguousTargetNarrowing",
+        title: "相邻兄弟收窄",
+        baseScore: narrowScore("sibling", narrowContext.strength),
+        plan,
+        groupName: groupNameForContext(sibling, "功能类-自动生成"),
+        debugReasons: [
+          `目标${target.label}命中 ${targetHitCount} 个控件，用唯一兄弟 ${semanticNodeText(sibling) || sibling.attr.id || sibling.attr.vid || sibling.attr.name} 收窄`,
+        ],
+      },
+    ];
+  }
+
+  return [];
+}
+
+function narrowByParent(
+  context: GenerationContext,
+  target: NarrowTarget,
+  targetHitCount: number,
+): CandidateSeed[] {
+  // 收窄要找“目标的直接父容器”，不能直接用 clickableAncestor：
+  // 目标自己可点时，clickableAncestor 就是目标本身。
+  const parent = context.ancestors[0] ?? context.clickableAncestor;
+  if (!parent) return [];
+  const narrowContext = narrowingContextSelector(parent);
+  if (!narrowContext) return [];
+  // 父容器本身不一定唯一；父 + 子组合起来唯一即可。
+  // 例如两个同尺寸按钮的父容器都是 childCount=2，但只有一个父容器下面有目标类型。
+  const parentHits = selectorHitCount(context.snapshot, narrowContext.selector);
+  if (parentHits === 0 || parentHits > 8) return [];
+
+  const plan: SelectorPlan = {
+    kind: "parentChild",
+    parent: narrowContext.selector,
+    child: target.selector,
+    clickTarget: "child",
+  };
+  if (!planHitsExactly(context.snapshot, plan, context.pickedNode.id)) return [];
+
+  return [
+    {
+      strategyName: "ambiguousTargetNarrowing",
+      title: "父容器收窄",
+      baseScore: narrowScore("parent", narrowContext.strength),
+      plan,
+      groupName: groupNameForContext(parent, "功能类-自动生成"),
+      debugReasons: [
+        `目标${target.label}命中 ${targetHitCount} 个控件，用唯一父容器收窄`,
+      ],
+    },
+  ];
+}
+
+function narrowingTargetSelectors(node: NormalizedSnapshotNode): NarrowTarget[] {
+  const result: NarrowTarget[] = [];
+  const seen = new Set<string>();
+  const push = (selector: SimpleSelector, label: string) => {
+    const key = JSON.stringify(selector);
+    if (seen.has(key)) return;
+    seen.add(key);
+    result.push({ selector, label });
+  };
+
+  if (preferredTextualAttr(node)) {
+    push(selectorForTextNode(node), "文本");
+  }
+  if (node.attr.vid && !isObfuscatedResourceId(node.attr.vid)) {
+    push(
+      {
+        typeName: shortTypeName(node),
+        conditions: [
+          { attr: "vid", op: "eq", value: node.attr.vid },
+          ...(node.attr.visibleToUser
+            ? [{ attr: "visibleToUser" as const, op: "eq" as const, value: true }]
+            : []),
+        ],
+      },
+      "vid",
+    );
+  }
+  if (node.attr.id && !isObfuscatedResourceId(node.attr.id)) {
+    push(
+      {
+        typeName: shortTypeName(node),
+        conditions: [
+          { attr: "id", op: "eq", value: node.attr.id },
+          ...(node.attr.visibleToUser
+            ? [{ attr: "visibleToUser" as const, op: "eq" as const, value: true }]
+            : []),
+        ],
+      },
+      "id",
+    );
+  }
+  if (node.attr.clickable) {
+    push(
+      {
+        typeName: shortTypeName(node),
+        conditions: [
+          { attr: "clickable", op: "eq", value: true },
+          { attr: "visibleToUser", op: "eq", value: true },
+        ],
+      },
+      "可点类型",
+    );
+  }
+  push(structuralTargetSelectorWithoutSize(node), "无尺寸结构");
+  push(structuralTargetSelector(node, "relaxed"), "宽松结构");
+
+  return result;
+}
+
+function relaxedUpperBound(px: number): number {
+  const padded = Math.max(px + 20, Math.ceil(px * 1.25));
+  return Math.ceil(padded / 10) * 10;
+}
+
+function structuralTargetSelectorWithoutSize(
+  node: NormalizedSnapshotNode,
+): SimpleSelector {
+  const conditions: SimpleSelector["conditions"] = [];
+  if (node.attr.clickable) {
+    conditions.push({ attr: "clickable", op: "eq", value: true });
+  }
+  conditions.push({ attr: "visibleToUser", op: "eq", value: true });
+  conditions.push({
+    attr: "childCount",
+    op: "eq",
+    value: node.attr.childCount,
+  });
+  return {
+    typeName: fallbackTypeName(node),
+    conditions,
+  };
+}
+
+/**
+ * 匿名控件的结构选择器：类型 + 可点性 + 子节点数 + 尺寸上限。
+ * 默认使用带容差的宽松上限，避免不同版本/DPI 差几个像素就 0 命中。
+ */
+function structuralTargetSelector(
+  node: NormalizedSnapshotNode,
+  mode: "relaxed" | "tight" = "relaxed",
+): SimpleSelector {
+  const base = structuralTargetSelectorWithoutSize(node);
+  const conditions = [...base.conditions];
+  if (node.attr.width > 0) {
+    conditions.push({
+      attr: "width",
+      op: "lte",
+      value: mode === "relaxed" ? relaxedUpperBound(node.attr.width) : node.attr.width,
+    });
+  }
+  if (node.attr.height > 0) {
+    conditions.push({
+      attr: "height",
+      op: "lte",
+      value: mode === "relaxed" ? relaxedUpperBound(node.attr.height) : node.attr.height,
+    });
+  }
+  return {
+    typeName: base.typeName,
+    conditions,
+  };
+}
+
+function narrowingContextSelector(
+  node: NormalizedSnapshotNode,
+): NarrowContext | null {
+  if (preferredTextualAttr(node)) {
+    return { selector: selectorForTextNode(node), strength: "text" };
+  }
+  if (node.attr.vid && !isObfuscatedResourceId(node.attr.vid)) {
+    return {
+      selector: exactSelector("vid", node.attr.vid, shortTypeName(node)),
+      strength: "resource",
+    };
+  }
+  if (node.attr.id && !isObfuscatedResourceId(node.attr.id)) {
+    return {
+      selector: exactSelector("id", node.attr.id, shortTypeName(node)),
+      strength: "resource",
+    };
+  }
+  if (node.attr.childCount > 0) {
+    const conditions: SimpleSelector["conditions"] = [
+      { attr: "childCount", op: "eq", value: node.attr.childCount },
+      { attr: "visibleToUser", op: "eq", value: true },
+    ];
+    return {
+      selector: {
+        typeName: shortTypeName(node),
+        conditions,
+      },
+      strength: "structure",
+    };
+  }
+  return null;
+}
+
+function narrowScore(
+  kind: "ancestor" | "sibling" | "parent",
+  strength: NarrowStrength,
+): number {
+  const table = {
+    ancestor: { text: 86, resource: 82, structure: 70 },
+    sibling: { text: 82, resource: 78, structure: 66 },
+    parent: { text: 84, resource: 80, structure: 68 },
+  } as const;
+  return table[kind][strength];
+}
+
+function selectorHitCount(
+  snapshot: GenerationContext["snapshot"],
+  selector: SimpleSelector,
+): number {
+  return validateSelectorPlan(snapshot, { kind: "simple", selector }).hitCount;
+}
+
+function planHitsExactly(
+  snapshot: GenerationContext["snapshot"],
+  plan: SelectorPlan,
+  nodeId: number,
+): boolean {
+  const validation = validateSelectorPlan(snapshot, plan);
+  return (
+    validation.hitCount === 1 && validation.clickNodes[0]?.id === nodeId
+  );
+}
+
+function isWholeScreenAncestor(
+  snapshot: GenerationContext["snapshot"],
+  node: NormalizedSnapshotNode,
+): boolean {
+  return (
+    Math.max(0, node.attr.width) * Math.max(0, node.attr.height) >=
+    snapshot.screenWidth * snapshot.screenHeight * 0.9
+  );
+}
+
 function singleSeed(
   strategyName: MvpStrategyName,
   title: string,
@@ -492,6 +1217,7 @@ function buildCandidate(
   context: GenerationContext,
   seed: CandidateSeed,
   index: number,
+  visualTargetIds: Set<number>,
 ): SelectorCandidate {
   const baseRule = createRuleDraft(
     seed.plan,
@@ -534,6 +1260,13 @@ function buildCandidate(
     allowNoActivityIds: hasShortOneShotWindow(context.ruleSettings),
   });
 
+  // 用户点的是哪个控件，规则就该点哪个控件。点击目标跑到别的节点上的候选
+  // （例如整屏扫描出来的同名关闭按钮、同框文字标签）一律降权。
+  const clickedIds = validation.clickNodes.map((node) => node.id);
+  const offTarget =
+    clickedIds.length > 0 &&
+    !isClickWithinVisualTarget(clickedIds, visualTargetIds);
+
   return {
     id: `${seed.strategyName}-${index}`,
     strategyName: seed.strategyName,
@@ -543,12 +1276,18 @@ function buildCandidate(
     actionPlan,
     groupName: context.ruleSettings.groupName.trim() || seed.groupName,
     baseScore: seed.baseScore,
+    rankPenalty: offTarget ? OFF_TARGET_RANK_PENALTY : 0,
     validation,
     risk,
     riskNotes: actionPlan.riskNotes,
     debugAdvice: actionPlan.debugAdvice,
     debugReasons: [
       ...seed.debugReasons,
+      ...(offTarget
+        ? [
+            `点击目标 #${clickedIds.join(",")} 偏离所选控件 #${context.pickedNode.id} 的视觉摞，排序降权`,
+          ]
+        : []),
       `matches: ${serializePlan(seed.plan).join(" && ")}`,
     ],
   };
@@ -567,22 +1306,37 @@ function dedupeCandidates(candidates: SelectorCandidate[]): SelectorCandidate[] 
 function effectiveCandidateScore(candidate: SelectorCandidate): number {
   return Math.max(
     0,
-    Math.min(140, candidate.risk.finalScore + candidate.actionPlan.rankAdjustment),
+    Math.min(
+      140,
+      candidate.risk.finalScore +
+        candidate.actionPlan.rankAdjustment -
+        (candidate.rankPenalty ?? 0),
+    ),
   );
 }
 
 function preferredTextualAttr(
   node: NormalizedSnapshotNode,
 ): { key: "text" | "desc"; value: string } | null {
-  if (node.attr.text) return { key: "text", value: node.attr.text };
-  if (node.attr.desc) return { key: "desc", value: node.attr.desc };
+  if (node.attr.text && !isMachineAssetText(node.attr.text)) {
+    return { key: "text", value: node.attr.text };
+  }
+  if (node.attr.desc && !isMachineAssetText(node.attr.desc)) {
+    return { key: "desc", value: node.attr.desc };
+  }
   return null;
 }
 
 function childStableSelector(node: NormalizedSnapshotNode): SimpleSelector | null {
-  if (node.attr.vid) return exactSelector("vid", node.attr.vid, shortTypeName(node));
-  if (node.attr.id) return exactSelector("id", node.attr.id, shortTypeName(node));
-  if (node.attr.desc) return exactSelector("desc", node.attr.desc, shortTypeName(node));
+  if (node.attr.vid && !isObfuscatedResourceId(node.attr.vid)) {
+    return exactSelector("vid", node.attr.vid, shortTypeName(node));
+  }
+  if (node.attr.id && !isObfuscatedResourceId(node.attr.id)) {
+    return exactSelector("id", node.attr.id, shortTypeName(node));
+  }
+  if (node.attr.desc && !isMachineAssetText(node.attr.desc)) {
+    return exactSelector("desc", node.attr.desc, shortTypeName(node));
+  }
   return null;
 }
 
@@ -673,11 +1427,18 @@ function selectorForTextNode(node: NormalizedSnapshotNode): SimpleSelector {
     return skipTextSelector(shortTypeName(node));
   }
 
-  if (node.attr.text) {
+  if (node.attr.text && !isMachineAssetText(node.attr.text)) {
+    const dynPrefix = extractDynamicNumericPrefix(node.attr.text);
+    if (dynPrefix) {
+      return {
+        typeName: shortTypeName(node),
+        conditions: [{ attr: "text", op: "startsWith", value: dynPrefix }],
+      };
+    }
     return exactSelector("text", node.attr.text, shortTypeName(node));
   }
 
-  if (node.attr.desc) {
+  if (node.attr.desc && !isMachineAssetText(node.attr.desc)) {
     return exactSelector("desc", node.attr.desc, shortTypeName(node));
   }
 
@@ -731,7 +1492,103 @@ function shortTypeName(node: NormalizedSnapshotNode): string | undefined {
 }
 
 function nodeText(node: NormalizedSnapshotNode): string | null {
-  return node.attr.text ?? node.attr.desc ?? null;
+  return semanticNodeText(node);
+}
+
+function semanticNodeText(node: NormalizedSnapshotNode): string | null {
+  if (node.attr.text && !isMachineAssetText(node.attr.text)) {
+    return node.attr.text;
+  }
+  if (node.attr.desc && !isMachineAssetText(node.attr.desc)) {
+    return node.attr.desc;
+  }
+  return null;
+}
+
+/** 排除图片格式后缀、CDN 文件名或资源哈希等非用户可读伪文本（如 "webp"、"O1CN01...jpg_"）。 */
+export function isMachineAssetText(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (/^(?:webp|png|jpe?g|gif|svg|avif|bmp|mp4|json)$/i.test(trimmed)) {
+    return true;
+  }
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  if (/^O1CN01[0-9A-Za-z_!-]{8,}/.test(trimmed)) return true;
+  if (/\.(?:png|jpe?g|webp|gif|svg)(?:_\d+x\d+[^\s]*)?_?$/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+const KNOWN_SHORT_SEMANTIC_IDS = new Set([
+  "ad", "ok", "no", "tv", "iv", "bt", "bg", "up", "go", "id",
+  "btn", "txt", "img", "icn", "lbl", "msg", "nav", "tab", "bar",
+  "dlg", "hdr", "ftr", "cnt", "lyt", "box", "row", "col", "src",
+  "url", "tag", "num", "max", "min", "top", "btm", "lft", "rgt",
+  "sdk", "app", "web", "vip", "pay", "buy", "cls", "del", "add",
+  "sub", "opt", "cfg", "tip", "adv", "end", "new", "hot", "pop",
+]);
+
+/** 判断 id/vid 是否属于混淆构建产物或通用无意义占位符（换版本极易变化或全屏大量撞名）。 */
+export function isObfuscatedResourceId(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const short = (raw.includes(":id/") ? raw.split(":id/").pop() ?? raw : raw).trim();
+  if (!short) return false;
+  const lower = short.toLowerCase();
+  if (
+    lower === "obfuscated" ||
+    lower === "0_resource_name_obfuscated" ||
+    lower === "arg" ||
+    lower === "pdd" ||
+    lower.startsWith("unused_res_")
+  ) {
+    return true;
+  }
+  // 2~3 位字母数字混合短混淆码（如 2x1、c6n）
+  if (/^[a-z0-9]{2,3}$/.test(lower) && /\d/.test(lower) && !/^v\d+$/.test(lower)) {
+    return true;
+  }
+  // 3 字母纯辅音且不在常见 UI 缩写词表中（如 AndResGuard 生成的 dzp、rvc、hzx）
+  if (
+    /^[bcdfghjklmnpqrstvwxz]{3}$/.test(lower) &&
+    !KNOWN_SHORT_SEMANTIC_IDS.has(lower)
+  ) {
+    return true;
+  }
+  return false;
+}
+
+const HIGH_COLLISION_GENERIC_RESOURCES = new Set([
+  "title", "tvtitle", "tv_title", "alerttitle", "dialog_title",
+  "desc", "tvdesc", "tv_desc", "content", "tvcontent", "tv_content",
+  "name", "tvname", "tv_name", "text", "tvtext", "tv_text",
+  "button1", "button2", "text1", "text2",
+]);
+
+export function isHighCollisionGenericResource(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  const short = (raw.includes(":id/") ? raw.split(":id/").pop() ?? raw : raw)
+    .trim()
+    .toLowerCase();
+  return HIGH_COLLISION_GENERIC_RESOURCES.has(short);
+}
+
+function hasDynamicNumericPart(text: string): boolean {
+  return /\d/.test(text);
+}
+
+/** 提取带可变数值/文件大小/天数后缀文案中的固定前缀（如 "查看原图（1.7M）" → "查看原图"）。 */
+function extractDynamicNumericPrefix(text: string): string | null {
+  const trimmed = text.trim();
+  const parenMatch = /^([\u4e00-\u9fa5A-Za-z]{2,10})[（(]\s*\d+(?:\.\d+)?\s*[A-Za-z%MBKGT天秒次个件条张]*\s*[）)]$/.exec(
+    trimmed,
+  );
+  if (parenMatch?.[1]) return parenMatch[1];
+  const suffixMatch = /^([\u4e00-\u9fa5]{3,10}?)\s*\d+(?:\.\d+)?\s*(?:天|秒|次|个|件|条|%|MB|KB|GB|M|K)$/i.exec(
+    trimmed,
+  );
+  if (suffixMatch?.[1]) return suffixMatch[1];
+  return null;
 }
 
 function resourceText(node: NormalizedSnapshotNode): string {

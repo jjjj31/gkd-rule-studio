@@ -9,6 +9,7 @@ import JSON5 from "json5";
 import type { AppRuleDraft, RuleDraft } from "../types/ruleDraft";
 import type { FlowDraftInput, FlowRuleStep } from "../types/flowDraft";
 import { formatRuleSettingsLines } from "./helpPrompt";
+import { buildVisualTargetIds } from "./visualTarget";
 
 interface BuildableFlowStep extends FlowRuleStep {
   selectedCandidate: NonNullable<FlowRuleStep["selectedCandidate"]>;
@@ -170,7 +171,26 @@ function formatStepForPrompt(
   ];
 
   if (pickResult) {
-    lines.push("- 用户点击目标节点：", formatNodeDetail(pickResult.pickedNode));
+    const pickedNode = pickResult.pickedNode;
+    lines.push("- 用户点击目标节点：", formatNodeDetail(pickedNode));
+
+    const visualIds = buildVisualTargetIds({
+      snapshot: step.snapshot,
+      pickedNode,
+      clickableAncestor: pickResult.ancestors.find((n) => n.attr.clickable) ?? null,
+    });
+    const visualStackNodes = Array.from(visualIds)
+      .map((id) => step.snapshot.nodeById.get(id))
+      .filter((n): n is NormalizedSnapshotNode => Boolean(n));
+    const clickableInStack = visualStackNodes.find((n) => n.attr.clickable);
+    const clickableAncestor = pickResult.ancestors.find((n) => n.attr.clickable);
+    const clickableTarget = clickableInStack ?? clickableAncestor;
+
+    if (!pickedNode.attr.clickable && clickableTarget) {
+      lines.push(
+        `  ⚠️ 警示：目标节点 #${pickedNode.id} clickable=false，可点击父容器为 #${clickableTarget.id} (clickable=true)。若用子文字过滤，必须用 @ 语法提升点击目标（如 @[clickable=true] > [text="..."]）。`,
+      );
+    }
   } else {
     lines.push("- 用户点击目标节点：未选择");
   }
@@ -218,6 +238,51 @@ function selectTargetRelatedNodes(
   for (const node of step.snapshot.nodes) {
     if (node.pid === pickedNode.pid || keep.has(node.pid)) {
       keep.add(node.id);
+    }
+  }
+
+  // 视觉摞与保锚节点
+  const visualIds = buildVisualTargetIds({ snapshot: step.snapshot, pickedNode });
+  for (const id of visualIds) {
+    let n: NormalizedSnapshotNode | undefined = step.snapshot.nodeById.get(id);
+    while (n) {
+      keep.add(n.id);
+      n = n.pid >= 0 ? step.snapshot.nodeById.get(n.pid) : undefined;
+    }
+  }
+
+  const targetX = (pickedNode.attr.left + pickedNode.attr.right) / 2;
+  const targetY = (pickedNode.attr.top + pickedNode.attr.bottom) / 2;
+  const anchorKeywords = /(?:title|close|cancel|skip|ad|btn|button|dialog|popup|banner|time|count)/i;
+
+  const candidateAnchors: Array<{ node: NormalizedSnapshotNode; distance: number }> = [];
+  for (const node of step.snapshot.nodes) {
+    if (keep.has(node.id)) continue;
+    const hasText = Boolean(node.attr.text && node.attr.text.trim().length > 0);
+    const hasDesc = Boolean(node.attr.desc && node.attr.desc.trim().length > 0);
+    const hasKeyId = Boolean(
+      (node.attr.vid && anchorKeywords.test(node.attr.vid)) ||
+      (node.attr.id && anchorKeywords.test(node.attr.id)),
+    );
+
+    if (hasText || hasDesc || hasKeyId) {
+      const nx = (node.attr.left + node.attr.right) / 2;
+      const ny = (node.attr.top + node.attr.bottom) / 2;
+      candidateAnchors.push({ node, distance: Math.hypot(nx - targetX, ny - targetY) });
+    }
+  }
+
+  candidateAnchors.sort((a, b) => a.distance - b.distance);
+  for (const { node } of candidateAnchors) {
+    if (keep.size >= MAX_STEP_TREE_LINES - 10) break;
+    let n: NormalizedSnapshotNode | undefined = node;
+    const path: NormalizedSnapshotNode[] = [];
+    while (n && !keep.has(n.id)) {
+      path.push(n);
+      n = n.pid >= 0 ? step.snapshot.nodeById.get(n.pid) : undefined;
+    }
+    if (keep.size + path.length <= MAX_STEP_TREE_LINES) {
+      for (const p of path) keep.add(p.id);
     }
   }
 

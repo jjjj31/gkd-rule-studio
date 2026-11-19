@@ -104,6 +104,8 @@ export interface BuildAiGenerateMessagesInput {
   mode: AiMode;
   prompt: string;
   imageUrl?: string;
+  /** false 时跳过 compactPromptForAi 的行数/字符限制；仅用于全树实验。 */
+  compactPrompt?: boolean;
 }
 
 export interface BuildAiFeedbackMessagesInput {
@@ -157,6 +159,45 @@ export interface AiRequestPayload {
   bodyChars: number;
 }
 
+export interface AiTokenUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
+export interface AiRequestResult {
+  candidates: AiRuleCandidate[];
+  content: string;
+  usage: AiTokenUsage | null;
+  elapsedMs: number;
+  promptChars: number;
+  responseChars: number;
+}
+
+export class AiCandidateParseError extends Error {
+  readonly content: string;
+  readonly usage: AiTokenUsage | null;
+  readonly elapsedMs: number;
+  readonly promptChars: number;
+
+  constructor(
+    message: string,
+    details: {
+      content: string;
+      usage: AiTokenUsage | null;
+      elapsedMs: number;
+      promptChars: number;
+    },
+  ) {
+    super(message);
+    this.name = "AiCandidateParseError";
+    this.content = details.content;
+    this.usage = details.usage;
+    this.elapsedMs = details.elapsedMs;
+    this.promptChars = details.promptChars;
+  }
+}
+
 interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
@@ -169,6 +210,13 @@ interface ChatCompletionResponse {
   content?: string;
   error?: {
     message?: string;
+  };
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    input_tokens?: number;
+    output_tokens?: number;
   };
 }
 
@@ -461,8 +509,9 @@ export function buildAiGenerateMessages({
   mode,
   prompt,
   imageUrl,
+  compactPrompt = true,
 }: BuildAiGenerateMessagesInput): AiChatMessage[] {
-  const compactPrompt = compactPromptForAi(prompt);
+  const promptForAi = compactPrompt ? compactPromptForAi(prompt) : prompt;
   const userText = [
     mode === "flow" ? "请生成多步骤流程规则候选。" : "请生成单步规则候选。",
     "候选必须按诊断矩阵覆盖不同失败原因，不要只改标题或重复同一种 selector。",
@@ -470,7 +519,7 @@ export function buildAiGenerateMessages({
       ? "已附带当前快照截图，请结合截图视觉位置、节点树和候选 selector 判断真实按钮层。"
       : "",
     "下面是工具生成的关键上下文 prompt：",
-    compactPrompt,
+    promptForAi,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -666,6 +715,15 @@ export async function requestAiCandidates({
   messages,
   onDebugLog,
 }: RequestAiCandidatesInput): Promise<AiRuleCandidate[]> {
+  const result = await requestAiCandidatesDetailed({ config, messages, onDebugLog });
+  return result.candidates;
+}
+
+export async function requestAiCandidatesDetailed({
+  config,
+  messages,
+  onDebugLog,
+}: RequestAiCandidatesInput): Promise<AiRequestResult> {
   const normalized = normalizeAiConfig(config);
   if (!normalized.baseURL) {
     throw new Error("请先填写大模型 Base URL");
@@ -677,6 +735,7 @@ export async function requestAiCandidates({
     throw new Error("请先填写模型名称");
   }
 
+  const startedAt = Date.now();
   const payload = await buildAiRequestPayload({
     config: normalized,
     messages,
@@ -692,15 +751,55 @@ export async function requestAiCandidates({
         `模型返回了空 content：${summarizeAiResponseShape(response)}`,
     );
   }
+  let candidates: AiRuleCandidate[];
   try {
-    return parseAiCandidates(content);
+    candidates = parseAiCandidates(content);
   } catch (cause) {
     onDebugLog?.(`response:content-parse-error ${summarizeTextForLog(content)}`);
     const detail = cause instanceof Error ? cause.message : "JSON5 解析失败";
-    throw new Error(
+    throw new AiCandidateParseError(
       `AI 返回规则不是有效 JSON5：${detail}；响应片段：${summarizeTextForLog(content)}`,
+      {
+        content,
+        usage: extractAiTokenUsage(response),
+        elapsedMs: Date.now() - startedAt,
+        promptChars: payload.promptChars,
+      },
     );
   }
+  return {
+    candidates,
+    content,
+    usage: extractAiTokenUsage(response),
+    elapsedMs: Date.now() - startedAt,
+    promptChars: payload.promptChars,
+    responseChars: content.length,
+  };
+}
+
+export function extractAiTokenUsage(response: unknown): AiTokenUsage | null {
+  if (!isRecord(response) || !isRecord(response.usage)) return null;
+  const promptTokens = firstFiniteNumber(
+    response.usage.prompt_tokens,
+    response.usage.input_tokens,
+  );
+  const completionTokens = firstFiniteNumber(
+    response.usage.completion_tokens,
+    response.usage.output_tokens,
+  );
+  const totalTokens = firstFiniteNumber(response.usage.total_tokens);
+  if (
+    promptTokens === undefined &&
+    completionTokens === undefined &&
+    totalTokens === undefined
+  ) {
+    return null;
+  }
+  return {
+    ...(promptTokens !== undefined ? { promptTokens } : {}),
+    ...(completionTokens !== undefined ? { completionTokens } : {}),
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+  };
 }
 
 export function extractAiResponseContent(response: unknown): string {
@@ -1264,7 +1363,7 @@ function isTransientNetworkError(cause: unknown): boolean {
 }
 
 function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
 async function postAiJson(
@@ -1464,6 +1563,13 @@ function firstNonEmptyString(...values: unknown[]): string {
     if (typeof value === "string" && value.trim()) return value;
   }
   return "";
+}
+
+function firstFiniteNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  return undefined;
 }
 
 function summarizeTextForLog(text: string): string {

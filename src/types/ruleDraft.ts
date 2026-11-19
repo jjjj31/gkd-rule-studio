@@ -237,6 +237,8 @@ export type MvpStrategyName =
   | "clickParentByChildIdVid"
   | "simpleSiblingCancelVsCTA"
   | "simpleContextRelation"
+  | "ambiguousTargetNarrowing"
+  | "structuralTargetFallback"
   | "adContainerSkipFallback"
   | "clickableAncestorFallback"
   | "visibleNodeFallback"
@@ -251,6 +253,8 @@ export interface SelectorCandidate {
   actionPlan: RuleActionPlan;
   groupName: string;
   baseScore: number;
+  /** 排序惩罚分：同框候选点击了用户并未选中的节点时压低排名，避免"点了图标却生成文字标签规则"。 */
+  rankPenalty?: number;
   validation: SelectorValidation;
   risk: RiskBreakdown;
   riskNotes: string[];

@@ -25,6 +25,22 @@ interface Window {
       fileName: string,
     ) => void;
     installApk?: (requestId: string, filePath: string) => void;
+    getSkipCaptureStatus?: (requestId: string) => void;
+    setSkipCaptureEnabled?: (requestId: string, enabled: boolean) => void;
+    setSkipCaptureScreenshots?: (requestId: string, enabled: boolean) => void;
+    openSkipCaptureSettings?: () => void;
+    listSkipCaptures?: (
+      requestId: string,
+      offset: number,
+      limit: number,
+    ) => void;
+    getSkipCapture?: (requestId: string, id: number) => void;
+    deleteSkipCaptures?: (requestId: string) => void;
+    exportSkipCaptures?: (
+      requestId: string,
+      limit: number,
+      gkdChannel: string,
+    ) => void;
   };
   __GkdAndroidBridgeResult?: (
     requestId: string,

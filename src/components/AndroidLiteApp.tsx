@@ -156,6 +156,12 @@ import {
   snapshotOptionLabel,
   type SnapshotNameMap,
 } from "../lib/snapshotNames";
+import {
+  verifyAiCandidates,
+  rerankAiCandidates,
+  buildAiStaticFailurePrompt,
+  type AiCandidateVerification,
+} from "../lib/aiCandidateVerification";
 import { validateAiCandidateAgainstSnapshot } from "../lib/selectorMatcher";
 import {
   createAppRuleDraft,
@@ -211,6 +217,7 @@ import { ConditionEditor } from "./ConditionEditor";
 import AndroidUpdatePanel from "./AndroidUpdatePanel";
 import AnnouncementModal from "./AnnouncementModal";
 import { SubscriptionLibrary } from "./SubscriptionLibrary";
+import { SkipCapturePanel } from "./SkipCapturePanel";
 import { UserFeedbackPanel } from "./UserFeedbackPanel";
 import {
   type Announcement,
@@ -269,7 +276,7 @@ export function AndroidLiteApp() {
   const clientRef = useRef<DeviceApiClient | null>(null);
   const connectionAttemptRef = useRef(0);
   const previewAutoConnectRef = useRef(false);
-  const [view, setView] = useState<"home" | "workspace" | "library">(
+  const [view, setView] = useState<"home" | "workspace" | "library" | "capture">(
     "home",
   );
   const [libraryTests, setLibraryTests] = useState<LibraryTest[]>([]);
@@ -344,6 +351,7 @@ export function AndroidLiteApp() {
   const [aiElapsedSeconds, setAiElapsedSeconds] = useState(0);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [externalAiMessage, setExternalAiMessage] = useState<string | null>(null);
+  const [externalAiStaticFailurePrompt, setExternalAiStaticFailurePrompt] = useState<string | null>(null);
   const [aiPasteText, setAiPasteText] = useState("");
   const [aiGeneratedMode, setAiGeneratedMode] = useState<"single" | "flow" | null>(
     null,
@@ -1822,15 +1830,28 @@ export function AndroidLiteApp() {
         ? inlineTestingRef.current
         : addAiSession(inlineTestingRef.current, sessionInput);
       const sessionId = reusableSession?.id ?? withSession.aiSessions[0]?.id ?? null;
+      let finalCandidates = nextCandidates;
+      if (snapshot && mode === "single") {
+        const reranked = rerankAiCandidates(
+          snapshot,
+          nextCandidates,
+          pickResult?.pickedNode ?? null,
+        );
+        finalCandidates = reranked.rankedCandidates;
+        if (reranked.repairedCount > 0) {
+          appendAiDebugLog(`generate:auto-repaired count=${reranked.repairedCount}`);
+        }
+      }
+
       const withCandidates = sessionId
-        ? setAiSessionCandidates(withSession, sessionId, nextCandidates)
+        ? setAiSessionCandidates(withSession, sessionId, finalCandidates)
         : withSession;
       commitInlineTestingState(withCandidates);
       setActiveAiSessionId(sessionId);
-      setAiCandidates(nextCandidates);
+      setAiCandidates(finalCandidates);
       setAiGeneratedMode(mode);
-      showAiTransient(`AI 返回 ${nextCandidates.length} 个候选`);
-      appendAiDebugLog(`generate:done candidates=${nextCandidates.length}`);
+      showAiTransient(`AI 返回 ${finalCandidates.length} 个候选（已按静态置信度排序）`);
+      appendAiDebugLog(`generate:done candidates=${finalCandidates.length}`);
       debugLog("ai", "generate:ok", `${nextCandidates.length} candidates`, {
         mode,
         candidateCount: nextCandidates.length,
@@ -1983,10 +2004,44 @@ export function AndroidLiteApp() {
     if (!input) return;
 
     try {
-      const nextCandidates = parseAiCandidates(text);
-      if (nextCandidates.length === 0) {
+      const rawCandidates = parseAiCandidates(text);
+      if (rawCandidates.length === 0) {
         setExternalAiMessage("没有提取到可用规则");
         return;
+      }
+
+      let nextCandidates = rawCandidates;
+      if (snapshot && input.mode === "single") {
+        const reranked = rerankAiCandidates(
+          snapshot,
+          rawCandidates,
+          pickResult?.pickedNode ?? null,
+        );
+        nextCandidates = reranked.rankedCandidates;
+        if (!reranked.bestPassed) {
+          const failurePrompt = buildAiStaticFailurePrompt({
+            snapshot,
+            candidates: reranked.rankedCandidates,
+            verifications: reranked.verifications,
+            pickedNode: pickResult?.pickedNode ?? null,
+          });
+          setExternalAiStaticFailurePrompt(failurePrompt);
+          setExternalAiMessage(
+            "⚠️ 提示：所有规则均未通过快照静态验证（0命中或点偏）。可点击下方按钮一键复制诊断提示词贴回 AI 修正。",
+          );
+        } else {
+          setExternalAiStaticFailurePrompt(null);
+          if (reranked.repairedCount > 0) {
+            showExternalAiTransient(
+              `已提取 ${nextCandidates.length} 个规则（已自动纠偏 ${reranked.repairedCount} 处机械错误并按静态置信度排序）`,
+            );
+          } else {
+            showExternalAiTransient(`已提取 ${nextCandidates.length} 个外部 AI 规则候选（已按静态置信度排序）`);
+          }
+        }
+      } else {
+        setExternalAiStaticFailurePrompt(null);
+        showExternalAiTransient(`已提取 ${nextCandidates.length} 个外部 AI 规则候选`);
       }
 
       const reusableExternalSession =
@@ -2015,7 +2070,6 @@ export function AndroidLiteApp() {
       setExternalAiCandidates(nextCandidates);
       setExternalAiMode(input.mode);
       setAiPasteText("");
-      showExternalAiTransient(`已提取 ${nextCandidates.length} 个外部 AI 规则候选`);
     } catch (cause) {
       setExternalAiMessage(cause instanceof Error ? cause.message : "解析 AI 返回内容失败");
     }
@@ -2512,6 +2566,14 @@ export function AndroidLiteApp() {
             </span>
             <ChevronRight size={18} />
           </button>
+          <button className="android-card library-entry" type="button" onClick={() => setView("capture")}>
+            <ListChecks size={22} strokeWidth={1.5} />
+            <span>
+              <strong>跳过记录</strong>
+              <small>记录你手动关闭广告的点击，攒成规则样本</small>
+            </span>
+            <ChevronRight size={18} />
+          </button>
           <div className="android-card android-connect-card">
             <div className="android-section-title">
               <h2>HTTP 服务</h2>
@@ -2574,6 +2636,10 @@ export function AndroidLiteApp() {
         onTest={startLibraryTest} onTestResult={finishLibraryTest}
         onSync={() => syncInlineTestsToGkd(inlineTestingRef.current)}
       />
+
+      {view === "capture" && (
+        <SkipCapturePanel onClose={backHome} gkdChannel={targetChannel} />
+      )}
 
       {view === "workspace" && (
       <>
@@ -2751,6 +2817,14 @@ export function AndroidLiteApp() {
             inlineTesting={inlineTesting}
             loading={aiLoading}
             message={externalAiMessage}
+            staticFailurePrompt={externalAiStaticFailurePrompt}
+            onDismissStaticFailurePrompt={() => setExternalAiStaticFailurePrompt(null)}
+            onCopyStaticFailurePrompt={async () => {
+              if (externalAiStaticFailurePrompt) {
+                await copyTextToClipboard(externalAiStaticFailurePrompt);
+                showExternalAiTransient("已复制静态失败诊断提示词，可直接贴回外部 AI");
+              }
+            }}
             snapshot={snapshot}
             pickResult={pickResult}
             selectedAiCandidateId={selectedAiCandidateId}
@@ -4201,6 +4275,23 @@ function AndroidAiCandidateCard({
     if (!snapshot) return null;
     return validateAiCandidateAgainstSnapshot(candidate, snapshot);
   }, [candidate, snapshot]);
+  const pickedNode = useMemo(() => {
+    if (!snapshot || session?.nodeId === undefined || session.nodeId === null) {
+      return null;
+    }
+    const nodeId =
+      typeof session.nodeId === "number"
+        ? session.nodeId
+        : Number(session.nodeId);
+    return Number.isFinite(nodeId) ? snapshot.nodeById.get(nodeId) ?? null : null;
+  }, [session?.nodeId, snapshot]);
+  const candidateVerification = useMemo(() => {
+    if (!snapshot) return null;
+    return verifyAiCandidates(snapshot, [candidate], pickedNode)[0] ?? null;
+  }, [candidate, pickedNode, snapshot]);
+  const verificationPassed =
+    candidateVerification?.status === "pass" &&
+    candidateVerification.allRulesPass;
 
   async function copyCandidateJson5(): Promise<void> {
     await copyTextToClipboard(stringifyRuleDraft(candidate.app));
@@ -4237,6 +4328,19 @@ function AndroidAiCandidateCard({
           {unparsed.length > 2 ? " …" : null}
         </p>
       ) : null}
+      {candidateVerification && unparsed.length === 0 ? (
+        <p
+          className={
+            verificationPassed ? "android-ai-message" : "android-ai-warning"
+          }
+        >
+          {verificationPassed
+            ? `本地验证：${formatAiVerificationSummary(candidateVerification)}`
+            : candidateVerification.status === "pass"
+              ? `本地验证部分通过：${formatAiVerificationSummary(candidateVerification)}`
+              : `本地验证未通过：${formatAiVerificationSummary(candidateVerification)}`}
+        </p>
+      ) : null}
       <div className="android-ai-selector-list">
         {selectors.slice(0, 4).map((selector, index) => (
           <code key={`${candidate.id}-${index}`}>{selector}</code>
@@ -4266,6 +4370,36 @@ function AndroidAiCandidateCard({
       </div>
     </article>
   );
+}
+
+function formatAiVerificationSummary(
+  verification: AiCandidateVerification,
+): string {
+  const passedRule = verification.rules.find((rule) => rule.status === "pass");
+  const hit = passedRule?.hitNodes[0];
+  if (verification.status === "pass" && hit) {
+    const label = hit.text || hit.desc;
+    const className = hit.className.split(".").at(-1) || hit.className;
+    const failedRules = verification.rules.filter(
+      (rule) => rule.status !== "pass",
+    ).length;
+    const suffix =
+      !verification.allRulesPass && failedRules > 0
+        ? `；另有 ${failedRules} 条规则未通过`
+        : "";
+    return `唯一命中 #${hit.id} ${className}${label ? ` ${JSON.stringify(label)}` : ""}${suffix}`;
+  }
+  if (verification.diagnostics.length > 0) {
+    const extra =
+      verification.diagnostics.length > 1
+        ? `；另有 ${verification.diagnostics.length - 1} 条问题`
+        : "";
+    return `${verification.diagnostics[0]}${extra}`;
+  }
+  if (verification.status === "unknown") {
+    return "缺少可对照的用户选点，只能确认命中数量。";
+  }
+  return "没有规则同时满足解析、唯一命中和目标一致。";
 }
 
 type AiFeedbackDraft = Record<
@@ -4698,6 +4832,7 @@ function AndroidPromptPanel({
   copied,
   loading,
   message,
+  staticFailurePrompt,
   selectedAiCandidateId,
   testSubscription,
   onAddExternalCandidate,
@@ -4710,6 +4845,8 @@ function AndroidPromptPanel({
   onMarkCandidate,
   onImportCandidate,
   onSelectAiCandidate,
+  onDismissStaticFailurePrompt,
+  onCopyStaticFailurePrompt,
 }: {
   workspaceMode: "single" | "flow";
   aiPasteText: string;
@@ -4723,6 +4860,7 @@ function AndroidPromptPanel({
   copied: "scene" | "rule" | "draft" | "flowDraft" | "flowPrompt" | null;
   loading: boolean;
   message: string | null;
+  staticFailurePrompt?: string | null;
   selectedAiCandidateId: string | null;
   testSubscription: TestSubscriptionDraft;
   onAddExternalCandidate: (candidate: AiRuleCandidate) => void;
@@ -4738,6 +4876,8 @@ function AndroidPromptPanel({
   ) => void;
   onImportCandidate: (item: InlineRuleTestItem) => void;
   onSelectAiCandidate: (candidateId: string) => void;
+  onDismissStaticFailurePrompt?: () => void;
+  onCopyStaticFailurePrompt?: () => void;
 }) {
   const canImportPaste =
     workspaceMode === "flow" ? true : Boolean(snapshot && pickResult);
@@ -4764,6 +4904,34 @@ function AndroidPromptPanel({
         </button>
       </div>
       {message && <p className="android-ai-message">{message}</p>}
+      {staticFailurePrompt && onDismissStaticFailurePrompt && onCopyStaticFailurePrompt && (
+        <div
+          aria-live="assertive"
+          className="android-message android-main-toast"
+          role="alert"
+          style={{ bottom: "80px", maxWidth: "90%" }}
+        >
+          <span className="android-main-toast-body">
+            ⚠️ 候选规则未通过静态验证（0命中或点偏）
+          </span>
+          <button
+            className="android-button android-button-secondary"
+            style={{ padding: "4px 8px", fontSize: "12px", marginLeft: "8px" }}
+            type="button"
+            onClick={onCopyStaticFailurePrompt}
+          >
+            <Copy size={12} /> 一键复制失败诊断贴回 AI
+          </button>
+          <button
+            aria-label="关闭诊断提示"
+            className="android-main-toast-close"
+            type="button"
+            onClick={onDismissStaticFailurePrompt}
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
       {externalAiCandidates.length > 0 ? (
         <div className="android-ai-candidate-list">
           {externalAiCandidates.map((candidate) => (
@@ -5540,6 +5708,8 @@ function humanStrategyTitle(strategyName: SelectorCandidate["strategyName"]): st
     clickParentByChildIdVid: "子控件定位父点击",
     simpleSiblingCancelVsCTA: "旁边按钮确认位置",
     simpleContextRelation: "同层提示确认位置",
+    ambiguousTargetNarrowing: "多命中自动收窄",
+    structuralTargetFallback: "匿名控件结构定位",
     adContainerSkipFallback: "广告容器内跳过兜底",
     clickableAncestorFallback: "可点击父区域兜底",
     visibleNodeFallback: "可见节点兜底",
@@ -5565,6 +5735,8 @@ function humanStrategyDesc(candidate: SelectorCandidate): string {
     clickParentByChildIdVid: "图标在子层、热区在父层时使用",
     simpleSiblingCancelVsCTA: "避免点到升级、允许等正向按钮",
     simpleContextRelation: "适合简单弹窗结构",
+    ambiguousTargetNarrowing: "用唯一祖先或相邻文字排除同名控件",
+    structuralTargetFallback: "用 childCount/尺寸/index 区分匿名控件，需复核",
     adContainerSkipFallback: "适合作为 WebView 广告兜底",
     clickableAncestorFallback: "目标无稳定属性时的低分兜底",
     visibleNodeFallback: "避免候选为空，需人工复核",

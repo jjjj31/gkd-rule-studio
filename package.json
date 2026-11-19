@@ -18,6 +18,14 @@
     "typecheck": "node scripts/check-windows.cjs && tsc -b --pretty false",
     "publish:update": "node scripts/publish-update.mjs",
     "check:update": "node scripts/check-update.mjs",
+    "bench:heuristic": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts heuristic",
+    "bench:rag": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts rag.bench",
+    "bench:parity": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts parity",
+    "bench:rerank": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts rerank",
+    "bench:extract-rank": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts extract-rank",
+    "bench:rank": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts bench/rank.bench",
+    "bench:cross-version": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts bench/cross-version.bench",
+    "bench:llm": "node scripts/check-windows.cjs && vitest run --config bench/vitest.config.ts bench/llm.bench",
     "admin": "node admin/server.mjs"
   },
   "dependencies": {

@@ -1,9 +1,9 @@
 {
-  "id": "ann-20261114075739",
+  "id": "ann-20261119031026",
   "enabled": true,
   "title": "自动化测试公告",
-  "content": "您们好",
+  "content": "这是一条来自测试的通知",
   "type": "notice",
   "forced": false,
-  "updatedAt": "2026-11-14 07:57:39"
+  "updatedAt": "2026-11-19 03:10:26"
 }

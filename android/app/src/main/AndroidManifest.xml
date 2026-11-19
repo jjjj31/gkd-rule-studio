@@ -3,6 +3,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Android 11+ 需要显式声明，才能读到已安装 GKD 的版本信息。 -->
+    <queries>
+        <package android:name="li.songe.gkd" />
+        <package android:name="li.songe.gkd.debug" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
@@ -16,6 +22,18 @@
             android:authorities="${applicationId}.apkprovider"
             android:exported="false"
             android:grantUriPermissions="true" />
+        <service
+            android:name=".SkipCaptureService"
+            android:exported="true"
+            android:label="@string/skip_capture_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/skip_capture_service" />
+        </service>
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"

@@ -7,6 +7,7 @@ import type {
 } from "../types/gkdSnapshot";
 import { pickNodeAtPoint } from "./nodePicker";
 import { generateRegionSelectorCandidates } from "./regionCandidates";
+import { validateSelectorPlan } from "./selectorMatcher";
 import { normalizeSnapshot } from "./snapshotNormalize";
 
 describe("same-region selector candidates", () => {
@@ -190,6 +191,75 @@ describe("same-region selector candidates", () => {
     const top = candidates[0];
     expect(top.validation.clickNodes.length).toBeGreaterThan(0);
     expect(top.risk.finalScore).toBeGreaterThan(0);
+  });
+
+  it("ranks by selector hits even when activityIds do not match the snapshot", () => {
+    // activityIds 只决定规则何时生效，不该影响候选之间的排序。曾经这里用
+    // 带 activityIds 的校验结果排序，Activity 对不上时候选命中集合全空，
+    // 排序退化成纯按 baseScore 排，把点到别的控件的候选顶到了第一。
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 2 })),
+      node(
+        1,
+        0,
+        attr({
+          name: "android.widget.FrameLayout",
+          left: 100,
+          top: 100,
+          right: 400,
+          bottom: 400,
+          width: 300,
+          height: 300,
+          childCount: 1,
+        }),
+      ),
+      node(
+        2,
+        1,
+        attr({
+          id: "com.demo:id/close_button",
+          vid: "close_button",
+          name: "android.widget.Button",
+          text: "关闭",
+          clickable: true,
+          left: 150,
+          top: 150,
+          right: 250,
+          bottom: 200,
+          width: 100,
+          height: 50,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 150, y: 160 });
+    expect(pick?.pickedNode.id).toBe(2);
+
+    const candidates = generateRegionSelectorCandidates({
+      snapshot,
+      ruleSettings: { ...DEFAULT_RULE_SETTINGS, activityIds: "com.demo.OtherActivity" },
+      pickResult: {
+        ...pick!,
+        pickedNode: snapshot.nodeById.get(1)!,
+        clickableAncestor: null,
+      },
+    });
+
+    expect(candidates.length).toBeGreaterThan(1);
+    expect(candidates.every((candidate) => candidate.validation.clickNodes.length === 0)).toBe(
+      true,
+    );
+    // 用户选中的是大容器，close_button 只是里面的子控件，基础分却更高；
+    // 修复前按分数排会把它顶到第一。
+    expect(
+      candidates.some(
+        (candidate) =>
+          candidate.rule.matches.join(" ").includes("close_button") &&
+          candidate.baseScore > candidates[0].baseScore,
+      ),
+    ).toBe(true);
+    const top = candidates[0];
+    expect(validateSelectorPlan(snapshot, top.plan).clickNodes.map((node) => node.id)).toEqual([1]);
   });
 });
 

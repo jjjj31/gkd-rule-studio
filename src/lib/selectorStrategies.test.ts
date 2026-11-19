@@ -771,6 +771,242 @@ describe("selector MVP flow", () => {
     // 该候选应能命中当前快照中 text="否" 的节点。
     expect(variant?.validation.hitCount).toBeGreaterThanOrEqual(1);
   });
+
+  it("narrows a duplicated target with a unique ancestor", () => {
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 2 })),
+      node(
+        1,
+        0,
+        attr({
+          id: "com.demo:id/dialog_renew",
+          name: "android.widget.FrameLayout",
+          text: "会员到期",
+          left: 40,
+          top: 200,
+          right: 520,
+          bottom: 700,
+          childCount: 2,
+          index: 0,
+        }),
+      ),
+      node(
+        2,
+        1,
+        attr({
+          name: "android.widget.TextView",
+          text: "续费后继续使用",
+          left: 60,
+          top: 240,
+          right: 500,
+          bottom: 300,
+          index: 0,
+        }),
+      ),
+      node(
+        3,
+        1,
+        attr({
+          name: "android.widget.Button",
+          text: "关闭",
+          clickable: true,
+          left: 60,
+          top: 600,
+          right: 220,
+          bottom: 680,
+          index: 1,
+        }),
+      ),
+      node(
+        4,
+        0,
+        attr({
+          id: "com.demo:id/dialog_ad",
+          name: "android.widget.FrameLayout",
+          text: "广告",
+          left: 540,
+          top: 200,
+          right: 1020,
+          bottom: 700,
+          childCount: 1,
+          index: 1,
+        }),
+      ),
+      node(
+        5,
+        4,
+        attr({
+          name: "android.widget.Button",
+          text: "关闭",
+          clickable: true,
+          left: 560,
+          top: 600,
+          right: 720,
+          bottom: 680,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 120, y: 640 });
+    expect(pick?.pickedNode.id).toBe(3);
+
+    const candidates = generateSelectorCandidates({
+      snapshot,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickedNode: pick!.pickedNode,
+      ancestors: pick!.ancestors,
+      siblings: pick!.siblings,
+      clickableAncestor: pick!.clickableAncestor,
+      nearbyTextNodes: pick!.nearbyTextNodes,
+    });
+
+    const narrowed = candidates.find(
+      (candidate) => candidate.strategyName === "ambiguousTargetNarrowing",
+    );
+    expect(narrowed).toBeDefined();
+    expect(narrowed?.validation.hitCount).toBe(1);
+    expect(narrowed?.validation.clickNodes[0]?.id).toBe(3);
+  });
+
+  it("narrows a duplicated target with a unique adjacent sibling", () => {
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 4 })),
+      node(
+        1,
+        0,
+        attr({
+          name: "android.widget.TextView",
+          text: "广告A",
+          left: 40,
+          top: 200,
+          right: 300,
+          bottom: 260,
+          index: 0,
+        }),
+      ),
+      node(
+        2,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "关闭",
+          clickable: true,
+          left: 40,
+          top: 280,
+          right: 200,
+          bottom: 360,
+          index: 1,
+        }),
+      ),
+      node(
+        3,
+        0,
+        attr({
+          name: "android.widget.TextView",
+          text: "广告B",
+          left: 540,
+          top: 200,
+          right: 800,
+          bottom: 260,
+          index: 2,
+        }),
+      ),
+      node(
+        4,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "关闭",
+          clickable: true,
+          left: 540,
+          top: 280,
+          right: 700,
+          bottom: 360,
+          index: 3,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 100, y: 320 });
+    expect(pick?.pickedNode.id).toBe(2);
+
+    const candidates = generateSelectorCandidates({
+      snapshot,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickedNode: pick!.pickedNode,
+      ancestors: pick!.ancestors,
+      siblings: pick!.siblings,
+      clickableAncestor: pick!.clickableAncestor,
+      nearbyTextNodes: pick!.nearbyTextNodes,
+    });
+
+    const narrowed = candidates.find(
+      (candidate) =>
+        candidate.strategyName === "ambiguousTargetNarrowing" &&
+        candidate.validation.clickNodes[0]?.id === 2,
+    );
+    expect(narrowed).toBeDefined();
+    expect(narrowed?.validation.hitCount).toBe(1);
+  });
+
+  it("falls back to structural index for an anonymous duplicate", () => {
+    const snapshot = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 2 })),
+      node(
+        1,
+        0,
+        attr({
+          name: "android.view.ViewGroup",
+          clickable: true,
+          left: 40,
+          top: 200,
+          right: 124,
+          bottom: 284,
+          width: 84,
+          height: 84,
+          childCount: 1,
+          index: 0,
+        }),
+      ),
+      node(
+        2,
+        0,
+        attr({
+          name: "android.view.ViewGroup",
+          clickable: true,
+          left: 140,
+          top: 200,
+          right: 224,
+          bottom: 284,
+          width: 84,
+          height: 84,
+          childCount: 1,
+          index: 1,
+        }),
+      ),
+    ]);
+
+    const pick = pickNodeAtPoint(snapshot, { x: 180, y: 240 });
+    expect(pick?.pickedNode.id).toBe(2);
+
+    const candidates = generateSelectorCandidates({
+      snapshot,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickedNode: pick!.pickedNode,
+      ancestors: pick!.ancestors,
+      siblings: pick!.siblings,
+      clickableAncestor: pick!.clickableAncestor,
+      nearbyTextNodes: pick!.nearbyTextNodes,
+    });
+
+    const structural = candidates.find(
+      (candidate) => candidate.strategyName === "structuralTargetFallback",
+    );
+    expect(structural).toBeDefined();
+    expect(structural?.rule.matches[0]).toContain("index=1");
+    expect(structural?.validation.hitCount).toBe(1);
+    expect(structural?.validation.clickNodes[0]?.id).toBe(2);
+  });
 });
 
 function buildSnapshot(

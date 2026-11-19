@@ -1,0 +1,14 @@
+{
+  "feedbackStatus": "passed",
+  "feedbackChecks": 19,
+  "viewportWidths": [
+    320,
+    360,
+    412
+  ],
+  "allActionButtonsVisible": true,
+  "workspaceFeedbackRemoved": true,
+  "nodeReorderStillReproduces": true,
+  "realDeviceAcceptance": "pending",
+  "apkSha256": "6ebb5fee4180cdb279a879a4034e4bf328c714dd59224897242440322bdd6eb2"
+}

@@ -19,6 +19,8 @@ import {
   shouldRetryTextOnlyAfterMultimodalError,
   stripAiMessageImages,
   extractAiResponseContent,
+  extractAiTokenUsage,
+  AiCandidateParseError,
   categorizeAiError,
   upsertAiProfile,
 } from "./aiModel";
@@ -30,6 +32,39 @@ import {
 } from "./authoringFeedback";
 
 describe("ai model helpers", () => {
+  it("extracts token usage from chat completions and responses payloads", () => {
+    expect(
+      extractAiTokenUsage({
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+      }),
+    ).toEqual({ promptTokens: 10, completionTokens: 20, totalTokens: 30 });
+    expect(
+      extractAiTokenUsage({
+        usage: { input_tokens: 5, output_tokens: 7 },
+      }),
+    ).toEqual({ promptTokens: 5, completionTokens: 7 });
+    expect(extractAiTokenUsage({ usage: {} })).toBeNull();
+    expect(extractAiTokenUsage({})).toBeNull();
+  });
+
+  it("keeps usage and content on AI parse errors for cost accounting", () => {
+    const error = new AiCandidateParseError("bad json", {
+      content: "{ candidates: [",
+      usage: { promptTokens: 12, completionTokens: 3, totalTokens: 15 },
+      elapsedMs: 42,
+      promptChars: 100,
+    });
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.name).toBe("AiCandidateParseError");
+    expect(error).toMatchObject({
+      content: "{ candidates: [",
+      usage: { promptTokens: 12, completionTokens: 3, totalTokens: 15 },
+      elapsedMs: 42,
+      promptChars: 100,
+    });
+  });
+
   it("stores multiple AI model profiles and switches the active profile", () => {
     const first = createAiProfile(
       {

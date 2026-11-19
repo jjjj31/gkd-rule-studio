@@ -7,6 +7,7 @@ import { buildHelpPrompt } from "./helpPrompt";
 import { formatAuthoringFeedbackPrompt, classifyAuthoringFeedback } from "./authoringFeedback";
 import { pickNodeAtPoint } from "./nodePicker";
 import { normalizeSnapshot } from "./snapshotNormalize";
+import type { FewShotHit } from "./fewShotRetrieval";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import type {
   RawGkdSnapshot,
@@ -98,9 +99,17 @@ describe("prompt generation", () => {
     expect(prompt).toContain("测试版 A");
     expect(prompt).toContain("测试反馈格式");
     expect(prompt).toContain("是否误触");
-    expect(prompt).toContain("用户点击只是手指常点的大概区域");
-    expect(prompt).toContain("同一可视区域可能有多个节点");
-    expect(prompt).toContain("不要把当前 pickedNode 当成唯一正确目标");
+    expect(prompt).toContain("pickedNode 是用户选中的目标区域");
+    expect(prompt).toContain("与它矩形重合的视觉摞");
+    expect(prompt).toContain("第一条候选必须命中 pickedNode 本身");
+    expect(prompt).toContain("禁止用同屏标题、兄弟 CTA、无关关闭图标代替目标");
+    expect(prompt).toContain("属性名和值必须原样照抄节点树");
+    expect(prompt).toContain("@[clickable=true] > [text=\"...\"]");
+    expect(prompt).toContain("Parent > Child");
+    expect(prompt).toContain("> 只匹配直接子节点");
+    expect(prompt).toContain("禁止 [bounds=...]");
+    expect(prompt).toContain("多分支请用 anyMatches 数组");
+    expect(prompt).toContain("输出前自检");
   });
 
   it("omits the embedded node tree when includeNodeTree is false but keeps pick context", () => {
@@ -125,6 +134,73 @@ describe("prompt generation", () => {
     expect(prompt).toContain("同级节点：");
   });
 
+  it("adds retrieved official examples without replacing current snapshot context", () => {
+    const snapshot = buildSnapshot("com.demo.MainActivity");
+    const pick = pickNodeAtPoint(snapshot, { x: 150, y: 340 });
+    expect(pick).not.toBeNull();
+
+    const example: FewShotHit = {
+      score: 0.93,
+      record: {
+        id: "other:1",
+        appId: "com.other",
+        appName: "Other",
+        groupName: "全屏广告",
+        selector: "@[vid=\"iv_close\"] - [vid=\"rl_ad\"][visibleToUser=true]",
+        selectorShape: {
+          kind: "sibling",
+          hasAt: true,
+          hasUnion: false,
+          hasHierarchy: false,
+          hasSibling: true,
+          attrs: ["vid", "visibleToUser"],
+        },
+        target: {
+          id: 1,
+          name: "android.widget.ImageView",
+          vid: "iv_close",
+          text: null,
+          desc: null,
+          clickable: true,
+          childCount: 0,
+          depth: 4,
+          bounds: [858, 1887, 953, 1982],
+        },
+        context: {
+          ancestors: [],
+          siblings: [
+            {
+              id: 2,
+              name: "android.widget.RelativeLayout",
+              vid: "rl_ad",
+              text: null,
+              desc: null,
+              clickable: false,
+              visible: true,
+            },
+          ],
+          anchors: [],
+          targetPath: "FrameLayout > ImageView",
+        },
+        features: ["cls:ImageView", "vid:yes"],
+      },
+    };
+
+    const prompt = buildHelpPrompt({
+      snapshot,
+      pickResult: pick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      fewShotExamples: [example],
+    });
+
+    expect(prompt).toContain("相似历史案例");
+    expect(prompt).toContain("案例 1");
+    expect(prompt).toContain("形态 sibling");
+    expect(prompt).toContain(example.record.selector);
+    expect(prompt).toContain("用户点击的目标节点：");
+    expect(prompt).toContain("节点树摘要：");
+  });
+
   it("carries scenario label and description alongside run settings", () => {
     const snapshot = buildSnapshot("com.demo.MainActivity");
     const pick = pickNodeAtPoint(snapshot, { x: 150, y: 340 });
@@ -143,6 +219,141 @@ describe("prompt generation", () => {
     expect(prompt).toContain("- matchTime:");
   });
 
+  it("injects clickability warning and real attribute whitelist when target is unclickable", () => {
+    const raw: RawGkdSnapshot = {
+      id: 2,
+      appId: "com.demo",
+      activityId: "com.demo.MainActivity",
+      screenWidth: 1080,
+      screenHeight: 1920,
+      isLandscape: false,
+      appInfo: { id: "com.demo", name: "Demo" },
+      nodes: [
+        node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 1 })),
+        node(
+          1,
+          0,
+          attr({
+            name: "android.widget.LinearLayout",
+            clickable: true,
+            left: 200,
+            top: 200,
+            right: 400,
+            bottom: 280,
+            childCount: 1,
+          }),
+        ),
+        node(
+          2,
+          1,
+          attr({
+            name: "android.widget.TextView",
+            text: "跳过广告",
+            clickable: false,
+            left: 200,
+            top: 200,
+            right: 400,
+            bottom: 280,
+            id: "com.demo:id/skip_tv",
+          }),
+        ),
+      ],
+    };
+    const snapshot = normalizeSnapshot(raw, "blob://demo2", "test");
+    const pick = pickNodeAtPoint(snapshot, { x: 250, y: 240 });
+    expect(pick).not.toBeNull();
+
+    const prompt = buildHelpPrompt({
+      snapshot,
+      pickResult: pick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+    });
+
+    expect(prompt).toContain("目标区域与可点击性事实：");
+    expect(prompt).toContain("【关键警示】当前选中的 pickedNode (#2) clickable=false");
+    expect(prompt).toContain("可响应点击的父容器/同层节点为 #1 LinearLayout (clickable=true)");
+    expect(prompt).toContain("@[clickable=true] > [text=");
+    expect(prompt).toContain("局部节点真实属性白名单");
+    expect(prompt).toContain('id="com.demo:id/skip_tv"');
+  });
+
+  it("preserves title and anchor nodes during tree pruning on large snapshots", () => {
+    const nodes: SnapshotNode[] = [
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 250 })),
+    ];
+    // 创建一个包含 250 个节点的假快照
+    for (let i = 1; i <= 240; i++) {
+      nodes.push(
+        node(
+          i,
+          0,
+          attr({
+            name: "android.view.View",
+            left: 0,
+            top: i * 5,
+            right: 100,
+            bottom: i * 5 + 4,
+          }),
+        ),
+      );
+    }
+    // 关键标题锚点（远离 0 号，但有重要 text）
+    nodes.push(
+      node(
+        245,
+        0,
+        attr({
+          name: "android.widget.TextView",
+          text: "青少年模式提醒",
+          id: "com.demo:id/dialog_title",
+          left: 100,
+          top: 100,
+          right: 300,
+          bottom: 150,
+        }),
+      ),
+    );
+    // 目标关闭按钮
+    nodes.push(
+      node(
+        246,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "我知道了",
+          clickable: true,
+          left: 100,
+          top: 200,
+          right: 300,
+          bottom: 260,
+        }),
+      ),
+    );
+
+    const raw: RawGkdSnapshot = {
+      id: 3,
+      appId: "com.demo",
+      activityId: "com.demo.MainActivity",
+      screenWidth: 1080,
+      screenHeight: 1920,
+      isLandscape: false,
+      nodes,
+    };
+    const snapshot = normalizeSnapshot(raw, "blob://demo3", "test");
+    const pick = pickNodeAtPoint(snapshot, { x: 150, y: 230 });
+    expect(pick).not.toBeNull();
+
+    const prompt = buildHelpPrompt({
+      snapshot,
+      pickResult: pick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+    });
+
+    expect(prompt).toContain("展示目标节点相关子树（含关键文本/组件锚点）：");
+    // 保锚裁剪成功保留了青少年模式提醒与目标按钮
+    expect(prompt).toContain("青少年模式提醒");
+    expect(prompt).toContain("我知道了");
+  });
 });
 
 function buildSnapshot(activityId: string) {
