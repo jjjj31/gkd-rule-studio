@@ -6,7 +6,7 @@
 [![Android](https://img.shields.io/badge/Android-23%2B-3ddc84.svg)](android/README.md)
 [![GKD](https://img.shields.io/badge/GKD-stable%20%7C%20beta-00a6a6.svg)](docs/verification/gkd-release-channels.md)
 
-> **当前分支范围：** 本分支是 Android 版发行准备，不包含“扫描已安装应用的 SDK”与 MCP；桌面版代码仍保留，但当前以 Android 版为准。分支关系见 [发行范围记录](docs/verification/branch-split-2026-11-03.md)。
+> **当前分支范围：** 本分支是 Android 版发行准备，不包含“扫描已安装应用的 SDK”与 MCP；桌面版代码已移至 `desktop` 分支，当前主线仅保留 Android 版及用于开发调试的桌面 Web 构建。分支关系见 [发行范围记录](docs/verification/branch-split-2026-11-03.md)。
 
 <p align="center">
   <img src="docs/images/home.png" width="270" alt="GKD Rule Studio 首页" />
@@ -21,9 +21,9 @@
 | 做连续操作 | 把多张快照编排成步骤，设置先后依赖，生成“点红包 → 返回 → 关闭弹窗”一类多步规则 |
 | 找现成规则 | 添加多个 GKD 订阅源，按应用名或包名搜索，复制完整规则组，或连接 Beta 后直接导入 |
 | 用 AI 辅助 | 复制带完整上下文的求助 Prompt；也可配置 OpenAI 兼容接口，在 App 内直接生成、测试和迭代规则 |
-| 反馈 | 在首页、工作区或测试结果页提交反馈；可附带脱敏截图、节点、规则文件和 GKD 诊断压缩包 |
+| 反馈 | 在首页、测试结果页或渲染异常页提交反馈；可附带脱敏截图、节点、规则文件和 GKD 诊断压缩包 |
 
-基础制作流程不需要 API Key，也不需要账号。只有内置 AI、订阅首次下载和检查更新需要联网。
+基础制作流程不需要 API Key，也不需要账号。只有内置 AI、订阅首次下载、公告拉取、检查更新和反馈提交需要联网。
 
 ## 完整功能
 
@@ -39,8 +39,8 @@
 ### 2. 从选点到候选规则
 
 - 在截图画布上**拖动放大镜**到目标控件，松手后定位节点；不依赖手写坐标。
-- 支持切换父节点、可点击祖先和重叠节点，避免只选到文字层或广告热区。
-- 内置 14 类 selector 策略，覆盖精确 `id/vid/desc`、类型加属性、文本上下文、父节点、兄弟关系、容器兜底等常见写法。
+- 自动识别目标节点的可点击祖先与上下文节点，避免只选到文字层或广告热区（原「多节点切换」独立列表面板已在当前发行界面暂隐，见 `ARCHIVED_RELEASE_UI`）。
+- 内置 17 类 selector 策略，覆盖精确 `id/vid/desc`、类型加属性、文本上下文、父节点、兄弟关系、可点击祖先/容器兜底与否定词合并等常见写法。
 - 自动验证候选在当前快照中的命中数、实际点击节点和支持节点，并在画布上区分选中框与命中框。
 - 根据稳定性、唯一性、点击风险、广告遮挡和倒计时文本等因素排序，给出首选、风险提示和修复建议。
 - 能识别常见广告 SDK 的节点特征和跳过按钮命名，用于当前快照的风险判断；不会扫描手机里安装了哪些 App。
@@ -50,8 +50,8 @@
 - 内置 9 种规则场景：开屏广告、页面弹窗、视频内广告、随机插屏、切回前台广告、信息流广告、更新弹窗、权限/通知/评价弹窗和通用功能。
 - 每种场景会生成对应的 `groupName`、`activityIds`、`matchTime`、`actionMaximum`、`actionCd`、`resetMatch` 等默认参数，仍可继续调整。
 - 可用自然语言描述特殊场景，复制场景 Prompt 给外部 AI，再把 AI 返回的 JSON5 粘回 App 保存为自定义场景。
-- 提供条件编辑器，可查看和修改文字、描述、ID、属性、父子/兄弟等条件，并重新验证编辑后的完整规则。
-- 支持复制完整 JSON5、查看规则摘要和交付预览，保留规则组公共字段、规则编号及引用信息。
+- 底层保留条件编辑与单快照规则预览能力（当前 Android 发行界面已暂隐「条件编辑器/修改定位」与「当前快照规则面板」，仅保留源码与测试）。
+- 支持复制完整 JSON5 与规则摘要，保留规则组公共字段、规则编号及引用信息。
 - 正式版路径复制后手动添加到 GKD；官方 GKD 1.13 Beta 可通过 `/api/appendRules` 直接追加到本地规则。
 
 > Beta 的追加接口不是幂等操作。同一规则组重复导入会追加副本；若请求响应丢失，应先到 GKD 核对是否已经写入，再决定是否重试。
@@ -135,7 +135,7 @@
 
 1. 勾选一张快照，进入工作区。
 2. 在截图里把放大镜拖到广告关闭按钮或“跳过”按钮上，松手。
-3. 如果选到了文字层而不是按钮，可在节点列表中切换父节点或可点击祖先。
+3. 如果选到了文字层而不是按钮，可在「候选」中选择点击父节点/可点击祖先的候选规则，或微调放大镜落点重新选点。
 4. 在「场景」选择最接近的预设；不确定时先用默认设置。
 5. 在「候选」查看命中数、风险和首选建议，选一条加入测试。
 6. 在目标 App 中触发广告，回到 Rule Studio 记录是否命中、是否误触、是否关闭成功。
@@ -177,7 +177,7 @@
 
 ## 离线、网络与隐私
 
-- 选点、候选生成、静态验证、条件编辑和本地记录都在手机本地完成。
+- 选点、候选生成、静态验证和本地记录都在手机本地完成。
 - 订阅缓存保存在本地；订阅刷新、内置 AI、更新检查和反馈提交需要网络。
 - 连接 GKD 时使用局域网明文 HTTP，不应在不可信网络中暴露 GKD HTTP 服务。
 - AI 请求直接发往用户配置的接口。API Key 保存在 WebView 本地存储，不进入项目仓库，但也不是硬件级密钥库。
@@ -246,7 +246,7 @@ $env:FEEDBACK_DATA_DIR = (Join-Path $PWD 'data')
 .\.venv\Scripts\python -m unittest discover -s tests -v
 ```
 
-这个服务同时是反馈收件箱和公告/版本弹窗后台：登录 `/admin` 后可在两个标签间切换，App 通过 `GET /api/announcement` 读取公告。部署、环境变量、Docker、HTTPS 和后台管理说明见 [server/feedback/README.md](server/feedback/README.md)。
+这个服务同时是反馈收件箱和公告/版本弹窗后台：登录 `/admin` 后可在两个标签间切换。App 启动时会按顺序从 GitHub `announcement.json`、国内代理镜像及反馈后端 `GET /api/announcement` 拉取公告；本地也可通过 `pnpm admin` 启动独立的 `admin/` 公告管理后台。反馈后端部署、环境变量、Docker、HTTPS 和后台管理说明见 [server/feedback/README.md](server/feedback/README.md)，独立公告后台见 [admin/README.md](admin/README.md)。
 
 ## 项目结构
 
@@ -256,7 +256,9 @@ src/
   lib/              设备 API、选择器、候选生成、AI、流程和更新逻辑
   data/             场景参数、广告节点特征和风险词
 android/            WebView 壳、Java Bridge、签名和 Gradle 构建
+admin/              零依赖 Node.js 公告与版本管理后台（pnpm admin）
 server/feedback/    FastAPI + SQLite 反馈服务
+bench/              规则生成与排序评测集
 scripts/            构建、发布、更新检查和验收脚本
 docs/               规格、研究、截图和验证记录
 .github/workflows/  日常 CI 和 tag 发布流程
