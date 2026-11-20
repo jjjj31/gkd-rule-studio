@@ -1,168 +1,162 @@
+<div align="center">
+
+<img src="android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png" width="92" alt="GKD Rule Studio 图标" />
+
 # GKD Rule Studio
 
-一款运行在手机上的 GKD 规则制作工具：连接 GKD 的 HTTP 服务，在界面截图上选控件，自动生成、验证、测试并交付规则。目标是把“看节点树、写 selector、改 JSON5、反复试规则”压缩成一条可视化工作流。
+**不用学语法，在手机上拖动放大镜就能写 GKD 跳广告规则**
 
-[![License: SATA](https://img.shields.io/badge/License-SATA-blue.svg)](LICENSE)
-[![Android](https://img.shields.io/badge/Android-23%2B-3ddc84.svg)](android/README.md)
-[![GKD](https://img.shields.io/badge/GKD-stable%20%7C%20beta-00a6a6.svg)](docs/verification/gkd-release-channels.md)
+连接 GKD HTTP 服务，在截图上把放大镜拖到「跳过 / ×」松手，本地离线自动生成候选规则、一键推送 GKD 实测，并支持外部 / 内置 AI 闭环修复疑难广告。
 
-> **当前分支范围：** 本分支是 Android 版发行准备，不包含“扫描已安装应用的 SDK”与 MCP；桌面版代码已移至 `desktop` 分支，当前主线仅保留 Android 版及用于开发调试的桌面 Web 构建。分支关系见 [发行范围记录](docs/verification/branch-split-2026-11-03.md)。
+[![Version](https://img.shields.io/badge/Version-v0.2.2-86bfff?style=flat-square)](https://github.com/jjjj31/gkd-rule-studio/releases)
+[![Android](https://img.shields.io/badge/Android-6.0%2B%20(API%2023)-3ddc84?style=flat-square)](android/README.md)
+[![GKD](https://img.shields.io/badge/GKD-1.12%20%E6%AD%A3%E5%BC%8F%E7%89%88%20%7C%201.13%20Beta-00a6a6?style=flat-square)](docs/verification/gkd-release-channels.md)
+[![Offline](https://img.shields.io/badge/%E5%9F%BA%E7%A1%80%E6%B5%81%E7%A8%8B-%E7%BA%AF%E6%9C%AC%E5%9C%B0%E7%A6%BB%E7%BA%BF%20%C2%B7%200%20API%20Key-91ddb1?style=flat-square)](#离线网络与隐私)
+[![License: SATA](https://img.shields.io/badge/License-SATA-blue?style=flat-square)](LICENSE)
 
-<p align="center">
-  <img src="docs/images/home.png" width="270" alt="GKD Rule Studio 首页" />
-  <img src="docs/images/library.png" width="270" alt="订阅规则库" />
-</p>
+[下载安装包](https://github.com/jjjj31/gkd-rule-studio/releases) · [制作路线图](#规则制作路线图) · [为什么省时间](#为什么比手搓或直接问-ai-省心) · [3 分钟上手](#3-分钟快速上手) · [能力边界](#适用人群与坦诚说明) · [本地开发](#开发与构建)
 
-## 它能做什么
+</div>
 
-| 场景 | 能力 |
-| --- | --- |
-| 自己写规则 | 连接 GKD、读取快照、截图上拖动选点、自动生成候选 selector、验证命中并复制/导入 |
-| 做连续操作 | 把多张快照编排成步骤，设置先后依赖，生成“点红包 → 返回 → 关闭弹窗”一类多步规则 |
-| 找现成规则 | 添加多个 GKD 订阅源，按应用名或包名搜索，复制完整规则组，或连接 Beta 后直接导入 |
-| 用 AI 辅助 | 复制带完整上下文的求助 Prompt；也可配置 OpenAI 兼容接口，在 App 内直接生成、测试和迭代规则 |
-| 反馈 | 在首页、测试结果页或渲染异常页提交反馈；可附带脱敏截图、节点、规则文件和 GKD 诊断压缩包 |
+<!--
+  新版真机截图与动图就位后，放入 docs/images/ 并取消下方注释即可展示：
+  <p align="center">
+    <img src="docs/images/demo-magnifier.gif" width="280" alt="拖动放大镜自动生成规则演示" />
+  </p>
+  <p align="center">
+    <img src="docs/images/hero-v2.png" width="840" alt="GKD Rule Studio 界面总览" />
+  </p>
+-->
 
-基础制作流程不需要 API Key，也不需要账号。只有内置 AI、订阅首次下载、公告拉取、检查更新和反馈提交需要联网。
+---
 
-## 完整功能
+## 这是给谁做的？
 
-### 1. GKD 连接与快照
+如果你符合下面任何一条，这个工具就是为你准备的：
 
-- 支持输入 `127.0.0.1:8888`、`192.168.1.23:8888` 或完整 `http://` 地址连接 GKD HTTP 服务。
-- 首页区分官方 GKD「正式版」与「测试版」，首次默认正式版；连接时按包名和 `versionName` 共同核对，错渠道会明确提示。
-- 读取设备快照列表和截图；可刷新、单张打开或多张勾选进入工作区。
-- 可为快照设置本地名称，名称会用于列表显示和导出文件。
-- 支持导出单张快照为 Markdown 节点树 + 原格式截图，截图按文件头识别 PNG/WebP。
-- 支持 Android 23 及以上；GKD 连接允许局域网明文 HTTP，这是为了访问手机本机的 GKD 服务。
+- **手机广告太多**：开屏摇一摇、入页弹窗、信息流小叉叉烦不胜烦。
+- **已经用上 GKD，但订阅没覆盖**：常用订阅库里没有你的小众 App，或 App 更新后老规则失效了。
+- **想自己写规则，但不想啃语法**：看到节点树、selector 选择器、`JSON5` 就头大，只想指哪打哪。
 
-### 2. 从选点到候选规则
+> **核心承诺**：基础制作流程**完全运行在手机本地**，**不需要 API Key，不需要注册账号，免费开源**。只有使用内置 AI、拉取/刷新订阅、公告、检查更新与提交反馈时才会联网。
 
-- 在截图画布上**拖动放大镜**到目标控件，松手后定位节点；不依赖手写坐标。
-- 自动识别目标节点的可点击祖先与上下文节点，避免只选到文字层或广告热区（原「多节点切换」独立列表面板已在当前发行界面暂隐，见 `ARCHIVED_RELEASE_UI`）。
-- 内置 17 类 selector 策略，覆盖精确 `id/vid/desc`、类型加属性、文本上下文、父节点、兄弟关系、可点击祖先/容器兜底与否定词合并等常见写法。
-- 自动验证候选在当前快照中的命中数、实际点击节点和支持节点，并在画布上区分选中框与命中框。
-- 根据稳定性、唯一性、点击风险、广告遮挡和倒计时文本等因素排序，给出首选、风险提示和修复建议。
-- 能识别常见广告 SDK 的节点特征和跳过按钮命名，用于当前快照的风险判断；不会扫描手机里安装了哪些 App。
+---
 
-### 3. 场景、规则编辑与交付
+## 为什么比手搓或直接问 AI 省心？
 
-- 内置 9 种规则场景：开屏广告、页面弹窗、视频内广告、随机插屏、切回前台广告、信息流广告、更新弹窗、权限/通知/评价弹窗和通用功能。
-- 每种场景会生成对应的 `groupName`、`activityIds`、`matchTime`、`actionMaximum`、`actionCd`、`resetMatch` 等默认参数，仍可继续调整。
-- 可用自然语言描述特殊场景，复制场景 Prompt 给外部 AI，再把 AI 返回的 JSON5 粘回 App 保存为自定义场景。
-- 底层保留条件编辑与单快照规则预览能力（当前 Android 发行界面已暂隐「条件编辑器/修改定位」与「当前快照规则面板」，仅保留源码与测试）。
-- 支持复制完整 JSON5 与规则摘要，保留规则组公共字段、规则编号及引用信息。
-- 正式版路径复制后手动添加到 GKD；官方 GKD 1.13 Beta 可通过 `/api/appendRules` 直接追加到本地规则。
+真正在手机上操作一遍就会发现，真正劝退的不是写规则本身，而是**大量隐性折腾**：
 
-> Beta 的追加接口不是幂等操作。同一规则组重复导入会追加副本；若请求响应丢失，应先到 GKD 核对是否已经写入，再决定是否重试。
+| 环节 | 传统手搓 / 直接把快照发给 ChatAI | 使用 GKD Rule Studio |
+| --- | --- | --- |
+| **拿快照** | 导出快照压缩包，在手机文件管理器里翻半天上传 | 直连 GKD HTTP 服务，**自动拉取快照列表**，支持中文备注名 |
+| **指明要点的位置** | 自己翻节点树，或打字解释“右上角那个小叉叉” | 截图上**拖动放大镜对准按钮松手**，自动锁定可点击节点 |
+| **生成规则** | 要学 selector 语法；直接问 AI 容易胡编语法导致导入报错 | **本地引擎离线秒出候选**；复杂广告可一键复制**强语法约束 Prompt** 或用内置 AI |
+| **真机测试** | 复制 → 切回 GKD → 粘贴进本地规则 → 试完再删 | **一键推送到 GKD 内存订阅**，支持多条候选同测，不污染正式规则 |
+| **没生效怎么办** | 来回截图、写长文解释症状、反复复制粘贴返工 | 勾选 **「未触发 / 触发未关闭 / 误触」** 三选一，自动打包诊断上下文进入下轮修复 |
 
-### 4. 单步与多步工作区
+---
 
-- **单步模式**：一张快照、一处选点，集中生成和测试一条规则。
-- **多步模式**：从多张快照创建步骤，支持步骤排序、改名、说明、切换快照、改绑快照和单独设置场景。
-- 每一步保留自己的候选和选中规则；后续步骤可依赖前面步骤，未选规则的步骤会提示并按既定规则跳过。
-- 可预览和复制整个多步规则组，也可把整套流程加入当前测试集合后发送到 GKD。
-- 支持在单步、多步和多张快照之间切换，便于对连续弹窗或页面跳转做联合验证。
+## 规则制作路线图
 
-### 5. 测试与导入
+```mermaid
+flowchart TD
+    A["1. 遇到广告：在 GKD 保存快照"] --> B["2. Rule Studio 直连 HTTP 自动拉取快照"]
+    B --> C["3. 在截图上拖动放大镜对准「跳过 / ×」松手"]
+    C --> D{"广告简单还是复杂？"}
 
-- 同一控件可以加入多条候选同时测试，在 GKD 中触发一次，再对比哪条规则命中最准确。
-- 统一记录“测试中 / 已测试 / 有效 / 无效 / 已结束”等状态，支持重新测试、结束、删除和再次同步。
-- 测试集合通过 GKD 内存订阅发送；修改后会同步当前集合，避免只停止界面记录而设备仍运行旧测试。
-- 测试有效后，正式版复制规则；Beta 可将规则组直接写入 GKD 本地规则。
-- 测试记录按控件、规则内容和 AI session 隔离，修改 action、scope 或候选后会重新计算，不沿用旧测试结果。
+    D -- "常规广告（绝大多数）" --> E["本地引擎离线生成候选 · 17类策略自动排序"]
+    D -- "复杂广告 · 免费白嫖" --> F["一键复制强约束 Prompt → 问豆包/DeepSeek/ChatGPT → 粘回解析"]
+    D -- "复杂广告 · 全自动" --> G["内置 AI Agent 结合截图与节点上下文直接生成"]
 
-### 6. 订阅规则库
+    E --> H["4. 选定广告场景，一键推入 GKD 内存订阅实测"]
+    F --> H
+    G --> H
 
-- 支持添加多个 GKD 订阅来源，并校验订阅地址、订阅 ID、版本和数据结构。
-- 订阅按来源缓存到本地；刷新失败时保留旧缓存，重启或断网仍可搜索和复制。
-- 可按应用名称或包名搜索，跨来源聚合同一应用，但不会擅自合并不同来源的规则组。
-- 逐组查看原名称、说明、规则数量、默认启用状态和规则原文。
-- 复制时保留完整应用信息、规则组字段、规则引用和来源标注；默认禁用的组仍是禁用状态。
-- 可直接把规则组加入测试集合；连接对应 GKD 渠道后测试并记录结果。Beta 支持直接导入。
-- 导入的是固定副本，不随原订阅自动更新；更新订阅后需要重新选择并导入。
+    H --> I{"回到目标 App 实测生效了吗？"}
+    I -- "生效" --> J["完成！正式版一键复制 / Beta 一键写入本地规则"]
+    I -- "未生效" --> K["勾选现象：未触发 / 触发未关闭 / 误触 → 自动生成修复 Prompt"]
+    K --> F
+    K --> G
+```
 
-### 7. 外部 AI 与内置 AI
+---
 
-**外部 AI Prompt**
+## 核心亮点
 
-- 生成包含应用、快照、当前控件、节点树上下文、场景参数和 GKD selector 约束的结构化 Prompt。
-- 可复制单步或多步 Prompt 到 ChatGPT、Claude、Kimi 等工具，再把回复粘回 App 自动提取合法规则。
-- 测试失败后可汇总多条反馈，生成包含失败现象、静态验证、已知限制和修复建议的反馈 Prompt。
+### 1. 拖动放大镜选点，本地离线秒出规则
+- 在截图画布上**拖动放大镜**对准关闭按钮或「跳过」松手即可定位，不需要手写坐标或翻节点树。
+- 自动识别可点击祖先节点，避开“只点到文字层”或“点到广告跳转热区”的常见坑。
+- 内置 **17 类 selector 策略**与自动风险评分，会排查多命中、广告遮挡与倒计时陷阱，并在画布上区分高亮选中框与实际命中框。
+- **真机数据集实证**（见 [bench/SUMMARY.md](bench/SUMMARY.md)）：在 610 条跨应用未见测试样本（101 个应用）上，本地启发式引擎首选规则（Top-1）命中率达 **98.5%**（Top-3 **98.7%**）；2,230 对跨版本快照首选稳定率达 **70.2%**。
 
-**内置 AI**
+### 2. 9 大广告场景一键套参数
+内置 **开屏广告、进入页面弹窗、视频播放中弹窗、随机插屏、后台返回广告、信息流广告、更新弹窗、权限/通知/评价弹窗、通用功能** 9 种预设，自动填入合理的 `activityIds`、`matchTime`、`actionMaximum`、`actionCd`、`resetMatch`。遇到特殊场景，也可以用自然语言生成并保存自定义场景。
 
-- 支持 OpenAI Chat Completions 兼容接口，可配置 Base URL、API Key、模型、温度、超时和多模态能力。
-- 支持保存多个模型配置并切换；可测试连接，并区分配置错误、鉴权、网络、HTTP、超时和解析错误。
-- 可把截图作为多模态输入；模型不支持图片时会尝试退回纯文本节点上下文。
-- 生成规则后可直接加入测试集、查看命中、填写测试反馈，再让 AI 进行下一轮修复。
-- AI session 会冻结当次快照、Prompt 和候选上下文；单步与多步 session 分开管理。
+### 3. 双路 AI 兜底 + 失败三选一闭环
+- **外部 AI 免费路线**：一键复制结构化求助 Prompt（自带精简节点树、相似规则参考与严格 GKD 语法规范），发给任意聊天 AI 后粘回 App 自动提取并测试。
+- **内置 AI 路线**：支持配置多个 OpenAI 兼容接口自由切换，支持截图多模态输入（不支持图片的模型会自动回退纯文本）。
+- **测试失败快速返修**：不必自己写长文排查，在结果里选择 **未触发 / 触发但未关闭 / 误触** 并按需补充备注，自动结合静态校验结果生成下一轮修复 Prompt。
 
-> AI 配置保存在设备本地。当前实现使用 WebView `localStorage`，API Key 不是操作系统级密钥库加密；请不要在共用设备上保存长期密钥。
+### 4. 一键内存测试，兼容 GKD 正式版与 Beta
+- 同一控件可同时把多条候选规则加入测试集合，通过 GKD 内存订阅下发，触发一次即可对比效果。
+- 顶部明确区分官方 GKD **「正式版」**（默认，1.12.x）与 **「测试版」**（1.13.0 Beta），连接时按包名和版本号共同校验，防止错渠道误操作。
+- 测试有效后，正式版一键复制 JSON5 粘贴至 GKD；Beta 支持通过 `/api/appendRules` 直接追加到本地规则。
 
-### 8. 反馈、隐私与诊断
+### 5. 内置订阅规则库：写之前先搜现成的
+支持添加多个 GKD 订阅源并缓存在本地（断网可搜）。按应用名或包名搜索现成规则组，支持先推入内存订阅实测、再一键复制或导入，能“抄作业”就不用从零写。
 
-- 首页和测试结果页都能发起「反馈」；渲染异常页也保留反馈入口，工作区不再单独放置入口。
-- 自动整理 App 版本、系统版本、GKD 正式版/测试版及版本号、当前页面和相关错误，内容在提交前可预览、编辑。
-- 当前规则可从 JSON、JSON5 或 TXT 文件读取，也保留直接粘贴和编辑；规则、截图、节点树默认不附带，需用户主动选择。
-- GKD 测试版用户可按小字指引从「设置 → 诊断 → 诊断采集」导出 ZIP，再在反馈中手动上传；ZIP 原样附带并提示可能包含规则、节点文字和运行日志。
-- 反馈分类包含工具故障、规则效果问题和「希望有的功能」。
-- 截图支持框选不透明打码；与打码区域相交的节点文字会同步隐藏，已知 API Key 和用户填写的敏感词也会被替换。
-- 发送失败会保留本地脱敏草稿，联网后可手动重试；同一反馈使用幂等键，减少重复提交。
-- 联系方式选填，不需要账号。服务端默认保留反馈和附件 90 天。
-- 内置调试日志记录网络、快照、选点、候选、AI、GKD 同步和错误，最多保留 500 条，可复制报告用于排查。
+---
 
-反馈服务是独立的 FastAPI + SQLite 后端，支持 Docker、Nginx HTTPS 反代、管理员后台、附件访问控制和定时清理；邮件提醒为可选功能，未配置 SMTP 时不会发送邮件。
+## 3 分钟快速上手
 
-### 9. 应用内更新
+1. **安装并启动服务**：在 Android 手机安装 GKD 与 [GKD Rule Studio APK](https://github.com/jjjj31/gkd-rule-studio/releases)。打开 GKD → 侧边栏 → **HTTP 服务** → 启动服务。
+2. **直连拉取快照**：打开 Rule Studio，确认顶部渠道与手机上的 GKD 一致（默认正式版），填入本机地址 `127.0.0.1:8888` 点击 **连接**，勾选要处理的广告快照进入工作区。
+3. **拖点 + 选场景**：把截图里的放大镜拖到「跳过 / ×」上松手；在「场景」选最接近的广告类型；在「候选」挑首选规则加入测试。
+4. **实测并保存**：切回目标 App 触发广告验证效果。生效后，正式版点 **复制** 粘进 GKD 本地规则；测试版可直接 **导入**。
 
-- App 内可检查新版本、下载 APK、校验 SHA256 并拉起系统安装。
-- 更新清单读取 GitHub Release 的 `latest/download/update.json`，直连失败时依次尝试多个国内镜像；APK 下载也会按清单中的镜像回退。
-- Android 端会再次校验下载文件，校验失败会删除临时文件。
-- 本地和 CI 使用固定签名，保证覆盖安装的签名一致；发布前仍应核对版本、包名、签名和最终 APK 哈希。
+---
 
-## 快速开始
+## 适用人群与坦诚说明
 
-### 准备
+为了让预期清晰，这里如实说明当前版本（`v0.2.2`）的能力边界：
 
-1. 在 Android 手机上安装 GKD 和 Rule Studio APK。
-2. 打开 GKD → 侧边栏 → HTTP 服务 → 启动服务。
-3. 回到 Rule Studio，确认顶部选择的是“正式版”或“测试版”。
-4. 输入地址。手机本机通常填 `127.0.0.1:8888`；连接另一台设备时填局域网地址。
-5. 点“连接”，读取快照列表。
+- **最拿手的场景**：单步关闭/跳过各类开屏广告、入页弹窗、插屏广告、局部关闭按钮。
+- **关于多步骤规则（诚实声明）**：虽然工作区已提供「多步模式」来编排多张快照和前置依赖，但**目前对复杂多步骤连续操作（例如“先点红包 → 返回 → 再关弹窗”）的自动生成能力还不强**。这类复杂规则建议先单步验证，或结合外部 / 内置 AI 多轮迭代。
+- **当前发行分支范围**：本分支聚焦 Android 发行版，不包含“扫描已安装应用的 SDK”、LibChecker 导入、ADB 与 MCP 功能；桌面版代码已移至 `desktop` 分支（详见 [发行范围记录](docs/verification/branch-split-2026-11-03.md)）。
+- **关于直接写入与隐私**：GKD 正式版不支持接口直写，需复制后手动添加；Beta 的 `/api/appendRules` 为追加而非幂等覆盖，请勿重复误点。内置 AI 的 API Key 存在 WebView `localStorage` 中，请勿在共用设备保存长期密钥。
 
-### 生成第一条规则
+---
 
-1. 勾选一张快照，进入工作区。
-2. 在截图里把放大镜拖到广告关闭按钮或“跳过”按钮上，松手。
-3. 如果选到了文字层而不是按钮，可在「候选」中选择点击父节点/可点击祖先的候选规则，或微调放大镜落点重新选点。
-4. 在「场景」选择最接近的预设；不确定时先用默认设置。
-5. 在「候选」查看命中数、风险和首选建议，选一条加入测试。
-6. 在目标 App 中触发广告，回到 Rule Studio 记录是否命中、是否误触、是否关闭成功。
-7. 有效后：
-   - 正式版：复制 JSON5，手动添加到 GKD 本地规则。
-   - 测试版：连接官方 GKD 1.13 Beta 后直接导入本地规则。
+## 详细功能清单与兼容性（按需展开）
 
-### 做多步规则
+<details>
+<summary><strong>点击展开：9 大模块完整功能明细</strong></summary>
 
-1. 首页勾选多张快照进入工作区。
-2. 切到“多步”，为每张快照创建或调整步骤。
-3. 点步骤后在对应截图里选控件，分别生成候选。
-4. 在「步骤」里设置名称、说明、场景、顺序和前置依赖。
-5. 测试整套流程，确认每一步的点击和等待时间都符合实际界面。
+1. **GKD 连接与快照**：支持 `127.0.0.1:8888`、局域网 IP 或完整 `http://` 地址；正式版/测试版按包名与 `versionName` 共同核对；支持快照中文重命名、单张/多张打开，以及导出为 Markdown 节点树 + 原格式截图（按文件头识别 PNG/WebP）。
+2. **选点与候选引擎**：拖动放大镜选点；自动识别可点击祖先与上下文；内置 17 类 selector 策略与常见广告 SDK 节点特征识别（仅分析当前快照，不扫描已安装应用）；自动计算命中数、点击节点与风险提示。
+3. **场景、编辑与交付**：9 种内置场景 + 自然语言自定义场景；保留规则组公共字段、编号与引用；支持复制完整 JSON5 与规则摘要；Beta 支持 `/api/appendRules` 直接追加。
+4. **单步与多步工作区**：支持单步聚焦与多步编排切换；多步模式支持步骤排序、改名、改绑快照、独立选场景与前置依赖，支持整套流程预览、复制与推入测试集合。
+5. **内联测试与状态追踪**：统一管理「测试中 / 已测试 / 有效 / 无效 / 已结束」状态，支持重测、结束、删除与实时同步 GKD 内存订阅；修改条件或候选后自动隔离旧测试记录。
+6. **订阅规则库**：多订阅源校验与本地离线缓存；跨来源按应用聚合展示，不擅自合并不同来源规则组；保留原说明、默认启用状态与完整规则原文；支持先测后导（导入为固定副本）。
+7. **外部 AI 与内置 AI**：外部 AI 一键复制结构化 Prompt 并自动解析粘贴回来的规则；内置 AI 支持多配置管理、连接诊断、截图多模态及纯文本自动回退、独立 AI Session 上下文冻结。
+8. **隐私打码反馈与调试日志**：首页、测试结果页及渲染异常页可发起「反馈」，支持工具故障 / 规则效果问题 / 希望有的功能三类；支持上传规则文件与 GKD Beta 诊断 ZIP；截图框选打码会自动隐藏相交节点文字并替换已知 API Key 与自定义敏感词；发送失败自动保留脱敏草稿；内置最近 500 条调试日志。
+9. **应用内更新**：自动读取 GitHub Release 的 `update.json`（直连失败按多国内镜像回退），下载 APK 后执行双端 SHA256 校验再拉起系统安装。
 
-## GKD 版本兼容
+</details>
+
+<details>
+<summary><strong>点击展开：GKD 双渠道兼容与联网需求说明</strong></summary>
+
+### GKD 版本兼容
 
 | 路径 | 当前面向版本 | 选择器引擎 | 快照 | 最终保存 |
 | --- | --- | --- | --- | --- |
 | 正式版（默认） | 官方 1.12.x | `@gkd-kit/selector` 0.5.23 | 支持 | 复制 JSON5 后手动添加 |
 | 测试版 | 官方 1.13.0 Beta | `@gkd-kit/selector` 0.6.1 | 支持 | Beta 使用 `/api/appendRules` 直接追加 |
 
-正式版和测试版可能使用相同的 `li.songe.gkd` 包名，因此不能只看包名；Rule Studio 会结合版本号判断渠道。旧 `.debug` 自改版不再作为官方测试版入口。
+> 正式版和测试版可能共用 `li.songe.gkd` 包名，Rule Studio 会结合版本号判断渠道；详细记录见 [GKD 双路径验收记录](docs/verification/gkd-release-channels.md)。
 
-当前兼容范围以 [GKD 双路径验收记录](docs/verification/gkd-release-channels.md) 为准。若未来正式版升级到新选择器引擎，需要重新核对版本适配，不能只依据“正式版”标签推断。
-
-## 哪些功能需要连接 GKD
+### 哪些功能需要连接 GKD
 
 | 功能 | 不连接 GKD | 连接正式版 | 连接 Beta |
 | --- | --- | --- | --- |
@@ -171,35 +165,28 @@
 | 在设备上发送内存测试 | 不可用 | 可用 | 可用 |
 | 复制规则 JSON5 | 不可用 | 可用 | 可用 |
 | 直接写入 GKD 本地规则 | 不可用 | 不支持 | 可用 |
+| 使用外部 / 内置 AI 辅助 | 需快照上下文 | 可用 | 可用 |
 | 提交反馈 | 可用 | 可用 | 可用 |
-| 使用外部 AI Prompt | 需要快照上下文，不能完整生成 | 可用 | 可用 |
-| 使用内置 AI | 需要快照上下文，不能完整生成 | 可用 | 可用 |
 
-## 离线、网络与隐私
+### 离线、网络与隐私
 
-- 选点、候选生成、静态验证和本地记录都在手机本地完成。
-- 订阅缓存保存在本地；订阅刷新、内置 AI、更新检查和反馈提交需要网络。
-- 连接 GKD 时使用局域网明文 HTTP，不应在不可信网络中暴露 GKD HTTP 服务。
-- AI 请求直接发往用户配置的接口。API Key 保存在 WebView 本地存储，不进入项目仓库，但也不是硬件级密钥库。
-- 反馈中的规则、截图和节点树默认不上传；只有用户在预览页主动确认的内容才会提交。
-- 脱敏工具会处理已知密钥、用户敏感词、手动遮罩和相交节点，但它不是通用 PII 识别器，提交前仍应人工检查截图和文字。
+- 选点、候选生成、静态验证和本地测试记录均在手机本地完成。
+- 连接 GKD 使用本机/局域网明文 HTTP，请勿在不可信公网暴露 GKD HTTP 服务。
+- AI 请求直连用户自定义接口；API Key 仅存本地 WebView 存储，不进入项目仓库。
+- 反馈默认不附带规则、截图与节点树，所有待上传内容均在提交前明文预览确认；脱敏工具非通用 PII 识别器，提交前请人工复核。
 
-## 开发
+</details>
 
-### 技术栈
+---
 
-- 前端：React 19、TypeScript、Vite 8、Vitest、JSON5
-- 规则引擎：GKD Selector 0.5.23 / 0.6.1
-- Android：WebView + Java Bridge、AGP 8.7.3、minSdk 23、compile/targetSdk 35
-- 反馈服务：Python 3.12、FastAPI、Uvicorn、SQLite
-- CI / 发布：GitHub Actions、pnpm、Gradle、GitHub Releases
+## 开发与构建
 
-### 环境
+### 技术栈与环境
 
-- Node.js：CI 使用 Node 24；Vite 8 要求 `^20.19.0 || >=22.12.0`
-- pnpm 9
-- JDK 17+，推荐 JDK 21
-- Android SDK 35、Build Tools 35.0.0、platform-tools
+- **前端 & 引擎**：React 19、TypeScript、Vite 8、Vitest、JSON5、`@gkd-kit/selector` 0.5.23 / 0.6.1
+- **Android 壳**：WebView + Java Bridge、AGP 8.7.3、minSdk 23、compile/targetSdk 35
+- **配套服务**：FastAPI + SQLite 反馈与公告后端（[server/feedback/README.md](server/feedback/README.md)）、零依赖 Node.js 公告后台（[admin/README.md](admin/README.md)）
+- **本地要求**：Node.js `^20.19.0 || >=22.12.0`（CI 使用 Node 24）、pnpm 9、JDK 17+（推荐 21）、Android SDK 35
 
 ### 常用命令
 
@@ -213,11 +200,9 @@
 .\scripts\windows-pnpm.ps1 run build
 ```
 
-入口先确认正在 Windows 上运行，再启动 pnpm。临时运行工具也用同一入口，例如 `.\scripts\windows-pnpm.ps1 exec vitest --version`。直接运行 `pnpm install` 或 `pnpm exec` 会跳过这一步；不要在 WSL 中复用本项目的 Windows 依赖目录。
+> 请统一通过 `scripts/windows-pnpm.ps1` 运行前端依赖、检查与临时 pnpm 工具（例如 `.\scripts\windows-pnpm.ps1 exec vitest --version`），不要在 WSL 中复用 Windows 依赖目录。`dev` 默认监听 `http://127.0.0.1:5174`。
 
-`dev` 启动浏览器开发界面，默认地址为 `http://127.0.0.1:5174`。
-
-### 构建 Android
+### 构建 Android APK
 
 运行目录：仓库根目录；Shell：PowerShell。
 
@@ -227,15 +212,30 @@
 .\scripts\windows-pnpm.ps1 run package:full
 ```
 
-产物位置：
+产物输出至 `android/app/build/outputs/apk/debug/app-debug.apk`。中文路径构建说明与固定签名注意见 [android/README.md](android/README.md)。
+
+<details>
+<summary><strong>点击展开：项目目录结构、反馈后端测试与发布流程</strong></summary>
+
+### 项目结构
 
 ```text
-android/app/build/outputs/apk/debug/app-debug.apk
+src/
+  components/       Android 界面、截图画布、订阅规则库、反馈与测试面板
+  lib/              设备 API、选择器引擎、候选生成、AI、多步流程与更新逻辑
+  data/             场景预设、广告节点特征、风险词与 Few-Shot 案例库
+android/            WebView 壳、Java Bridge、固定签名与 Gradle 构建
+admin/              独立公告与版本管理后台（pnpm admin）
+server/feedback/    FastAPI + SQLite 反馈与公告服务
+bench/              规则生成、检索与跨版本稳定性评测集
+scripts/            构建、发布、更新检查与验收脚本
+docs/               设计规格、截图与验收记录
+.github/workflows/  日常 CI 与 tag 发布流程
 ```
 
-`package:full` 会依次构建 Web 资源、运行 Java 单测、打包 APK 并输出 SHA256。仓库路径包含中文时，构建脚本会检查或复用约定的 ASCII 目录联接；详细说明见 [android/README.md](android/README.md)。
+入口组件为 `src/components/AndroidLiteApp.tsx`。
 
-### 反馈后端
+### 反馈后端测试
 
 运行目录：`server/feedback`；Shell：PowerShell。
 
@@ -246,65 +246,25 @@ $env:FEEDBACK_DATA_DIR = (Join-Path $PWD 'data')
 .\.venv\Scripts\python -m unittest discover -s tests -v
 ```
 
-这个服务同时是反馈收件箱和公告/版本弹窗后台：登录 `/admin` 后可在两个标签间切换。App 启动时会按顺序从 GitHub `announcement.json`、国内代理镜像及反馈后端 `GET /api/announcement` 拉取公告；本地也可通过 `pnpm admin` 启动独立的 `admin/` 公告管理后台。反馈后端部署、环境变量、Docker、HTTPS 和后台管理说明见 [server/feedback/README.md](server/feedback/README.md)，独立公告后台见 [admin/README.md](admin/README.md)。
+### 发布流程
 
-## 项目结构
+1. 更新 `package.json` 中的 `version`。
+2. 在仓库根目录使用 PowerShell 执行 `.\scripts\windows-pnpm.ps1 test`、`.\scripts\windows-pnpm.ps1 run typecheck` 和 `.\scripts\windows-pnpm.ps1 run package:full`。
+3. 真机完成正式版 / Beta、快照、规则导入、反馈和更新链路验收（详见 [v0.2.0 回归清单](docs/verification/release-v0.2.0-regression-checklist.md)）。
+4. 推送 `vX.Y.Z` tag 触发 GitHub Actions 自动构建 APK、生成 `update.json` 并发布至 Release。
+5. 发布后运行 `.\scripts\windows-pnpm.ps1 run check:update`，核对包名、固定签名（`android/debug.keystore`）与 SHA256。
 
-```text
-src/
-  components/       Android 界面、截图画布、规则库、反馈和测试面板
-  lib/              设备 API、选择器、候选生成、AI、流程和更新逻辑
-  data/             场景参数、广告节点特征和风险词
-android/            WebView 壳、Java Bridge、签名和 Gradle 构建
-admin/              零依赖 Node.js 公告与版本管理后台（pnpm admin）
-server/feedback/    FastAPI + SQLite 反馈服务
-bench/              规则生成与排序评测集
-scripts/            构建、发布、更新检查和验收脚本
-docs/               规格、研究、截图和验证记录
-.github/workflows/  日常 CI 和 tag 发布流程
-```
+</details>
 
-工作区入口为 `src/components/AndroidLiteApp.tsx`；前端只负责界面和业务逻辑，Android 原生层负责文件保存、剪贴板、更新下载、APK 安装和部分网络桥接。
+---
 
-## 发布
+## 参与贡献与相关链接
 
-1. 更新 `package.json` 的 `version`。
-2. 从 Windows PowerShell 运行 `./scripts/windows-pnpm.ps1 test`、`./scripts/windows-pnpm.ps1 run typecheck` 和 `./scripts/windows-pnpm.ps1 run package:full`。
-3. 在真机完成正式版 / 测试版、快照、规则导入、反馈和更新链路验收。
-4. 打 `vX.Y.Z` tag 并推送，Release workflow 会构建 APK、生成 `update.json` 并上传到 GitHub Release。
-5. 发布后从 Windows PowerShell 运行 `./scripts/windows-pnpm.ps1 run check:update`，再核对 APK 的版本、包名、签名和 SHA256。
+这个项目最初源于 vibe coding，规则算法、排序策略与 AI Prompt 仍在持续演进。欢迎提交新的 selector 策略、GKD 兼容修复、真实 App 案例或直接通过 App 内「反馈」入口提建议。提交公开 Issue 前请勿附带 API Key、账号信息或未打码的私人截图。
 
-> `android/debug.keystore` 是保证覆盖安装可用的固定签名文件，不要删除或更换。本次发行版本为 `0.2.2`；安装前仍应核对 APK、`update.json` 和签名是否一致。
-
-## 当前边界与已知限制
-
-- 本分支不包含安装应用扫描、LibChecker 导入和 SDK 清单；仍保留的是对当前快照内广告节点特征的风险判断。
-- 本分支不包含 App 内置 MCP 或 Node MCP；`.mcp.json` 只是开发时使用的 code-review-graph 配置。
-- 不包含 ADB 功能和桌面版主动维护；桌面 Web 构建主要用于开发和验证 Android WebView 资源。
-- 正式版不能直接写入本地规则，只能复制后手动添加；Beta 直接写入的追加接口可能产生重复规则。
-- 反馈脱敏需要用户人工确认；当前验证记录仍要求覆盖“多个节点包含同一敏感值”和截图同步遮挡的场景。
-- 发行前仍需要用真实 GKD、真实目标 App 和最终 APK 重新验收；自动测试不能代替实际点击效果。
-
-更完整的待测项见 [v0.2.0 回归清单](docs/verification/release-v0.2.0-regression-checklist.md)。
-
-## 参与贡献
-
-这个项目最初是 vibe coding 产物，规则生成算法和 AI Prompt 仍在持续改进。欢迎提交：
-
-- 新的候选 selector 策略或风险判断；
-- 更稳定的 GKD 版本兼容实现；
-- 订阅解析、规则编辑和测试流程的修复；
-- 可复现的真实 App 快照与规则案例。
-
-提交问题前，建议先复制工作区调试日志，并说明 GKD 版本、Android 版本、目标 App、快照 ID 和预期结果。不要在公开 Issue 中粘贴 API Key、账号密码、未经遮挡的截图或私人数据。
-
-## 下载与相关链接
-
-- [GitHub Releases](https://github.com/jjjj31/gkd-rule-studio/releases)
-- [GKD 搞快点](https://github.com/gkd-kit/gkd)
-- [GKD 订阅模板](https://github.com/gkd-kit/subscription)
-- [GKD Discussions](https://github.com/orgs/gkd-kit/discussions)
+- **下载与发布**：[GitHub Releases](https://github.com/jjjj31/gkd-rule-studio/releases)
+- **上游生态**：[GKD 搞快点](https://github.com/gkd-kit/gkd) · [GKD 订阅模板](https://github.com/gkd-kit/subscription) · [GKD Discussions](https://github.com/orgs/gkd-kit/discussions)
 
 ## 开源协议
 
-本项目使用 [SATA 协议（Star And Thank Author License）](LICENSE)。你可以自由使用、修改和分发；按照协议，请先给项目点一个 Star，并感谢作者。
+本项目采用 [SATA 协议（Star And Thank Author License）](LICENSE)。你可以自由使用、修改和分发；按协议约定，如果这个工具帮到了你，请顺手给项目点一颗 ⭐ **Star**，并感谢作者。
