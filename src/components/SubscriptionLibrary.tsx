@@ -3,7 +3,7 @@ import { BookOpen, ChevronLeft, ClipboardCopy, Download, Loader2, Plus, RefreshC
 import { useEffect, useMemo, useRef, useState } from "react";
 import { copyTextToClipboard } from "../lib/clipboard";
 import type { DeviceApiClient } from "../lib/deviceApi";
-import { isBetaTarget, matchesTargetChannel, type GkdTargetChannel } from "../lib/gkdTarget";
+import { OFFICIAL_GKD_PACKAGE_ID, isOfficialGkdImportTarget, isSupportedGkdApp } from "../lib/gkdTarget";
 import {
   inspectLibraryGroup, libraryContentKey, loadLibraryImports, loadLibrarySources,
   normalizeSubscriptionUrl, prepareLibraryAppend, refreshLibrarySource, saveLibraryImports,
@@ -15,7 +15,6 @@ import "./SubscriptionLibrary.css";
 interface Props {
   active: boolean;
   client: DeviceApiClient | null;
-  targetChannel: GkdTargetChannel;
   loading: boolean;
   tests: LibraryTest[];
   onClose: () => void;
@@ -45,7 +44,7 @@ export function SubscriptionLibrary(props: Props) {
   const selectedApp = appId ? appIndex.find((app) => app.id === appId) : undefined;
   const activeTest = props.tests.find((test) => ["syncing", "testing", "failed"].includes(test.status));
   const busy = Boolean(task) || props.loading;
-  const targetMatches = props.client && matchesTargetChannel(props.client.serverInfo.gkdAppInfo, props.targetChannel);
+  const gkdConnected = Boolean(props.client && isSupportedGkdApp(props.client.serverInfo.gkdAppInfo));
   const groupKeyword = groupQuery.trim().toLocaleLowerCase();
   const groupSections = props.active && selectedApp ? sources.flatMap((source) => {
     const app = source.subscription.apps.find((item) => item.id === selectedApp.id);
@@ -159,11 +158,10 @@ export function SubscriptionLibrary(props: Props) {
 
   async function importGroup(selection: LibrarySelection) {
     const client = props.client;
-    if (!isBetaTarget(props.targetChannel)) { await copy(selection); return; }
-    if (!client || !targetMatches) { showNotice("未连接对应版本的 GKD", true); return; }
+    if (!client || !gkdConnected) { showNotice("请先连接 GKD 1.13+ HTTP 服务", true); return; }
     if (savedImports.error) { showNotice(savedImports.error, true); return; }
     const existing = records.find((record) => record.deviceOrigin === client.origin &&
-      record.targetPackage === props.targetChannel && libraryContentKey(record) === libraryContentKey(selection));
+      isOfficialGkdImportTarget(record.targetPackage) && libraryContentKey(record) === libraryContentKey(selection));
     if (existing) { showNotice("已导入"); return; }
     await runTask(`import:${selection.id}`, async () => {
       const submittedApp = prepareLibraryAppend(selection);
@@ -177,10 +175,10 @@ export function SubscriptionLibrary(props: Props) {
       }
       const record: LibraryImportRecord = {
         ...selection, submittedApp, importedAt: Date.now(), deviceOrigin: client.origin,
-        targetPackage: props.targetChannel,
+        targetPackage: OFFICIAL_GKD_PACKAGE_ID,
         complete: result.addedGroups === 1 && result.addedRules === submittedApp.groups[0].rules.length && result.skippedDuplicates === 0,
       };
-      const updated = [...records.filter((item) => !(item.deviceOrigin === client.origin && item.targetPackage === props.targetChannel && libraryContentKey(item) === libraryContentKey(selection))), record];
+      const updated = [...records.filter((item) => !(item.deviceOrigin === client.origin && isOfficialGkdImportTarget(item.targetPackage) && libraryContentKey(item) === libraryContentKey(selection))), record];
       setRecords(updated);
       saveLibraryImports(updated);
       if (!record.complete) {
@@ -270,7 +268,7 @@ export function SubscriptionLibrary(props: Props) {
             if (!error) try { selection = selectLibraryGroup(source, app, index); } catch (cause) { error = cause instanceof Error ? cause.message : "规则组无法交付"; }
             const content = selection ? libraryContentKey(selection) : "";
             const test = props.tests.find((item) => libraryContentKey(item) === content && item.version === selection?.version);
-            const imported = records.find((item) => libraryContentKey(item) === content && item.deviceOrigin === props.client?.origin && item.targetPackage === props.targetChannel);
+            const imported = records.find((item) => libraryContentKey(item) === content && item.deviceOrigin === props.client?.origin && isOfficialGkdImportTarget(item.targetPackage));
             return <article className="android-card library-group" key={index}>
               <div className="library-group-title"><h3>{inspected.name}</h3><span>{test ? testStatusLabel(test.status) : "未测试"}</span></div>
               {inspected.group?.desc && <p className="library-description">{inspected.group.desc}</p>}
@@ -278,14 +276,12 @@ export function SubscriptionLibrary(props: Props) {
               {error && <p className="library-error">{error}</p>}
               {test?.error && <p className="library-error">{test.error}</p>}
               <div className="library-actions">
-                <button className="android-button" type="button" disabled={!selection || busy || !targetMatches} onClick={() => selection && testGroup(selection)}>测试</button>
+                <button className="android-button" type="button" disabled={!selection || busy || !gkdConnected} onClick={() => selection && testGroup(selection)}>测试</button>
                 <button className="android-button" type="button" disabled={!selection} onClick={() => selection && void copy(selection)}><ClipboardCopy size={14} />复制</button>
-                {isBetaTarget(props.targetChannel) ? imported ? (
+                {imported ? (
                   <button className="android-button library-imported-button" type="button" disabled>已导入</button>
                 ) : (
-                  <button className="android-button android-button-primary" type="button" disabled={!selection || busy || Boolean(savedImports.error) || !targetMatches} onClick={() => selection && void importGroup(selection)}><Download size={14} />导入</button>
-                ) : (
-                  <button className="android-button android-button-primary" type="button" disabled={!selection || busy} onClick={() => selection && void importGroup(selection)}><Download size={14} />手动添加</button>
+                  <button className="android-button android-button-primary" type="button" disabled={!selection || busy || Boolean(savedImports.error) || !gkdConnected} onClick={() => selection && void importGroup(selection)}><Download size={14} />导入</button>
                 )}
               </div>
               <details className="library-raw"><summary>查看规则原文</summary><pre>{JSON5.stringify(raw, null, 2)}</pre></details>

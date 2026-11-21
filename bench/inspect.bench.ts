@@ -9,14 +9,12 @@ import { normalizeSnapshot } from "../src/lib/snapshotNormalize";
 import { pickExistingNode } from "../src/lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../src/lib/regionCandidates";
 import { validateSelectorPlan } from "../src/lib/selectorMatcher";
-import { prepareSelectorEngine } from "../src/lib/selectorAdapter";
 import type { RuleSettings } from "../src/types/ruleDraft";
 
 const DATASET_DIR = process.env.GKD_DATASET_DIR || "D:\\gkd-dataset";
 const SAMPLE = process.env.BENCH_SAMPLE || "";
 
 test.skipIf(!SAMPLE)("inspect one sample", async () => {
-  await prepareSelectorEngine("beta").catch(() => undefined);
   const file = path.join(DATASET_DIR, "clean", "test.jsonl");
   const record = fs
     .readFileSync(file, "utf-8")

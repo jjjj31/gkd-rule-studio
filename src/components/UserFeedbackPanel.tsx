@@ -531,7 +531,7 @@ export function UserFeedbackPanel({
                   <button className="android-button" type="button" disabled={busy} onClick={() => setDiagnosticFile(null)}>移除</button></div>}
                 {diagnosticFile && <p>ZIP 原样发送，可能包含规则、节点文字和日志。</p>}
                 <details><summary>如何导出诊断 ZIP</summary>
-                  <p>GKD 测试版 → 设置 → 诊断 → 诊断采集。复现后停止采集，再导出 ZIP。</p>
+                  <p>GKD 1.13+ → 工具 → 诊断 → 诊断采集（早期 1.13.0 在 设置 → 诊断）。复现后停止采集，再导出 ZIP。</p>
                 </details>
               </div>
             </fieldset>

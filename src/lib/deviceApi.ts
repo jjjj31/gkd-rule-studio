@@ -14,8 +14,7 @@ import type { RawSubscriptionDraft } from "./testSubscription";
 import type { LibraryTestSubscription, SubscriptionApp } from "../types/subscriptionLibrary";
 import { enhancedFetch, extensionFetch, hasNetworkExtension, fetchWithTimeout } from "./networkExtension";
 import { normalizeSnapshot } from "./snapshotNormalize";
-import { getGkdChannel, matchesTargetChannel, targetChannelLabel, type GkdTargetChannel } from "./gkdTarget";
-import { prepareSelectorEngine } from "./selectorAdapter";
+import { describeUnsupportedGkdApp, isSupportedGkdApp } from "./gkdTarget";
 import { screenshotMimeType } from "./screenshotFormat";
 import {
   formatGkdRuleValidationIssues,
@@ -74,13 +73,12 @@ export interface DeviceApiClient {
  * input 可以是 "192.168.1.5:8888" 或 "http://192.168.1.5:8888" 等形式。
  * 返回的 DeviceApiClient.origin 是规范化后的完整 URL。
  */
-export async function createDeviceApiClient(input: string, targetChannel?: GkdTargetChannel): Promise<DeviceApiClient> {
+export async function createDeviceApiClient(input: string): Promise<DeviceApiClient> {
   const origin = normalizeDeviceOrigin(input);
   const serverInfo = await postJson<DeviceServerInfo>(origin, "getServerInfo");
-  if (targetChannel && !matchesTargetChannel(serverInfo.gkdAppInfo, targetChannel)) {
-    throw new Error(`请选择对应版本：当前目标为 ${targetChannelLabel(targetChannel)}，连接到 ${serverInfo.gkdAppInfo?.versionName ?? "未知版本"}（${serverInfo.gkdAppInfo?.id ?? "未知包名"}）`);
+  if (!isSupportedGkdApp(serverInfo.gkdAppInfo)) {
+    throw new Error(describeUnsupportedGkdApp(serverInfo.gkdAppInfo));
   }
-  const channel = targetChannel ?? getGkdChannel(serverInfo.gkdAppInfo);
 
   const client: DeviceApiClient = {
     origin,
@@ -100,9 +98,6 @@ export async function createDeviceApiClient(input: string, targetChannel?: GkdTa
       );
     },
     getSnapshot: async (id) => {
-      if (serverInfo.gkdAppInfo?.versionName === "1.10.4") {
-        return getJson<RawGkdSnapshot>(origin, `snapshot?id=${id}`);
-      }
       return postJson<RawGkdSnapshot>(origin, "getSnapshot", { id });
     },
     getScreenshot: async (id) => {
@@ -127,9 +122,8 @@ export async function createDeviceApiClient(input: string, targetChannel?: GkdTa
       await postJson(origin, "updateSubscription", subscription);
     },
     appendLocalRules: async (app) => {
-      const [major, minor] = (serverInfo.gkdAppInfo?.versionName ?? "").replace(/^v/, "").split(".").map(Number);
-      if (channel !== "beta" || !(major > 1 || (major === 1 && minor >= 13))) {
-        throw new Error("直接导入需要官方 GKD 1.13 测试版，请使用复制手动添加或切换测试版路径");
+      if (!isSupportedGkdApp(serverInfo.gkdAppInfo)) {
+        throw new Error(describeUnsupportedGkdApp(serverInfo.gkdAppInfo));
       }
       const appId = typeof app?.id === "string" ? app.id.trim() : "";
       if (!appId) {
@@ -167,7 +161,6 @@ export async function createDeviceApiClient(input: string, targetChannel?: GkdTa
         skippedDuplicates: 0 };
     },
     loadSnapshot: async (id) => {
-      if (channel) await prepareSelectorEngine(channel);
       const [snapshot, screenshot] = await Promise.all([
         client.getSnapshot(id),
         client.getScreenshot(id),
@@ -175,13 +168,11 @@ export async function createDeviceApiClient(input: string, targetChannel?: GkdTa
       const screenshotUrl = URL.createObjectURL(
         new Blob([screenshot], { type: screenshotMimeType(new Uint8Array(screenshot)) }),
       );
-      const parsed = normalizeSnapshot(
+      return normalizeSnapshot(
         snapshot,
         screenshotUrl,
         `设备快照 ${formatSnapshotTime(snapshot.id)}`,
       );
-      parsed.gkdChannel = channel ?? undefined;
-      return parsed;
     },
   };
 
@@ -360,14 +351,6 @@ export function normalizeDeviceOrigin(input: string): string {
     /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`,
   );
   return url.origin;
-}
-
-async function getJson<T>(origin: string, name: string): Promise<T> {
-  const response = await enhancedFetch(new URL(`/api/${name}`, origin), {}, {
-    timeout: 8000,
-  });
-  await assertOk(response, name);
-  return response.json() as Promise<T>;
 }
 
 async function postJson<T>(

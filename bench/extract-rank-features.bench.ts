@@ -11,7 +11,6 @@ import { test } from "vitest";
 import { normalizeSnapshot } from "../src/lib/snapshotNormalize";
 import { pickExistingNode } from "../src/lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../src/lib/regionCandidates";
-import { prepareSelectorEngine } from "../src/lib/selectorAdapter";
 import { validateSelectorPlan } from "../src/lib/selectorMatcher";
 import {
   createRankContext,
@@ -84,7 +83,6 @@ function settingsFor(record: CleanRecord): RuleSettings {
 }
 
 test("extract rank features", async () => {
-  await prepareSelectorEngine("beta").catch(() => undefined);
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
   fs.writeFileSync(
     path.join(OUTPUT_DIR, "feature-names.json"),

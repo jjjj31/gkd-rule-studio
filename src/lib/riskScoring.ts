@@ -9,7 +9,8 @@ import {
   DANGEROUS_CLICK_WORDS,
   GENERIC_ACTION_TEXT,
 } from "../data/riskWords";
-import { matchAdSdkSkipSignal } from "../data/adSdkSignatures";
+import { detectAdSdkForNode, matchAdSdkSkipSignal } from "../data/adSdkSignatures";
+import { isDynamicCountdownText } from "./countdownText";
 import { nodeArea } from "../types/gkdSnapshot";
 import type { NormalizedSnapshotNode, ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type {
@@ -52,8 +53,9 @@ export function scoreCandidate(input: {
   addHitCountScore(items, validation.hitCount);
   addActivityScore(items, rule.activityIds, Boolean(allowNoActivityIds));
   addBoundsScore(items, snapshot, target);
-  addClickableScore(items, target);
+  addClickableScore(items, target, rule.action);
   addTextRiskScore(items, target, plan);
+  addAnonymousAnchorScore(items, plan);
   addDynamicCountdownScore(items, plan);
   addAdSdkOverlayScore(items, target);
   addAdSdkSignatureScore(items, target);
@@ -162,6 +164,15 @@ function addBoundsScore(
     return;
   }
 
+  if (ratio > 0.85) {
+    items.push({
+      label: "全屏目标",
+      value: -60,
+      reason: "点击目标几乎覆盖全屏，极可能是背景遮罩或广告容器",
+    });
+    return;
+  }
+
   if (ratio > 0.35) {
     items.push({
       label: "目标过大",
@@ -183,6 +194,7 @@ function addBoundsScore(
 function addClickableScore(
   items: RiskItem[],
   target: NormalizedSnapshotNode | null,
+  action?: string,
 ): void {
   if (!target) return;
 
@@ -192,13 +204,37 @@ function addClickableScore(
       value: 8,
       reason: "最终点击节点本身 clickable=true",
     });
-  } else {
+  } else if (action === "clickCenter" || action === "longClickCenter") {
     items.push({
       label: "不可点击目标",
       value: -8,
-      reason: "最终点击节点不可点击，可能需要 @ 抬升点击目标",
+      reason: "最终点击节点不可点击，已使用 clickCenter 坐标点击",
+    });
+  } else {
+    items.push({
+      label: "不可点击且未坐标点击",
+      value: -22,
+      reason: "最终点击节点 clickable=false 且未使用 clickCenter，无障碍点击可能无效",
     });
   }
+}
+
+function addAnonymousAnchorScore(items: RiskItem[], plan: SelectorPlan): void {
+  const hasSemanticAnchor = getPlanSelectors(plan).some((selector) =>
+    selector.conditions.some(
+      (condition) =>
+        condition.attr === "id" ||
+        condition.attr === "vid" ||
+        condition.attr === "text" ||
+        condition.attr === "desc",
+    ),
+  );
+  if (hasSemanticAnchor) return;
+  items.push({
+    label: "无语义锚点",
+    value: -35,
+    reason: "纯匿名结构选择器缺少文字或资源 ID 锚点，同页面极易误触",
+  });
 }
 
 function addTextRiskScore(
@@ -426,16 +462,6 @@ function usesExactDynamicCountdownText(plan: SelectorPlan): boolean {
   );
 }
 
-function isDynamicCountdownText(text: string): boolean {
-  const normalized = text.trim();
-  return (
-    /^跳过\s*\d+\s*s?$/i.test(normalized) ||
-    /^\d+\s*s?\s*后?\s*跳过$/i.test(normalized) ||
-    /^skip\s*\d+\s*s?$/i.test(normalized) ||
-    /^\d+\s*s?\s*skip$/i.test(normalized)
-  );
-}
-
 function hasAdAncestor(
   snapshot: ParsedGkdSnapshot,
   node: NormalizedSnapshotNode,
@@ -476,16 +502,18 @@ function isAdSdkOverlayTarget(node: NormalizedSnapshotNode): boolean {
     value.includes("hot_area") ||
     value.includes("click_area") ||
     value.includes("clickarea") ||
+    value.includes("click_group") ||
     value.includes("ad_click") ||
     value.includes("splash_click");
 
-  return hasOverlaySignal && (hasSkipOrClose || isAdLikeValue(value));
+  return hasOverlaySignal && (hasSkipOrClose || isAdLikeValue(value) || value.includes("click_group"));
 }
 
 function isAdLikeValue(value: string): boolean {
   return (
     value.includes("advert") ||
     value.includes("splash") ||
+    value.includes("interstitial") ||
     value.includes("nativead") ||
     value.includes("ad_") ||
     value.includes("_ad")
@@ -493,10 +521,12 @@ function isAdLikeValue(value: string): boolean {
 }
 
 function isAdLikeNode(node: NormalizedSnapshotNode): boolean {
+  if (detectAdSdkForNode(node) !== null) return true;
   const value = `${node.attr.id ?? ""} ${node.attr.vid ?? ""} ${node.attr.name}`.toLowerCase();
   return (
     value.includes("advert") ||
     value.includes("splash") ||
+    value.includes("interstitial") ||
     value.includes("nativead") ||
     value.includes("ptgadvertlayout") ||
     value.includes("hotarea") ||

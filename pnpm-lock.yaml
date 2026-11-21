@@ -18,11 +18,8 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.6)
       '@gkd-kit/selector':
-        specifier: ^0.5.23
-        version: 0.5.23
-      '@gkd-kit/selector-beta':
-        specifier: npm:@gkd-kit/selector@0.6.1
-        version: '@gkd-kit/selector@0.6.1'
+        specifier: 0.6.1
+        version: 0.6.1
       json5:
         specifier: ^2.2.3
         version: 2.2.3
@@ -246,9 +243,6 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
-
-  '@gkd-kit/selector@0.5.23':
-    resolution: {integrity: sha512-HTegxwogKIxopvGup5wTEGzxW9ko7iS9mXEEpZi6SvbVUEumjGptJtIXd4ixNKJ2RyOWX3wfoyArbrDOUiTFYw==}
 
   '@gkd-kit/selector@0.6.1':
     resolution: {integrity: sha512-xRu7yLJ2kOLWbtluqZVJQx+uHX1FjToaqp0czTycicEm/d/EW9UMoyoGBuhBP3PmlWjjX20msBdLHC3QKAYgvw==}
@@ -856,8 +850,6 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
-
-  '@gkd-kit/selector@0.5.23': {}
 
   '@gkd-kit/selector@0.6.1':
     dependencies:

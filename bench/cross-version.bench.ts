@@ -14,7 +14,6 @@ import { test } from "vitest";
 import { normalizeSnapshot } from "../src/lib/snapshotNormalize";
 import { pickExistingNode } from "../src/lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../src/lib/regionCandidates";
-import { prepareSelectorEngine } from "../src/lib/selectorAdapter";
 import { validateSelectorPlan } from "../src/lib/selectorMatcher";
 import type { RuleSettings } from "../src/types/ruleDraft";
 import type { ParsedGkdSnapshot } from "../src/types/gkdSnapshot";
@@ -168,10 +167,6 @@ function buildPairs(records: CleanRecord[]): Pair[] {
 }
 
 test("cross-version stability benchmark", async () => {
-  await prepareSelectorEngine("beta").catch((error) => {
-    console.warn("[bench] beta selector engine unavailable:", error?.message || error);
-  });
-
   const records = SPLITS.flatMap((split) =>
     readJsonl(path.join(CLEAN_DIR, `${split}.jsonl`)),
   );

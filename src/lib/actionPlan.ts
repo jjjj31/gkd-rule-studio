@@ -1,4 +1,5 @@
 /** 动作计划：为每条候选决定触发后的行为（action/max/cd/delay/matchRoot 等）。 */
+import { detectAdSdkForNode } from "../data/adSdkSignatures";
 import { nodeArea } from "../types/gkdSnapshot";
 import type {
   NormalizedSnapshotNode,
@@ -12,6 +13,7 @@ import type {
   SelectorPlan,
   SelectorValidation,
 } from "../types/ruleDraft";
+import { isDynamicCountdownText } from "./countdownText";
 
 export interface RuleRunObservation {
   selectorMatched: boolean;
@@ -64,6 +66,13 @@ export function buildActionPlan(input: {
     isDynamicCountdownText(readActionText(node)),
   );
   const hasNativeDismissTarget = isSmallNativeDismissControl(snapshot, targetNode);
+  const siblingAdSdk =
+    pickedNode.pid >= 0
+      ? (snapshot.nodeById.get(pickedNode.pid)?.children ?? []).some((id) => {
+          const sib = snapshot.nodeById.get(id);
+          return Boolean(sib && sib.attr.visibleToUser && detectAdSdkForNode(sib) !== null);
+        })
+      : false;
   const hasWebOrAdContext =
     targetInWebView ||
     pickedInWebView ||
@@ -72,15 +81,20 @@ export function buildActionPlan(input: {
     (!hasNativeDismissTarget &&
       (targetInAdLayer ||
         pickedInAdLayer ||
+        siblingAdSdk ||
         relatedNodes.some((node) => isLargeAdContainer(snapshot, node))));
   const hasDynamicFullscreenContext =
     hasWebOrAdContext ||
     isSplashActivity(snapshot.activityId) ||
-    relatedNodes.some((node) => isLargeAdContainer(snapshot, node));
+    (!hasNativeDismissTarget &&
+      relatedNodes.some((node) => isLargeAdContainer(snapshot, node)));
+  const rawSnapshotActivity = (snapshot.activityId ?? "").trim();
   const needsActivityGuard =
     !ruleSettings.activityIds.trim() &&
-    Boolean(snapshot.activityId) &&
+    Boolean(rawSnapshotActivity) &&
     isGenericDismissAction(targetNode, relatedNodes);
+  const shouldApplyCountdownRetry =
+    hasCountdown && (!hasNativeDismissTarget || !targetNode.attr.clickable);
   const likelyCoveredStableNode =
     strategyName === "stableResourceSemantic" &&
     pickedInAdLayer &&
@@ -99,9 +113,18 @@ export function buildActionPlan(input: {
     actionPlan.riskNotes.push(
       "目标处于 WebView/广告容器或跨层级 selector，默认用 clickCenter 并开启 matchRoot。",
     );
+  } else if (!targetNode.attr.clickable) {
+    actionPlan.action = "clickCenter";
+    actionPlan.riskNotes.push(
+      "最终点击节点 clickable=false，默认使用 clickCenter 坐标点击，避免 clickNode 无效。",
+    );
   }
 
-  if (hasCountdown) {
+  if (!targetNode.attr.clickable && hasSafeClickableAncestor(snapshot, targetNode)) {
+    actionPlan.rankAdjustment -= 12;
+  }
+
+  if (shouldApplyCountdownRetry) {
     actionPlan.actionDelay = pickCountdownDelay(relatedNodes);
     actionPlan.actionMaximum = 3;
     actionPlan.actionCd = 1000;
@@ -112,7 +135,7 @@ export function buildActionPlan(input: {
   }
 
   if (needsActivityGuard) {
-    actionPlan.activityIds = snapshot.activityId ? [snapshot.activityId] : [];
+    actionPlan.activityIds = rawSnapshotActivity ? [rawSnapshotActivity] : [];
     actionPlan.rankAdjustment += 10;
     actionPlan.riskNotes.push(
       "跳过/关闭类泛化动作默认补充当前 Activity，降低误触并减少无效扫描。",
@@ -121,12 +144,11 @@ export function buildActionPlan(input: {
 
   if (hasDynamicFullscreenContext) {
     const configuredActivityIds = ruleSettings.activityIds.trim();
-    const snapshotActivityId = (snapshot.activityId ?? "").trim();
     actionPlan.activityIds =
       configuredActivityIds ||
       actionPlan.activityIds ||
       // activityId 为 null/空串时不能退化成 [""]——那种 activityIds 永不匹配任何界面。
-      (snapshotActivityId ? [snapshotActivityId] : undefined);
+      (rawSnapshotActivity ? [rawSnapshotActivity] : undefined);
     actionPlan.forcedTime = 10000;
     actionPlan.matchTime = 10000;
     actionPlan.riskNotes.push(
@@ -142,7 +164,7 @@ export function buildActionPlan(input: {
     actionPlan.resetMatch = ruleSettings.resetMatch;
   }
 
-  if (!hasCountdown) {
+  if (!shouldApplyCountdownRetry) {
     if (ruleSettings.actionMaximum !== null) {
       actionPlan.actionMaximum = ruleSettings.actionMaximum;
     }
@@ -296,16 +318,6 @@ function readActionText(node: NormalizedSnapshotNode): string {
   return node.attr.text ?? node.attr.desc ?? "";
 }
 
-function isDynamicCountdownText(text: string): boolean {
-  const normalized = text.trim();
-  return (
-    /^跳过\s*\d+\s*s?$/i.test(normalized) ||
-    /^\d+\s*s?\s*后?\s*跳过$/i.test(normalized) ||
-    /^skip\s*\d+\s*s?$/i.test(normalized) ||
-    /^\d+\s*s?\s*skip$/i.test(normalized)
-  );
-}
-
 function isGenericDismissAction(
   targetNode: NormalizedSnapshotNode,
   relatedNodes: NormalizedSnapshotNode[],
@@ -364,6 +376,22 @@ function ancestorsOf(
   return ancestors;
 }
 
+function hasSafeClickableAncestor(
+  snapshot: ParsedGkdSnapshot,
+  node: NormalizedSnapshotNode,
+): boolean {
+  const screenArea = Math.max(1, snapshot.screenWidth * snapshot.screenHeight);
+  return ancestorsOf(snapshot, node)
+    .slice(0, 3)
+    .some((ancestor) => {
+      if (!ancestor.attr.clickable || !ancestor.attr.visibleToUser) return false;
+      if (nodeArea(ancestor.attr) / screenArea > 0.15) return false;
+      if (isDangerousActionNode(ancestor)) return false;
+      const res = `${ancestor.attr.id ?? ""} ${ancestor.attr.vid ?? ""}`.toLowerCase();
+      return /(skip|close|cancel)/.test(res);
+    });
+}
+
 function isAncestorOf(
   snapshot: ParsedGkdSnapshot,
   ancestor: NormalizedSnapshotNode,
@@ -382,10 +410,12 @@ function isWebViewNode(node: NormalizedSnapshotNode): boolean {
 }
 
 function isAdLikeNode(node: NormalizedSnapshotNode): boolean {
+  if (detectAdSdkForNode(node) !== null) return true;
   const value = `${node.attr.id ?? ""} ${node.attr.vid ?? ""} ${node.attr.name}`.toLowerCase();
   return (
     value.includes("advert") ||
     value.includes("splash") ||
+    value.includes("interstitial") ||
     value.includes("nativead") ||
     value.includes("ptgadvertlayout") ||
     value.includes("hotarea") ||
@@ -406,6 +436,7 @@ function isSmallNativeDismissControl(
   snapshot: ParsedGkdSnapshot,
   node: NormalizedSnapshotNode,
 ): boolean {
+  if (!node.attr.clickable) return false;
   const screenArea = snapshot.screenWidth * snapshot.screenHeight;
   const ratio = screenArea > 0 ? nodeArea(node.attr) / screenArea : 1;
   if (ratio > 0.08) return false;
@@ -479,6 +510,7 @@ function isDangerousActionNode(node: NormalizedSnapshotNode): boolean {
     "mask",
     "click_area",
     "clickarea",
+    "click_group",
   ].some((word) => value.includes(word.toLowerCase()));
 }
 

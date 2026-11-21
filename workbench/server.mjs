@@ -3,15 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  Transform,
+  JsNodeAdapter,
   Selector,
-  MatchOption,
-  QueryContext,
-  initDefaultTypeInfo,
-  getStringAttr,
-  getStringInvoke,
-  getIntInvoke,
-  getBooleanInvoke,
+  MatchOptions,
+  createDefaultSelectorTypeModel,
 } from '@gkd-kit/selector';
 import { retrieveFewShot, buildFewShotPrompt } from './rag.mjs';
 
@@ -30,86 +25,36 @@ const FEWSHOT_LIBRARY_FILE = path.join(CLEAN_DIR, 'fewshot_library.jsonl');
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8899;
 
 // Global Selector environment
-let cachedGlobals = null;
-function getGlobals() {
-  if (!cachedGlobals) {
-    cachedGlobals = {
-      matchOption: new MatchOption(false),
-      typeInfo: initDefaultTypeInfo(true),
-    };
+let cachedTypeModel = null;
+function getTypeModel() {
+  if (!cachedTypeModel) {
+    cachedTypeModel = createDefaultSelectorTypeModel(true);
   }
-  return cachedGlobals;
+  return cachedTypeModel;
 }
 
-function unwrapNode(target) {
-  if (target == null) return null;
-  if (target instanceof QueryContext) {
-    const c = target.current;
-    return (c && typeof c === 'object' && 'attr' in c) ? c : null;
-  }
-  if (typeof target === 'object' && 'attr' in target) {
-    return target;
-  }
-  return null;
-}
-
-function readAttr(target, name) {
-  if (name === '_id') {
-    const n = unwrapNode(target);
-    return n ? n.id : null;
-  }
-  if (name === '_pid') {
-    const n = unwrapNode(target);
-    return n ? n.pid : null;
-  }
-  if (typeof target === 'string') return getStringAttr(target, name);
-  if (typeof target === 'number' || typeof target === 'boolean') return null;
-  const node = unwrapNode(target);
-  if (!node) return null;
-  if (name === 'text.length') return node.attr.text?.length ?? 0;
-  const value = node.attr[name];
-  if (value === undefined || value === null) return null;
-  return value;
-}
-
-function buildTransform(nodeById) {
-  return Transform.Companion.multiplatformBuild(
-    (node, name) => readAttr(node, name),
-    (node, fnName, args) => {
-      if (typeof node === 'string') return getStringInvoke(node, fnName, args);
-      if (typeof node === 'number') return getIntInvoke(node, fnName, args);
-      if (typeof node === 'boolean') return getBooleanInvoke(node, fnName, args);
-      const real = unwrapNode(node);
-      if (!real) return null;
-      if (fnName === 'getChild') {
-        const view = typeof args?.asJsReadonlyArrayView === 'function'
-          ? args.asJsReadonlyArrayView()
-          : args;
-        const i = view[0] ?? 0;
-        return nodeById.get(real.children[i]) ?? null;
+function createNodeAdapter(nodeById) {
+  class SnapshotAdapter extends JsNodeAdapter {
+    getAttr(target, name) {
+      if (!target || typeof target !== 'object' || !('attr' in target)) return null;
+      if (name === '_id') return target.id;
+      if (name === '_pid') return target.pid;
+      if (name === 'parent') return this.getParent(target);
+      return target.attr[name] ?? null;
+    }
+    getInvoke(target, name, args) {
+      if (name === 'getChild' && target && typeof target === 'object' && 'attr' in target && typeof args[0] === 'number') {
+        return this.getChild(target, args[0]);
       }
       return null;
-    },
-    (node) => {
-      const real = unwrapNode(node);
-      return real ? real.attr.name : null;
-    },
-    (node) => {
-      const real = unwrapNode(node);
-      if (!real) return [];
-      const out = [];
-      for (const id of real.children) {
-        const c = nodeById.get(id);
-        if (c) out.push(c);
-      }
-      return out;
-    },
-    (node) => {
-      const real = unwrapNode(node);
-      if (!real) return null;
-      return real.pid >= 0 ? nodeById.get(real.pid) ?? null : null;
     }
-  );
+    getName(node) { return node.attr.name; }
+    getChildCount(node) { return node.children.length; }
+    getChild(node, index) { return nodeById.get(node.children[index]) ?? null; }
+    getParent(node) { return nodeById.get(node.pid) ?? null; }
+    getNodeKey(node) { return node.id; }
+  }
+  return new SnapshotAdapter();
 }
 
 // Memory cache for snapshots
@@ -198,36 +143,32 @@ function splitSelectorUnion(expr) {
 }
 
 function matchSingleExpr(nodes, nodeById, expr) {
-  const ast = Selector.Companion.parseAst(expr);
-  const { matchOption, typeInfo } = getGlobals();
-  ast.value.checkType(typeInfo.globalType);
-  const transform = buildTransform(nodeById);
+  const selector = Selector.compile(expr).value;
+  selector.validateType(getTypeModel()).value;
   const root = nodes.find(n => n.pid < 0) ?? nodes[0];
   if (!root) return { hit: false, reason: 'empty-snapshot', clickIds: [], supportIds: [] };
 
-  const results = transform.querySelectorAllContextArray(root, ast.value, matchOption);
-  const seenClick = new Set();
-  const clickIds = [];
+  const results = createNodeAdapter(nodeById).querySelectorAllWithTrace(root, selector, new MatchOptions(false));
+  const clickIds = new Set();
   const supportIds = new Set();
 
   for (const r of results) {
-    const target = r.target;
-    if (target && !seenClick.has(target.id)) {
-      seenClick.add(target.id);
-      clickIds.push(target.id);
-    }
-    if (r.context) {
-      for (const ctx of r.context.toArray()) {
-        if (ctx.id !== target?.id) {
-          supportIds.add(ctx.id);
-        }
+    clickIds.add(r.target.id);
+    for (const unit of r.units) {
+      supportIds.add(unit.queryNode.id);
+      supportIds.add(unit.target.id);
+      for (const step of unit.steps) {
+        supportIds.add(step.source.id);
+        supportIds.add(step.target.id);
       }
     }
   }
+  for (const id of clickIds) supportIds.delete(id);
+  const clickList = [...clickIds];
   return {
-    hit: clickIds.length > 0,
-    hitCount: clickIds.length,
-    clickIds,
+    hit: clickList.length > 0,
+    hitCount: clickList.length,
+    clickIds: clickList,
     supportIds: [...supportIds],
     matchedExpr: expr,
   };

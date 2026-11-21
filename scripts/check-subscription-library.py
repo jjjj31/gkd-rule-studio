@@ -12,7 +12,7 @@ from ruyipage import launch
 ROOT = Path(__file__).resolve().parents[1] / ".scratch" / "subscription-library-browser-check"
 ROOT.mkdir(parents=True, exist_ok=True)
 FIXTURE = "http://127.0.0.1:8767"
-state = {"versions": {"a": 1, "b": 1, "c": 1}, "fail": set(), "update_fail": False, "append_partial": False, "pause_c": threading.Event(), "requests": [], "updates": [], "appends": [], "local_groups": []}
+state = {"versions": {"a": 1, "b": 1, "c": 1}, "gkd_version": "1.13.2", "fail": set(), "update_fail": False, "append_partial": False, "pause_c": threading.Event(), "requests": [], "updates": [], "appends": [], "local_groups": []}
 
 def subscription(key):
     version = state["versions"][key]
@@ -52,7 +52,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         data = json.loads(self.rfile.read(int(self.headers.get("content-length", 0))))
         if self.path.endswith("getServerInfo"):
-            self.reply({"device": {}, "gkdAppInfo": {"id": "li.songe.gkd", "name": "GKD", "versionName": "1.13.0-beta-2"}})
+            self.reply({"device": {}, "gkdAppInfo": {"id": "li.songe.gkd", "name": "GKD", "versionName": state["gkd_version"]}})
         elif self.path.endswith("getSnapshots"): self.reply([])
         elif self.path.endswith("updateSubscription"):
             if state["update_fail"]: self.reply({"error": "fixture failure"}, 500)
@@ -146,7 +146,7 @@ try:
         "id": "ordinary", "source": "offline-selector", "mode": "single", "sourceKey": "ordinary", "title": "普通候选", "summary": "原测试", "status": "testing", "canImport": False, "createdAt": 1, "updatedAt": 1,
         "app": {"id": "com.demo.library", "name": "淘宝", "groups": [{"key": 7, "name": "关闭更新弹窗", "rules": [{"key": 0, "matches": ['[text="普通候选"]']}]}]},
     }], "aiSessions": []}
-    page.run_js("localStorage.clear(); localStorage.setItem('gkd-rule-builder-device-url', " + json.dumps(FIXTURE) + "); localStorage.setItem('gkd-rule-studio-target-channel', 'beta'); localStorage.setItem('gkd-rule-studio-inline-testing', " + json.dumps(json.dumps(generated, ensure_ascii=False)) + ");")
+    page.run_js("localStorage.clear(); localStorage.setItem('gkd-rule-builder-device-url', " + json.dumps(FIXTURE) + "); localStorage.setItem('gkd-rule-studio-inline-testing', " + json.dumps(json.dumps(generated, ensure_ascii=False)) + ");")
     page.refresh()
     wait_js("document.querySelector('.library-entry')")
     inject_bridge()
@@ -312,19 +312,20 @@ try:
     wait_js("!document.querySelectorAll('.library-group')[0].querySelector('button').disabled")
     before_mismatch = len(state["updates"])
     home()
-    click(".android-target-switch button:nth-child(2)")
+    state["gkd_version"] = "1.12.1"
+    click(".android-device-form button")
     wait_js("document.querySelector('.android-connection-indicator.disconnected')")
     library_app()
     assert js("document.querySelectorAll('.library-group')[0].querySelector('button').disabled")
     time.sleep(.3)
     assert len(state["updates"]) == before_mismatch
     home()
-    click(".android-target-switch button:nth-child(1)")
+    state["gkd_version"] = "1.13.2"
     click(".android-device-form button")
     wait_js("document.querySelector('.android-connection-indicator.connected')")
     library_app()
     wait_js("!document.querySelectorAll('.library-group')[0].querySelector('button').disabled")
-    check("目标版本不匹配时不写入错误服务，重连正确目标可同步")
+    check("低于 1.13 的旧版 GKD 被拒绝且不写入，重连 1.13+ 可正常同步")
 
     click('button[aria-label="返回应用列表"]')
     wait_js("document.querySelector('.library-app-list')")
@@ -369,12 +370,10 @@ try:
     check("移动端布局无横向溢出")
 
     home()
-    click(".android-target-switch button:nth-child(2)")
     library_app()
-    wait_js("document.querySelectorAll('.library-group')[0].innerText.includes('手动添加')")
-    group_button(0, 3)
+    group_button(0, 2)
     wait_js("document.querySelector('.library-notice').innerText.includes('已复制')")
-    check("正式版无设备时也能复制所选完整片段手动添加")
+    check("未连接设备时也能直接复制所选完整片段手动添加")
     click('button[aria-label="返回应用列表"]')
     wait_js("document.querySelector('.library-sources')")
     ensure_sources()
@@ -387,7 +386,7 @@ try:
     check("删除来源不修改 GKD 或固定副本记录")
     assert js("window.__qaErrors.length === 0"), js("window.__qaErrors")
     home()
-    page.run_js("localStorage.setItem('gkd-rule-studio-library-sources', 'corrupt-cache'); localStorage.setItem('gkd-rule-studio-target-channel', 'beta');")
+    page.run_js("localStorage.setItem('gkd-rule-studio-library-sources', 'corrupt-cache');")
     page.refresh()
     wait_js("document.querySelector('.library-entry')")
     click(".android-device-form button")

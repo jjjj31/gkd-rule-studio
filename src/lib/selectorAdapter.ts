@@ -1,115 +1,14 @@
 /**
- * GKD selector 桥接层：把 `@gkd-kit/selector`（Kotlin→JS 编译包）的接口
- * 适配到我们 `NormalizedSnapshotNode` 节点结构上。
- *
- * 不要删 `clazzList` 那段——它看起来什么都没干，但访问 `.name` 的副作用
- * 是告诉 esbuild/Vite minify "这些 Kotlin 类名别改"，否则 `instanceof`
- * 在生产环境会静默挂掉。
+ * GKD selector 桥接层：把官方 `@gkd-kit/selector`（0.6.x，对应 GKD 1.13+）
+ * 适配到本项目的 `NormalizedSnapshotNode` 节点结构上。
  */
 import {
-  Transform,
+  JsNodeAdapter,
+  MatchOptions,
   Selector,
-  MatchOption,
-  AstNode,
-  QueryContext,
-  QueryResult,
-  initDefaultTypeInfo,
-  SyntaxException,
-  GkdException,
-  getStringAttr,
-  getStringInvoke,
-  getIntInvoke,
-  getBooleanInvoke,
-  FastQuery,
-  BinaryExpression,
-  CompareOperator,
-  ConnectExpression,
-  ConnectOperator,
-  ConnectSegment,
-  ConnectWrapper,
-  Expression,
-  LogicalExpression,
-  LogicalOperator,
-  LogicalSelectorExpression,
-  NotExpression,
-  PolynomialExpression,
-  PropertySegment,
-  ValueExpression,
-  PropertyUnit,
-  PropertyWrapper,
-  SelectorExpression,
-  SelectorLogicalOperator,
-  TupleExpression,
-  UnitSelectorExpression,
-  NotSelectorExpression,
+  createDefaultSelectorTypeModel,
 } from "@gkd-kit/selector";
 import type { NormalizedSnapshotNode, ParsedGkdSnapshot } from "../types/gkdSnapshot";
-import { getGkdChannel, type GkdTargetChannel } from "./gkdTarget";
-
-let betaMatcher: typeof import("./selectorBetaAdapter").matchBetaSelector | undefined;
-let betaLoading: Promise<void> | undefined;
-
-export async function prepareSelectorEngine(channel: GkdTargetChannel): Promise<void> {
-  if (channel !== "beta") return;
-  betaLoading ??= import("./selectorBetaAdapter").then(module => { betaMatcher = module.matchBetaSelector; });
-  try { await betaLoading; }
-  catch { betaLoading = undefined; throw new Error("无法加载测试版选择器引擎，请更新系统 WebView 后重试"); }
-}
-
-const KtSelector = Selector as unknown as {
-  Companion: {
-    parseAst: (source: string) => AstNode<Selector>;
-    parseOrNull: (source: string) => Selector | null | undefined;
-    parse: (source: string) => Selector;
-  };
-};
-
-/** 只用本地解析器检查语法/类型，不要求当前有快照。 */
-export function validateGkdSelectorSyntax(expression: string): string | null {
-  try {
-    const ast = KtSelector.Companion.parseAst(expression);
-    const { typeInfo } = ensureGlobals();
-    ast.value.checkType(typeInfo.globalType);
-    return null;
-  } catch (cause) {
-    return cause instanceof Error ? cause.message : String(cause);
-  }
-}
-const KtTransform = Transform as unknown as {
-  Companion: {
-    multiplatformBuild: <T>(
-      getAttr: (p0: any, p1: string) => any,
-      getInvoke: (p0: any, p1: string, p2: any) => any,
-      getName: (p0: T) => any,
-      getChildren: (p0: T) => any,
-      getParent: (p0: T) => any,
-    ) => Transform<T>;
-  };
-};
-
-// ★ keep class name trick（照搬 inspect/src/utils/selector.ts）
-// 仅副作用：让 esbuild/Vite minify 不要压缩这些 Kotlin 类名，
-// 否则 `instanceof` 静默失败，selector 匹配在生产环境全挂。
-const clazzList = Object.entries({
-  MatchOption, QueryResult, Transform, QueryContext, AstNode, Selector,
-  FastQuery, BinaryExpression, CompareOperator, ConnectExpression,
-  ConnectOperator, ConnectSegment, ConnectWrapper, Expression,
-  LogicalExpression, LogicalOperator, LogicalSelectorExpression,
-  NotExpression, PolynomialExpression, PropertySegment, ValueExpression,
-  PropertyUnit, PropertyWrapper, SelectorExpression, SelectorLogicalOperator,
-  TupleExpression, UnitSelectorExpression, NotSelectorExpression,
-  SyntaxException, GkdException,
-}).map(([k, v]) => ({ clazz: v as any, name: k }));
-clazzList.forEach((v) => {
-  Object.keys(v.clazz).forEach((sub) => {
-    const c = (v.clazz as any)[sub];
-    if (c instanceof Function) clazzList.push({ clazz: c, name: sub });
-  });
-});
-clazzList.forEach((v) => {
-  // 故意访问 .name 以防 minify 改 Kotlin 类标识符
-  void v.clazz.name;
-});
 
 export interface MatchResult {
   clickIds: number[];
@@ -119,108 +18,76 @@ export interface MatchResult {
   unparsedReason?: string;
 }
 
-let cached: { matchOption: MatchOption; typeInfo: ReturnType<typeof initDefaultTypeInfo> } | null = null;
-function ensureGlobals() {
-  if (cached) return cached;
-  cached = {
-    matchOption: new MatchOption(false),
-    typeInfo: initDefaultTypeInfo(true),
-  };
-  return cached;
+let cachedTypeModel: ReturnType<typeof createDefaultSelectorTypeModel> | null = null;
+function ensureTypeModel() {
+  cachedTypeModel ??= createDefaultSelectorTypeModel(true);
+  return cachedTypeModel;
 }
 
-// KMP 会根据 `target` 的实际类型调用我们的桥接：
-//   - QueryContext：链式匹配中的上下文（解 `.current` 拿节点）
-//   - string/number/boolean：`MemberExpression` / `InvokeExpression` 中间结果
-//     （例如 text.length 求值时，"跳过" 字符串会作为 target 传进 getAttr）
-//   - node：真正的节点
-function readAttr(target: unknown, name: string): string | number | boolean | null {
-  // 几个非节点的伪属性
-  if (name === "_id") {
-    const n = unwrapNode(target);
-    return n ? n.id : null;
+/** 只用本地解析器检查语法/类型，不要求当前有快照。 */
+export function validateGkdSelectorSyntax(expression: string): string | null {
+  try {
+    const selector = Selector.compile(expression).value;
+    selector.validateType(ensureTypeModel()).value;
+    return null;
+  } catch (cause) {
+    return cause instanceof Error ? cause.message : String(cause);
   }
-  if (name === "_pid") {
-    const n = unwrapNode(target);
-    return n ? n.pid : null;
-  }
-  if (typeof target === "string") return getStringAttr(target, name);
-  if (typeof target === "number" || typeof target === "boolean") return null;
-  const node = unwrapNode(target);
-  if (!node) return null;
-  if (name === "text.length") return node.attr.text?.length ?? 0;
-  const value = (node.attr as unknown as Record<string, unknown>)[name];
-  if (value === undefined || value === null) return null;
-  return value as string | number | boolean;
-}
-
-function unwrapNode(target: unknown): NormalizedSnapshotNode | null {
-  if (target == null) return null;
-  if (target instanceof QueryContext) {
-    const c = (target as { current: unknown }).current;
-    return (c && typeof c === "object" && "attr" in (c as object)) ? c as NormalizedSnapshotNode : null;
-  }
-  if (typeof target === "object" && "attr" in (target as object)) {
-    return target as NormalizedSnapshotNode;
-  }
-  return null;
-}
-
-export function buildTransform(snapshot: ParsedGkdSnapshot): Transform<NormalizedSnapshotNode> {
-  return KtTransform.Companion.multiplatformBuild<NormalizedSnapshotNode>(
-    (node, name) => readAttr(node, name),
-    (node, fnName, args) => {
-      // InvokeExpression 的中间结果：getChild(0)、childCount() 之类
-      if (typeof node === "string") return getStringInvoke(node, fnName, args);
-      if (typeof node === "number") return getIntInvoke(node, fnName, args);
-      if (typeof node === "boolean") return getBooleanInvoke(node, fnName, args);
-      const real = unwrapNode(node);
-      if (!real) return null;
-      if (fnName === "getChild") {
-        const view = typeof args?.asJsReadonlyArrayView === "function"
-          ? args.asJsReadonlyArrayView()
-          : (args as unknown as ReadonlyArray<unknown>);
-        const i = (view[0] as number) ?? 0;
-        return snapshot.nodeById.get(real.children[i]) ?? null;
-      }
-      return null;
-    },
-    (node) => {
-      const real = unwrapNode(node);
-      return real ? real.attr.name : null;
-    },
-    (node) => {
-      const real = unwrapNode(node);
-      if (!real) return [];
-      const out: NormalizedSnapshotNode[] = [];
-      for (const id of real.children) {
-        const c = snapshot.nodeById.get(id);
-        if (c) out.push(c);
-      }
-      return out;
-    },
-    (node) => {
-      const real = unwrapNode(node);
-      if (!real) return null;
-      return real.pid >= 0 ? snapshot.nodeById.get(real.pid) ?? null : null;
-    },
-  );
 }
 
 export function matchGkdSelectorString(
   snapshot: ParsedGkdSnapshot,
   expr: string,
 ): MatchResult {
-  if (snapshot.gkdChannel === "beta" || getGkdChannel(snapshot.gkdAppInfo) === "beta") {
-    return betaMatcher ? betaMatcher(snapshot, expr) : { clickIds: [], supportIds: [], unparsed: true,
-      unparsedReason: "测试版选择器引擎尚未加载，请先连接 GKD 测试版" };
-  }
   try {
-    const ast = KtSelector.Companion.parseAst(expr);
-    const { matchOption, typeInfo } = ensureGlobals();
-    ast.value.checkType(typeInfo.globalType);
-    const transform = buildTransform(snapshot);
-    const root = snapshot.nodes.find((n) => n.pid < 0) ?? snapshot.nodes[0];
+    const selector = Selector.compile(expr).value;
+    selector.validateType(ensureTypeModel()).value;
+
+    class SnapshotAdapter extends JsNodeAdapter<NormalizedSnapshotNode> {
+      getAttr(target: unknown, name: string): unknown {
+        if (!target || typeof target !== "object" || !("attr" in target)) return null;
+        const node = target as NormalizedSnapshotNode;
+        if (name === "_id") return node.id;
+        if (name === "_pid") return node.pid;
+        if (name === "parent") return this.getParent(node);
+        return (node.attr as unknown as Record<string, unknown>)[name] ?? null;
+      }
+
+      getInvoke(target: unknown, name: string, args: unknown[]): unknown {
+        if (
+          name === "getChild" &&
+          target &&
+          typeof target === "object" &&
+          "attr" in target &&
+          typeof args[0] === "number"
+        ) {
+          return this.getChild(target as NormalizedSnapshotNode, args[0]);
+        }
+        return null;
+      }
+
+      getName(node: NormalizedSnapshotNode) {
+        return node.attr.name;
+      }
+
+      getChildCount(node: NormalizedSnapshotNode) {
+        return node.children.length;
+      }
+
+      getChild(node: NormalizedSnapshotNode, index: number) {
+        return snapshot.nodeById.get(node.children[index]) ?? null;
+      }
+
+      getParent(node: NormalizedSnapshotNode) {
+        return snapshot.nodeById.get(node.pid) ?? null;
+      }
+
+      getNodeKey(node: NormalizedSnapshotNode) {
+        return node.id;
+      }
+    }
+
+    const root = snapshot.nodes.find((node) => node.pid < 0) ?? snapshot.nodes[0];
     if (!root) {
       return {
         clickIds: [],
@@ -229,23 +96,33 @@ export function matchGkdSelectorString(
         unparsedReason: "empty-snapshot",
       };
     }
-    const results = transform.querySelectorAllContextArray(root, ast.value, matchOption);
-    const seen = new Set<number>();
-    const clickIds: number[] = [];
+
+    const results = new SnapshotAdapter().querySelectorAllWithTrace(
+      root,
+      selector,
+      new MatchOptions(false),
+    );
+    const clickIds = new Set<number>();
     const supportIds = new Set<number>();
-    for (const r of results as Array<QueryResult<NormalizedSnapshotNode>>) {
-      const target = (r as { target: NormalizedSnapshotNode | null | undefined }).target;
-      if (target && !seen.has(target.id)) {
-        seen.add(target.id);
-        clickIds.push(target.id);
-      }
-      for (const context of r.context.toArray()) {
-        if (context.id !== target?.id) supportIds.add(context.id);
+    for (const result of results) {
+      clickIds.add(result.target.id);
+      for (const unit of result.units) {
+        supportIds.add(unit.queryNode.id);
+        supportIds.add(unit.target.id);
+        for (const step of unit.steps) {
+          supportIds.add(step.source.id);
+          supportIds.add(step.target.id);
+        }
       }
     }
-    return { clickIds, supportIds: [...supportIds], unparsed: false };
-  } catch (e) {
-    const msg = (e as Error)?.message ?? String(e);
-    return { clickIds: [], supportIds: [], unparsed: true, unparsedReason: msg };
+    for (const id of clickIds) supportIds.delete(id);
+    return { clickIds: [...clickIds], supportIds: [...supportIds], unparsed: false };
+  } catch (error) {
+    return {
+      clickIds: [],
+      supportIds: [],
+      unparsed: true,
+      unparsedReason: error instanceof Error ? error.message : String(error),
+    };
   }
 }

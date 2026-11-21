@@ -808,7 +808,7 @@ try:
     )].every(field => !field.placeholder)""")
     click_css(".user-feedback-panel details > summary")
     click_css(".user-feedback-diagnostic-upload summary")
-    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('设置 → 诊断 → 诊断采集')")
+    wait_js("document.querySelector('.user-feedback-panel').innerText.includes('工具 → 诊断 → 诊断采集')")
     category_options = js(
         """Array.from(document.querySelector(".user-feedback-panel select").options)
           .map((option) => ({ value: option.value, text: option.textContent.trim() }))"""

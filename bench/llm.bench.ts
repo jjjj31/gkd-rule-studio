@@ -31,10 +31,7 @@ import {
   type FewShotRecord,
 } from "../src/lib/fewShotRetrieval";
 import { pickExistingNode } from "../src/lib/nodePicker";
-import {
-  matchGkdSelectorString,
-  prepareSelectorEngine,
-} from "../src/lib/selectorAdapter";
+import { matchGkdSelectorString } from "../src/lib/selectorAdapter";
 import { validateAiCandidateAgainstSnapshot } from "../src/lib/selectorMatcher";
 import { normalizeSnapshot } from "../src/lib/snapshotNormalize";
 import { buildVisualTargetIds } from "../src/lib/visualTarget";
@@ -198,10 +195,6 @@ interface CrossVersionDetail {
 }
 
 test("LLM rule generation baseline", async () => {
-  await prepareSelectorEngine("beta").catch((error) => {
-    console.warn("[bench:llm] beta selector engine unavailable:", error?.message || error);
-  });
-
   const records = readJsonl(path.join(CLEAN_DIR, "test.jsonl"));
   const allRecords = SPLITS.flatMap((split) =>
     readJsonl(path.join(CLEAN_DIR, `${split}.jsonl`)),

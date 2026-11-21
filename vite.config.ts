@@ -4,7 +4,7 @@ import { inlineSelectorWasm } from "./src/build/inlineSelectorWasm";
 
 export default defineConfig({
   plugins: [react(), inlineSelectorWasm()],
-  optimizeDeps: { exclude: ["@gkd-kit/selector-beta", "regex-wasm"] },
+  optimizeDeps: { exclude: ["@gkd-kit/selector", "regex-wasm"] },
   test: {
     environment: "node",
     include: ["src/**/*.{test,spec}.{ts,tsx}"],

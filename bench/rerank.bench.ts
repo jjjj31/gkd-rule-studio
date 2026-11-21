@@ -11,7 +11,6 @@ import { normalizeSnapshot } from "../src/lib/snapshotNormalize";
 import { pickExistingNode } from "../src/lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../src/lib/regionCandidates";
 import { validateSelectorPlan } from "../src/lib/selectorMatcher";
-import { prepareSelectorEngine } from "../src/lib/selectorAdapter";
 import { buildVisualTargetIds } from "../src/lib/visualTarget";
 import type { RuleSettings, SelectorCandidate } from "../src/types/ruleDraft";
 import type { ParsedGkdSnapshot } from "../src/types/gkdSnapshot";
@@ -198,7 +197,6 @@ const POLICIES: Policy[] = [
 ];
 
 test("rerank policy experiment", async () => {
-  await prepareSelectorEngine("beta").catch(() => undefined);
   const records = readJsonl(path.join(CLEAN_DIR, "test.jsonl"));
   const selected = LIMIT > 0 ? records.slice(0, LIMIT) : records;
   const snapshotCache = new Map<string, ParsedGkdSnapshot | null>();

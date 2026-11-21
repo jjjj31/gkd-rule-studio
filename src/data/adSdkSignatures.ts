@@ -73,6 +73,20 @@ export const AD_SDK_SIGNATURES: readonly AdSdkSignature[] = [
     containerSignals: ["mbridge_"],
     skipSignals: [],
   },
+  {
+    id: "tobid",
+    label: "ToBid",
+    packagePrefixes: ["com.windmill.sdk"],
+    containerSignals: ["tobid_splash", "tobid_interstitial"],
+    skipSignals: ["tobid_splash_skip_ll", "tobid_interstitial_skip_ll"],
+  },
+  {
+    id: "meishu",
+    label: "美数",
+    packagePrefixes: [],
+    containerSignals: ["ms_splash", "ms_shake", "ms_img_meishu"],
+    skipSignals: ["ms_skipview"],
+  },
 ];
 
 export interface AdSdkSkipMatch {

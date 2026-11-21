@@ -7,6 +7,7 @@
  * @see .scratch/dataset-crawler/clean_dataset.py 生成 fewshot_library.jsonl 的同一套特征
  */
 import distilledCompactRaw from "../data/distilledFewShot.json";
+import { isDynamicCountdownText } from "./countdownText";
 import type {
   NodePickResult,
   NormalizedSnapshotNode,
@@ -431,12 +432,7 @@ function isObfuscatedVidValue(vid: string | null | undefined): boolean {
 
 function isDynamicCountdownValue(text: string | null | undefined): boolean {
   if (!text) return false;
-  const s = text.trim();
-  return (
-    /^跳过\s*\d+\s*s?$/i.test(s) ||
-    /^\d+\s*s?\s*后?\s*跳过$/i.test(s) ||
-    /^skip\s*\d+\s*s?$/i.test(s)
-  );
+  return isDynamicCountdownText(text);
 }
 
 let hydratedDistilledLibrary: Array<{

@@ -16,7 +16,6 @@ import { normalizeSnapshot } from "../src/lib/snapshotNormalize";
 import { pickExistingNode } from "../src/lib/nodePicker";
 import { generateRegionSelectorCandidates } from "../src/lib/regionCandidates";
 import { validateSelectorPlan } from "../src/lib/selectorMatcher";
-import { prepareSelectorEngine } from "../src/lib/selectorAdapter";
 import type { RuleSettings, SelectorCandidate } from "../src/types/ruleDraft";
 import type { ParsedGkdSnapshot } from "../src/types/gkdSnapshot";
 
@@ -93,11 +92,6 @@ function clickedIds(snapshot: ParsedGkdSnapshot, candidate: SelectorCandidate): 
 }
 
 test("heuristic strategy benchmark", async () => {
-  // 数据集里约 7% 快照由 GKD beta 版录制，需要加载 beta 引擎才能评估。
-  await prepareSelectorEngine("beta").catch((error) => {
-    console.warn("[bench] beta selector engine unavailable:", error?.message || error);
-  });
-
   const records = readJsonl(path.join(CLEAN_DIR, "test.jsonl"));
   const selected = LIMIT > 0 ? records.slice(0, LIMIT) : records;
   fs.mkdirSync(REPORT_DIR, { recursive: true });

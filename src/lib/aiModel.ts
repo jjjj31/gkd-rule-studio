@@ -535,6 +535,38 @@ export function buildAiGenerateMessages({
   ];
 }
 
+export function buildAiAutoRepairMessages({
+  originalPrompt,
+  failurePrompt,
+  imageUrl,
+}: {
+  originalPrompt: string;
+  failurePrompt: string;
+  imageUrl?: string;
+}): AiChatMessage[] {
+  const userText = [
+    "上一轮候选未能直接通过本地静态快照验靶或稳定性检查，请严格对照下面的失败诊断直接修正并重新返回 2-3 个候选。",
+    imageUrl ? "已附带当前快照截图，请结合视觉布局和同屏文案锚点修正。" : "",
+    "",
+    failurePrompt,
+    "",
+    "原始快照上下文参考：",
+    compactPromptForAi(originalPrompt),
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+  return [
+    {
+      role: "system",
+      content: buildSystemPrompt("single"),
+    },
+    {
+      role: "user",
+      content: buildUserContent(userText, imageUrl),
+    },
+  ];
+}
+
 export function buildAiFeedbackMessages({
   mode,
   originalPrompt,
@@ -648,22 +680,97 @@ export function buildAiBatchFeedbackMessages({
 }
 
 export function compactPromptForAi(prompt: string): string {
-  const [beforeTree, treeExcerpt] = splitPromptTreeExcerpt(prompt);
-  const compactLines = compactPromptLines(beforeTree);
-  if (treeExcerpt.length === 0) return compactLines.join("\n").trim();
-
-  compactLines.push(
-    "",
-    `节点树摘要（目标相关节选，最多 ${MAX_COMPACT_TREE_LINES} 行，用于判断父子层、遮罩层和真实按钮层）：`,
-    ...treeExcerpt.slice(0, MAX_COMPACT_TREE_LINES),
-  );
-  if (treeExcerpt.length > MAX_COMPACT_TREE_LINES) {
-    compactLines.push(
-      `... 已省略 ${treeExcerpt.length - MAX_COMPACT_TREE_LINES} 行节点树摘要`,
-    );
+  const [rawBeforeTree, treeExcerpt, afterTree] = splitPromptTreeExcerpt(prompt);
+  // 内置 AI 的 system 消息已包含完整 AI_RULE_OUTPUT_CONTRACT 与 AI_RULE_OUTPUT_EXAMPLE，
+  // 去掉 user 消息中的重复契约块可腾出近两千字符给目标节点树，防止尾部被截断。
+  const strippedBeforeTree = stripRedundantContractSection(rawBeforeTree);
+  const compactLines = compactPromptLines(strippedBeforeTree);
+  if (treeExcerpt.length === 0) {
+    if (afterTree.length > 0) {
+      compactLines.push("", ...afterTree);
+    }
+    return limitCompactPromptChars(compactLines.join("\n").trim());
   }
 
-  return limitCompactPromptChars(compactLines.join("\n").trim());
+  const keptTreeLines = treeExcerpt.slice(0, MAX_COMPACT_TREE_LINES);
+  const omittedLines = treeExcerpt.length - keptTreeLines.length;
+  const headerText = compactLines.join("\n").trim();
+  const tailText = afterTree.length > 0 ? `\n\n${afterTree.join("\n")}` : "";
+  const treeHeader = `\n\n节点树摘要（目标相关节选，最多 ${MAX_COMPACT_TREE_LINES} 行，用于判断父子层、遮罩层和真实按钮层）：\n`;
+
+  const availableForTree =
+    MAX_COMPACT_PROMPT_CHARS - headerText.length - treeHeader.length - tailText.length - 80;
+  const pickedIdMatch = /"id":\s*(\d+)/.exec(rawBeforeTree);
+  const pickedNodeToken = pickedIdMatch?.[1] ? `#${pickedIdMatch[1]} ` : null;
+  const fittedTreeLines = fitTreeLinesWithinBudget(
+    keptTreeLines,
+    availableForTree,
+    pickedNodeToken,
+  );
+
+  const totalOmitted = omittedLines + (keptTreeLines.length - fittedTreeLines.length);
+  const omittedNote =
+    totalOmitted > 0 ? `\n... 已省略 ${totalOmitted} 行节点树摘要` : "";
+
+  const assembled = `${headerText}${treeHeader}${fittedTreeLines.join("\n")}${omittedNote}${tailText}`.trim();
+  return limitCompactPromptChars(assembled);
+}
+
+function fitTreeLinesWithinBudget(
+  lines: string[],
+  budgetChars: number,
+  pickedNodeToken: string | null,
+): string[] {
+  if (budgetChars <= 0 || lines.length === 0) return [];
+  const totalChars = lines.reduce((sum, line) => sum + line.length + 1, 0);
+  if (totalChars <= budgetChars) return lines;
+
+  const pickedIndex = pickedNodeToken
+    ? lines.findIndex((line) => line.trimStart().startsWith(pickedNodeToken))
+    : -1;
+  if (pickedIndex < 0) {
+    const out: string[] = [];
+    let used = 0;
+    for (const line of lines) {
+      if (out.length > 0 && used + line.length + 1 > budgetChars) break;
+      out.push(line);
+      used += line.length + 1;
+    }
+    return out;
+  }
+
+  // 从 pickedNode 所在行向前后扩展，确保目标节点及父兄节点优先保留在预算内
+  let start = pickedIndex;
+  let end = pickedIndex;
+  let used = lines[pickedIndex]!.length + 1;
+  while (start > 0 || end < lines.length - 1) {
+    let expanded = false;
+    if (start > 0) {
+      const nextLen = lines[start - 1]!.length + 1;
+      if (used + nextLen <= budgetChars) {
+        start -= 1;
+        used += nextLen;
+        expanded = true;
+      }
+    }
+    if (end < lines.length - 1) {
+      const nextLen = lines[end + 1]!.length + 1;
+      if (used + nextLen <= budgetChars) {
+        end += 1;
+        used += nextLen;
+        expanded = true;
+      }
+    }
+    if (!expanded) break;
+  }
+  return lines.slice(start, end + 1);
+}
+
+function stripRedundantContractSection(beforeTree: string): string {
+  return beforeTree.replace(
+    /\n字段类型硬约束[\s\S]*?(?=\n应用信息：)/,
+    "\n（字段类型硬约束与 JSON5 示例已在 system 指令中给出，此处省略重复文本）\n",
+  );
 }
 
 function limitCompactPromptChars(prompt: string): string {
@@ -675,16 +782,23 @@ function limitCompactPromptChars(prompt: string): string {
   ].join("\n");
 }
 
-function splitPromptTreeExcerpt(prompt: string): [string, string[]] {
+function splitPromptTreeExcerpt(prompt: string): [string, string[], string[]] {
   const parts = prompt.split(/\n节点树摘要：/);
-  if (parts.length < 2) return [prompt, []];
+  if (parts.length < 2) return [prompt, [], []];
   const beforeTree = parts[0] ?? prompt;
-  const treeText = parts.slice(1).join("\n节点树摘要：");
+  const afterMarker = parts.slice(1).join("\n节点树摘要：");
+  const selfCheckIndex = afterMarker.indexOf("\n输出前自检");
+  const treeText = selfCheckIndex >= 0 ? afterMarker.slice(0, selfCheckIndex) : afterMarker;
+  const tailText = selfCheckIndex >= 0 ? afterMarker.slice(selfCheckIndex) : "";
   const treeExcerpt = treeText
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
     .filter((line) => line.trim().length > 0);
-  return [beforeTree, treeExcerpt];
+  const afterTree = tailText
+    .split(/\r?\n/)
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim().length > 0);
+  return [beforeTree, treeExcerpt, afterTree];
 }
 
 function compactPromptLines(prompt: string): string[] {

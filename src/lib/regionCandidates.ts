@@ -44,6 +44,7 @@ const STRATEGY_STABILITY_TIER: Record<string, number> = {
   exactVid: 2,
   typePlusExactAttr: 2,
   textSkipGuarded: 2,
+  clickParentByChildIdVid: 2,
 };
 
 /** 主入口：生成、去重、排序所有候选，供前端 CandidateList / CandidateSummary 渲染。 */
@@ -263,6 +264,22 @@ function visualTargetRank(
   // 兜底策略（可见节点/父区域兜底）分数很低；没有稳定依据时，不让它
   // 仅凭“点的是所选节点”压过同摞里带 vid/text 的可靠候选。
   const strong = candidate.baseScore >= STRONG_TARGET_BASE_SCORE;
+  const pickedNode = snapshot.nodeById.get(pickedNodeId);
+  const pickedClickable = Boolean(pickedNode?.attr.clickable);
+  const hasSafeClickableInVisualTarget =
+    !pickedClickable &&
+    Array.from(visualTargetIds).some((id) => {
+      const node = snapshot.nodeById.get(id);
+      return Boolean(node && isSafeClickableVisualTarget(snapshot, node));
+    });
+
+  if (hasSafeClickableInVisualTarget && inside && strong && unique) {
+    const clickedNode = snapshot.nodeById.get(clickedIds[0]!);
+    if (clickedNode && isSafeClickableVisualTarget(snapshot, clickedNode)) {
+      return 0;
+    }
+    if (exact) return 1;
+  }
 
   if (exact && strong && !pickedIsWeak) return 0;
   if (inside && strong) return unique ? 1 : 2;
@@ -270,6 +287,28 @@ function visualTargetRank(
   if (inside) return unique ? 4 : 5;
   if (insideCount > 0) return 6;
   return unique ? 7 : 8;
+}
+
+function isSafeClickableVisualTarget(
+  snapshot: ParsedGkdSnapshot,
+  node: NormalizedSnapshotNode,
+): boolean {
+  if (!node.attr.clickable || !node.attr.visibleToUser) return false;
+  const screenArea = Math.max(1, snapshot.screenWidth * snapshot.screenHeight);
+  if (nodeArea(node) / screenArea > 0.15) return false;
+  const res = `${node.attr.id ?? ""} ${node.attr.vid ?? ""}`.toLowerCase();
+  if (
+    res.includes("shade") ||
+    res.includes("mask") ||
+    res.includes("hotarea") ||
+    res.includes("hot_area") ||
+    res.includes("click_area") ||
+    res.includes("clickarea") ||
+    res.includes("click_group")
+  ) {
+    return false;
+  }
+  return /(skip|close|cancel)/.test(res);
 }
 
 /**

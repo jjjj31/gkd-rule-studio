@@ -12,6 +12,7 @@ import {
   NEGATIVE_ACTION_VARIANT_GROUPS,
   POSITIVE_CTA_TEXT,
 } from "../data/riskWords";
+import { isDynamicCountdownText, isSkipLikeText } from "./countdownText";
 import type { NormalizedSnapshotNode } from "../types/gkdSnapshot";
 import type {
   GenerationContext,
@@ -255,15 +256,19 @@ function typePlusExactAttr(context: GenerationContext): CandidateSeed[] {
 }
 
 function exactTextWithContext(context: GenerationContext): CandidateSeed[] {
-  const targetText = context.pickedNode.attr.text;
-  if (!targetText || !isGenericText(targetText)) return [];
-  if (isDynamicCountdownText(targetText)) return [];
+  const attr = preferredTextualAttr(context.pickedNode);
+  if (!attr || !isGenericText(attr.value)) return [];
+  if (attr.key === "text" && isDynamicCountdownText(attr.value)) return [];
 
   const contextNode = findContextTextNode(context);
   if (!contextNode) return [];
 
   const contextSelector = selectorForTextNode(contextNode);
-  const targetSelector = exactSelector("text", targetText, shortTypeName(context.pickedNode));
+  const targetSelector = exactSelector(
+    attr.key,
+    attr.value,
+    shortTypeName(context.pickedNode),
+  );
 
   return [
     {
@@ -276,7 +281,7 @@ function exactTextWithContext(context: GenerationContext): CandidateSeed[] {
         target: targetSelector,
       },
       groupName: groupNameForContext(contextNode, "功能类-自动生成"),
-      debugReasons: [`${targetText} 是泛化短词，补充上下文 ${nodeText(contextNode)}`],
+      debugReasons: [`${attr.value} 是泛化短词，补充上下文 ${nodeText(contextNode)}`],
     },
   ];
 }
@@ -286,7 +291,7 @@ function textSkipGuarded(context: GenerationContext): CandidateSeed[] {
   if (!text || !isSkipLikeText(text)) return [];
 
   return [
-    singleSeed("textSkipGuarded", "归一化跳过文本", 78, skipTextSelector(), [
+    singleSeed("textSkipGuarded", "归一化跳过文本", 78, skipTextSelector(undefined, text), [
       "包含跳过语义，并归一化倒计时文本",
     ]),
   ];
@@ -300,6 +305,9 @@ function stableResourceSemantic(context: GenerationContext): CandidateSeed[] {
     .filter((node) => !isDangerousActionNode(node))
     .forEach((node) => {
       if (isGenericSkipContainer(node) && hasPreferredSkipControlDescendant(context, node)) {
+        return;
+      }
+      if (!node.attr.clickable && hasClickableActionResourceAncestor(context, node)) {
         return;
       }
       const selector = stableResourceSelector(node);
@@ -344,7 +352,7 @@ function adContainerSkipFallback(context: GenerationContext): CandidateSeed[] {
       plan: {
         kind: "ancestorDescendant",
         ancestor,
-        descendant: skipTextSelector(shortTypeName(descendant)),
+        descendant: skipTextSelector(shortTypeName(descendant), descendant.attr.text ?? descendant.attr.desc ?? undefined),
       },
       groupName: "开屏广告",
       debugReasons: [
@@ -361,7 +369,7 @@ function clickParentDirectChildText(context: GenerationContext): CandidateSeed[]
   const parent = context.clickableAncestor;
   if (!text || !parent || context.pickedNode.attr.clickable) return [];
   const child = isDynamicCountdownText(text)
-    ? skipTextSelector(shortTypeName(context.pickedNode))
+    ? skipTextSelector(shortTypeName(context.pickedNode), text)
     : exactSelector("text", text, shortTypeName(context.pickedNode));
 
   return [
@@ -501,8 +509,8 @@ function groupNameForContextByText(text: string, fallback: string): string {
 }
 
 function simpleSiblingCancelVsCTA(context: GenerationContext): CandidateSeed[] {
-  const text = context.pickedNode.attr.text;
-  if (!text || !NEGATIVE_ACTION_TEXT.includes(text)) return [];
+  const attr = preferredTextualAttr(context.pickedNode);
+  if (!attr || !NEGATIVE_ACTION_TEXT.includes(attr.value)) return [];
 
   const ctaSibling = context.siblings.find((node) => {
     const value = nodeText(node);
@@ -523,13 +531,13 @@ function simpleSiblingCancelVsCTA(context: GenerationContext): CandidateSeed[] {
       baseScore: 74,
       plan: {
         kind: "sibling",
-        target: exactSelector("text", text, shortTypeName(context.pickedNode)),
+        target: exactSelector(attr.key, attr.value, shortTypeName(context.pickedNode)),
         neighbor: selectorForTextNode(ctaSibling),
         relation,
         distance,
       },
       groupName: groupNameForContext(ctaSibling, "功能类-自动生成"),
-      debugReasons: [`${text} 与 ${nodeText(ctaSibling)} 是同层相邻动作`],
+      debugReasons: [`${attr.value} 与 ${nodeText(ctaSibling)} 是同层相邻动作`],
     },
   ];
 }
@@ -610,56 +618,98 @@ function anonymousClickableContextRelation(
   context: GenerationContext,
 ): CandidateSeed[] {
   const picked = context.pickedNode;
-  if (!picked.attr.clickable) return [];
   if (picked.attr.vid || picked.attr.id || picked.attr.desc) return [];
 
-  const anchor = context.siblings
-    .filter((node) => node.attr.visibleToUser)
+  if (picked.attr.clickable) {
+    const anchor = context.siblings
+      .filter((node) => node.attr.visibleToUser)
+      .map((node) => ({ node, value: nodeText(node) }))
+      .filter(
+        ({ value }) =>
+          Boolean(value) && value!.length <= 16 && !/^\d+$/.test(value!),
+      )
+      .sort((a, b) => a.value!.length - b.value!.length)[0];
+    if (anchor) {
+      const distance = Math.abs(picked.attr.index - anchor.node.attr.index);
+      if (distance >= 1 && distance <= 4) {
+        const relation =
+          anchor.node.attr.index > picked.attr.index ? "next" : "previous";
+        const contextSel = selectorForTextNode(anchor.node);
+        const groupName = groupNameForContext(anchor.node, "功能类-自动生成");
+        const reason = `目标无稳定资源名，用相邻文字 ${anchor.value} 锚定`;
+
+        return [
+          {
+            strategyName: "simpleContextRelation",
+            title: "匿名图标 + 相邻文字锚点",
+            baseScore: 76,
+            plan: {
+              kind: "sibling",
+              target: { ...clickableSelector(true), typeName: shortTypeName(picked) },
+              neighbor: contextSel,
+              relation,
+              distance,
+            },
+            groupName,
+            debugReasons: [reason],
+          },
+          {
+            strategyName: "simpleContextRelation",
+            title: "匿名可点控件 + 相邻文字锚点",
+            baseScore: 74,
+            plan: {
+              kind: "sibling",
+              target: clickableSelector(true),
+              neighbor: contextSel,
+              relation,
+              distance,
+            },
+            groupName,
+            debugReasons: [reason],
+          },
+        ];
+      }
+    }
+  }
+
+  // 无属性匿名关闭图标（如弹窗右上角 X）在既不可点又无 clickable 祖先时，回退找同弹窗容器内唯一的文本锚点
+  if (picked.attr.clickable || context.clickableAncestor) return [];
+  const container = context.ancestors.find(
+    (ancestor) => !isWholeScreenAncestor(context.snapshot, ancestor) && ancestor.attr.childCount >= 2,
+  );
+  if (!container) return [];
+  const containerTexts = collectVisibleDescendants(context.snapshot, container.id, 6)
+    .filter((node) => node.id !== picked.id)
     .map((node) => ({ node, value: nodeText(node) }))
     .filter(
-      ({ value }) =>
-        Boolean(value) && value!.length <= 16 && !/^\d+$/.test(value!),
-    )
-    .sort((a, b) => a.value!.length - b.value!.length)[0];
-  if (!anchor) return [];
+      ({ node, value }) =>
+        Boolean(value) &&
+        value!.length >= 2 &&
+        value!.length <= 18 &&
+        selectorHitCount(context.snapshot, selectorForTextNode(node)) === 1,
+    );
+  const bestAnchor =
+    containerTexts.find(({ value }) =>
+      [...CONTEXT_HINT_WORDS, ...POSITIVE_CTA_TEXT].some((word) => value!.includes(word)),
+    ) ?? containerTexts[0];
+  if (!bestAnchor) return [];
 
-  const distance = Math.abs(picked.attr.index - anchor.node.attr.index);
-  if (distance < 1 || distance > 4) return [];
-
-  const relation =
-    anchor.node.attr.index > picked.attr.index ? "next" : "previous";
-  const contextSel = selectorForTextNode(anchor.node);
-  const groupName = groupNameForContext(anchor.node, "功能类-自动生成");
-  const reason = `目标无稳定资源名，用相邻文字 ${anchor.value} 锚定`;
+  const targetSelector = structuralTargetSelector(picked, "relaxed");
+  const plan: SelectorPlan = {
+    kind: "matchesChain",
+    context: selectorForTextNode(bestAnchor.node),
+    target: targetSelector,
+  };
+  if (!planHitsExactly(context.snapshot, plan, picked.id)) return [];
 
   return [
     {
       strategyName: "simpleContextRelation",
-      title: "匿名图标 + 相邻文字锚点",
-      baseScore: 76,
-      plan: {
-        kind: "sibling",
-        target: { ...clickableSelector(true), typeName: shortTypeName(picked) },
-        neighbor: contextSel,
-        relation,
-        distance,
-      },
-      groupName,
-      debugReasons: [reason],
-    },
-    {
-      strategyName: "simpleContextRelation",
-      title: "匿名可点控件 + 相邻文字锚点",
-      baseScore: 74,
-      plan: {
-        kind: "sibling",
-        target: clickableSelector(true),
-        neighbor: contextSel,
-        relation,
-        distance,
-      },
-      groupName,
-      debugReasons: [reason],
+      title: "弹窗语义锚点 + 匿名关闭图标",
+      baseScore: 66,
+      plan,
+      groupName: groupNameForContext(bestAnchor.node, "弹窗广告"),
+      debugReasons: [`匿名关闭控件缺少稳定属性，绑定同弹窗唯一语义文本「${bestAnchor.value}」防全页误触`],
     },
   ];
 }
@@ -1353,7 +1403,7 @@ function stableResourceSelector(node: NormalizedSnapshotNode): SimpleSelector | 
   const textAttr = node.attr.text ? "text" : node.attr.desc ? "desc" : null;
 
   if (prefix && textAttr) {
-    conditions.push({ attr: textAttr, op: "startsWith", value: prefix });
+    conditions.push({ attr: textAttr, op: prefix.op, value: prefix.value });
   }
 
   conditions.push({ attr: "visibleToUser", op: "eq", value: true });
@@ -1407,11 +1457,21 @@ function fallbackTypeName(node: NormalizedSnapshotNode): string | undefined {
   return short;
 }
 
-function skipTextSelector(typeName?: string): SimpleSelector {
+function skipTextSelector(typeName?: string, rawText?: string): SimpleSelector {
+  const trimmed = (rawText ?? "").trim();
+  const textCondition: SimpleSelector["conditions"][number] =
+    trimmed.endsWith("跳过") && !trimmed.startsWith("跳过")
+      ? { attr: "text", op: "endsWith", value: "跳过" }
+      : /^skip\b/i.test(trimmed)
+        ? { attr: "text", op: "startsWith", value: trimmed.slice(0, 4) }
+        : /\bskip$/i.test(trimmed)
+          ? { attr: "text", op: "endsWith", value: trimmed.slice(-4) }
+          : { attr: "text", op: "startsWith", value: "跳过" };
+
   return {
     typeName,
     conditions: [
-      { attr: "text", op: "startsWith", value: "跳过" },
+      textCondition,
       { attr: "text.length", op: "lt", value: 10 },
       // 尺寸保护：教程 §5.3.2 + 研究报告建议，排除超大 CTA、列表项、搜索框。
       // 跳过按钮通常是小尺寸角落控件，宽 >500 或高 >300 的基本不是真跳过。
@@ -1424,7 +1484,7 @@ function skipTextSelector(typeName?: string): SimpleSelector {
 
 function selectorForTextNode(node: NormalizedSnapshotNode): SimpleSelector {
   if (node.attr.text && isDynamicCountdownText(node.attr.text)) {
-    return skipTextSelector(shortTypeName(node));
+    return skipTextSelector(shortTypeName(node), node.attr.text);
   }
 
   if (node.attr.text && !isMachineAssetText(node.attr.text)) {
@@ -1452,7 +1512,15 @@ function selectorForTextNode(node: NormalizedSnapshotNode): SimpleSelector {
 function findContextTextNode(
   context: GenerationContext,
 ): NormalizedSnapshotNode | null {
-  const all = [...context.siblings, ...context.nearbyTextNodes, ...context.ancestors];
+  const nonFullscreenAncestors = context.ancestors.filter(
+    (node) => !isWholeScreenAncestor(context.snapshot, node),
+  );
+  const all = [
+    ...context.siblings,
+    ...nonFullscreenAncestors,
+    ...context.nearbyTextNodes,
+    ...context.ancestors,
+  ];
   return (
     all.find((node) => {
       const text = nodeText(node);
@@ -1599,27 +1667,25 @@ function isGenericText(text: string): boolean {
   return GENERIC_ACTION_TEXT.includes(text) || isDynamicCountdownText(text) || text.length <= 2;
 }
 
-function isDynamicCountdownText(text: string): boolean {
-  const normalized = text.trim();
-  return (
-    /^跳过\s*\d+\s*s?$/i.test(normalized) ||
-    /^\d+\s*s?\s*后?\s*跳过$/i.test(normalized) ||
-    /^skip\s*\d+\s*s?$/i.test(normalized) ||
-    /^\d+\s*s?\s*skip$/i.test(normalized)
-  );
-}
-
-function isSkipLikeText(text: string): boolean {
-  const normalized = text.trim();
-  return normalized === "跳过" || isDynamicCountdownText(normalized) || /^skip\b/i.test(normalized);
-}
-
-function semanticTextPrefix(text: string): string | null {
-  if (isSkipLikeText(text)) return "跳过";
-  if (text.startsWith("关闭")) return "关闭";
-  if (text.startsWith("取消")) return "取消";
-  if (/^close\b/i.test(text)) return "Close";
-  if (/^skip\b/i.test(text)) return "Skip";
+function semanticTextPrefix(
+  text: string,
+): { op: "startsWith" | "endsWith"; value: string } | null {
+  const trimmed = text.trim();
+  if (isSkipLikeText(trimmed)) {
+    if (trimmed.endsWith("跳过") && !trimmed.startsWith("跳过")) {
+      return { op: "endsWith", value: "跳过" };
+    }
+    if (/\bskip$/i.test(trimmed) && !/^skip\b/i.test(trimmed)) {
+      return { op: "endsWith", value: trimmed.slice(-4) };
+    }
+    if (/^skip\b/i.test(trimmed)) {
+      return { op: "startsWith", value: trimmed.slice(0, 4) };
+    }
+    return { op: "startsWith", value: "跳过" };
+  }
+  if (trimmed.startsWith("关闭")) return { op: "startsWith", value: "关闭" };
+  if (trimmed.startsWith("取消")) return { op: "startsWith", value: "取消" };
+  if (/^close\b/i.test(trimmed)) return { op: "startsWith", value: "Close" };
   return null;
 }
 
@@ -1629,6 +1695,9 @@ function hasStableActionResource(node: NormalizedSnapshotNode): boolean {
 
   return /(^|[_\-.])(skip|close|cancel)([_\-.]|$)/.test(resource) ||
     resource.includes("skipad") ||
+    resource.includes("skipview") ||
+    resource.includes("skipbtn") ||
+    resource.includes("closebtn") ||
     resource.includes("tv_ad_skip") ||
     resource.includes("ad_skip") ||
     resource.includes("btn_skip") ||
@@ -1681,8 +1750,39 @@ function hasPreferredSkipControlDescendant(
   });
 }
 
+function hasClickableActionResourceAncestor(
+  context: GenerationContext,
+  node: NormalizedSnapshotNode,
+): boolean {
+  let pid = node.pid;
+  let depth = 0;
+  while (pid >= 0 && depth < 3) {
+    const ancestor = context.snapshot.nodeById.get(pid);
+    if (!ancestor) break;
+    if (
+      ancestor.attr.clickable &&
+      ancestor.attr.visibleToUser &&
+      hasStableActionResource(ancestor) &&
+      !isDangerousActionNode(ancestor)
+    ) {
+      return true;
+    }
+    pid = ancestor.pid;
+    depth += 1;
+  }
+  return false;
+}
+
 function isAdContainerNode(node: NormalizedSnapshotNode): boolean {
   const value = `${node.attr.id ?? ""} ${node.attr.vid ?? ""} ${node.attr.name}`.toLowerCase();
+  if (
+    value.includes("skip") ||
+    value.includes("click_group") ||
+    value.includes("shade") ||
+    value.includes("mask")
+  ) {
+    return false;
+  }
   return (
     value.includes("advert") ||
     value.includes("splash") ||
@@ -1724,6 +1824,7 @@ function isDangerousActionNode(node: NormalizedSnapshotNode): boolean {
     "mask",
     "click_area",
     "clickarea",
+    "click_group",
   ].some((word) => value.includes(word.toLowerCase()));
 }
 
@@ -1739,10 +1840,11 @@ function isAdSdkOverlayResource(resource: string): boolean {
     resource.includes("hot_area") ||
     resource.includes("click_area") ||
     resource.includes("clickarea") ||
+    resource.includes("click_group") ||
     resource.includes("ad_click") ||
     resource.includes("splash_click");
 
-  return hasOverlaySignal && hasSkipOrClose;
+  return hasOverlaySignal && (hasSkipOrClose || resource.includes("click_group"));
 }
 
 function isDescendantOf(

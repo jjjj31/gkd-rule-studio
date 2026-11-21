@@ -10,6 +10,7 @@ import type {
 } from "../types/gkdSnapshot";
 import type { PromptScenarioInfo, RuleSettings } from "../types/ruleDraft";
 import { AI_RULE_OUTPUT_CONTRACT, AI_RULE_OUTPUT_EXAMPLE } from "./aiRuleContract";
+import { isDynamicActivityId, isDynamicCountdownText } from "./countdownText";
 import {
   formatFewShotExamples,
   retrieveOnDeviceFewShot,
@@ -25,7 +26,9 @@ const GKD_RULE_HARD_RULES = [
   "- 点击目标：如果文字节点的 clickable=false，而父/祖先有 clickable=true，优先写 @[clickable=true] > [text=\"...\"]，或直接选可点击父容器；不要只选不可点击的文字子节点。",
   "- 如果写成 Parent > Child，且 Parent 是 clickable=true、Child 是 clickable=false，必须在 Parent 前加 @；没有 @ 时点击目标是 Child。",
   "- > 只匹配直接子节点；文字在孙节点时，用 @[clickable=true] > * > [text=\"...\"] 或 @[clickable=true] [text=\"...\"]（空格后代），不要盲写 > 导致 0 命中。",
+  "- 同框挂多个文本/描述锚点时，禁止把两个 [text=...]/[desc=...] 用连续空格写进同一条 selector（例如 A [text=\"文案1\"] [text=\"文案2\"] 表示后者是前者的子孙，几乎必 0 命中）；请拆成 matches 多段数组（前几条写上下文锚点如 [\"[text=\\\"...\\\"]\", ...]，最后一条写点击目标如 \"@ImageView[width<120 && height<120]\"），或用兄弟关系 +。",
   "- 正向 CTA（下载/安装/打开/查看详情/立即购买等）只能作为上下文锚点，不能作为点击目标；如果 selector 的唯一命中是正向 CTA，action 必须是 back 或 none，不能 click/clickCenter。",
+  "- 禁止用 [left=...]/[top=...]/[right=...]/[bottom=...] 等固定屏幕像素坐标定位控件（不同设备分辨率会失效）；当控件无 id/vid/text/desc 时，必须用弹窗内的稳定业务文案做前置锚点，若 clickable=false 则配 action: \"clickCenter\"。",
   "- 几何属性只能作为已有 text/id/vid/desc 锚点之后的次级过滤；不要单独用 [clickable=true][right=...][top=...] 作为主选择器。",
   "- 多分支请用 anyMatches 数组；不要把顶层逗号写进单条 selector。",
   "- 输出要短：summary 和 risk 各不超过 1 句话；默认 3 个候选，不要为了凑数输出第 4 个；接近长度限制时优先保证 JSON 完整闭合。",
@@ -35,13 +38,14 @@ const GKD_RULE_CONTRAST_EXAMPLES = [
   "高频错误对照（只学写法，不要照抄示例里的值）：",
   "- 树里是 #8 Button id=com.demo:id/tv_cancel text=\"取消\"：写 [id=\"com.demo:id/tv_cancel\"]，不要写 [vid=\"tv_cancel\"]。",
   "- 目标是 #13 LinearLayout clickable=true，文字在 #15 TextView clickable=false：写 @[clickable=true] > [text=\"不感兴趣\"]，不要只写 [text=\"不感兴趣\"]。",
+  "- 弹窗右上角无字无 ID 关闭图标：写 matches: ['[text=\"跳转微信\"]', 'FrameLayout > @ImageView[width<120 && height<120]'] 并设 action: \"clickCenter\"；不要写 [left=...][top=...] 像素坐标，也不要用连续空格串联两个平行 [text=...] 节点。",
   "- 树里只给 bounds=...：不要写 [bounds=...]；用 text/id/vid/desc，几何属性只做次级过滤。",
 ];
 
 const GKD_RULE_SELF_CHECK = [
   "输出前自检（在内部完成，不要输出自检过程）：",
   "1. 每个 [vid=...] 对应的节点行真的有 vid= 吗？只有 id= 的必须写 [id=...]。",
-  "2. selector 里有没有 bounds/class？",
+  "2. selector 里有没有 bounds/class 或硬编码 left=/top=/right=/bottom= 像素坐标？有没有把两个平行 [text=...] 用空格串联？",
   "3. 第一条候选是否命中 pickedNode 本身、视觉摞或 clickable 父容器？有没有跳到同屏标题、兄弟 CTA、无关关闭图标？",
   "4. 如果用了 Parent > Child，Parent clickable 且 Child 不可点击，Parent 前有没有 @？",
   "5. > 是否只用于直接子节点？文字在孙节点时有没有用 > * > 或空格后代？",
@@ -120,6 +124,11 @@ export function buildHelpPrompt(input: PromptInput): string {
     `- appId: ${snapshot.appId}`,
     `- appName: ${snapshot.appInfo?.name ?? "-"}`,
     `- activityId: ${snapshot.activityId ?? "-"}`,
+    ...(isDynamicActivityId(snapshot.activityId)
+      ? [
+          `- ⚠️ 注意：当前 activityId（${snapshot.activityId}）带动态数字/匿名后缀，严禁写死进 activityIds！`,
+        ]
+      : []),
     `- screen: ${snapshot.screenWidth}x${snapshot.screenHeight}`,
     "",
     ...(scenario
@@ -173,14 +182,24 @@ export function buildHelpPrompt(input: PromptInput): string {
     }
     if (!pickedNode.attr.clickable) {
       if (clickableTarget) {
+        const pickedText = pickedNode.attr.text ?? "";
+        const textHint = isDynamicCountdownText(pickedText)
+          ? pickedText.trim().endsWith("跳过") && !pickedText.trim().startsWith("跳过")
+            ? '[text$="跳过"]'
+            : /^skip\b/i.test(pickedText.trim())
+              ? '[text^="Skip"]'
+              : /\bskip$/i.test(pickedText.trim())
+                ? '[text$="skip"]'
+                : '[text^="跳过"]'
+          : `[text=${JSON.stringify(pickedText || "...")}]`;
         lines.push(
           `⚠️ 【关键警示】当前选中的 pickedNode (#${pickedNode.id}) clickable=false，无障碍服务直接点击它通常无效！`,
           `  可响应点击的父容器/同层节点为 #${clickableTarget.id} ${shortName(clickableTarget.attr.name)} (clickable=true)。`,
-          `  如果用子节点文本收窄，必须使用 @ 抬升语法点击父容器，例如 @[clickable=true] > [text=${JSON.stringify(pickedNode.attr.text || "...")}] 或 @[clickable=true] [text=${JSON.stringify(pickedNode.attr.text || "...")}]，绝对不能只写不可点击的文本子节点。`,
+          `  如果用子节点文本收窄，必须使用 @ 抬升语法点击父容器，例如 @[clickable=true] > ${textHint} 或 @[clickable=true] ${textHint}，绝对不能只写不可点击的文本子节点。`,
         );
       } else {
         lines.push(
-          `⚠️ 【关键警示】pickedNode clickable=false，且父链未发现明确 clickable=true。请考虑 clickCenter 执行策略或在周围寻找真实点击按钮。`,
+          `⚠️ 【关键警示】pickedNode (#${pickedNode.id}) clickable=false，且父链未发现明确 clickable=true。规则必须显式设置 action: "clickCenter"（坐标点击），否则默认 clickNode 会点不动。`,
         );
       }
     }
@@ -228,6 +247,23 @@ export function buildHelpPrompt(input: PromptInput): string {
       ...pickResult.nearbyTextNodes.slice(0, 12).map(formatNodeLine),
       "",
     );
+
+    const pickedGenericOrBlank =
+      (!pickedNode.attr.id && !pickedNode.attr.vid) ||
+      !pickedNode.attr.text?.trim() ||
+      /^(关闭|取消|跳过|确定|确认|知道|知道了|不再提示|close|cancel|skip|ok)$/i.test(
+        pickedNode.attr.text.trim(),
+      );
+    if (pickedGenericOrBlank) {
+      const anchorNodes = collectNonGenericAnchorNodes(snapshot, pickedNode);
+      if (anchorNodes.length > 0) {
+        lines.push(
+          "同屏业务文案锚点参考（防误触：严禁写死 left/top 像素坐标，优先拆成 matches 多段数组作前置锚点）：",
+          `- ${anchorNodes.map((n) => formatNodeLine(n).trim()).join("；")}`,
+          "",
+        );
+      }
+    }
   } else {
     lines.push("用户尚未选择目标节点。请先提示用户点击截图上的目标按钮。", "");
   }
@@ -301,20 +337,21 @@ function formatTreeExcerpt(
     ];
   }
 
-  if (snapshot.nodes.length <= 220) {
+  if (snapshot.nodes.length <= 36) {
     return snapshot.nodes.map((node) => formatIndentedNode(node));
   }
 
   if (!pickedNode) {
     return [
-      `节点数量 ${snapshot.nodes.length}，未选择目标，仅展示前 160 个节点：`,
-      ...snapshot.nodes.slice(0, 160).map((node) => formatIndentedNode(node)),
+      `节点数量 ${snapshot.nodes.length}，未选择目标，仅展示前 36 个节点：`,
+      ...snapshot.nodes.slice(0, 36).map((node) => formatIndentedNode(node)),
     ];
   }
 
+  const maxKeptNodes = 36;
   const keep = new Set<number>();
   const add = (node: NormalizedSnapshotNode | undefined | null) => {
-    if (node) keep.add(node.id);
+    if (node && keep.size < maxKeptNodes) keep.add(node.id);
   };
 
   // 1. 必保：目标自身与其所有祖先链
@@ -325,21 +362,28 @@ function formatTreeExcerpt(
     add(current);
   }
 
-  // 2. 目标的子节点与同父直接兄弟
-  for (const node of snapshot.nodes) {
-    if (node.pid === pickedNode.id || node.pid === pickedNode.pid) {
-      keep.add(node.id);
-    }
-  }
-
-  // 3. 视觉摞重合节点及其祖先
+  // 2. 视觉摞重合节点及其祖先
   const visualIds = buildVisualTargetIds({ snapshot, pickedNode });
   for (const id of visualIds) {
     let n: NormalizedSnapshotNode | undefined = snapshot.nodeById.get(id);
-    while (n) {
+    while (n && keep.size < maxKeptNodes) {
       keep.add(n.id);
       n = n.pid >= 0 ? snapshot.nodeById.get(n.pid) : undefined;
     }
+  }
+
+  // 3. 在预算内补充目标的直接子节点与紧邻同父兄弟
+  const directChildren = snapshot.nodes.filter((node) => node.pid === pickedNode.id);
+  const directSiblings = snapshot.nodes
+    .filter((node) => node.pid === pickedNode.pid && node.id !== pickedNode.id)
+    .sort(
+      (a, b) =>
+        Math.abs(a.attr.index - pickedNode.attr.index) -
+        Math.abs(b.attr.index - pickedNode.attr.index),
+    );
+  for (const node of [...directChildren, ...directSiblings]) {
+    if (keep.size >= maxKeptNodes - 4) break;
+    keep.add(node.id);
   }
 
   // 4. 保锚裁剪（Anchor Preserving）：
@@ -368,16 +412,16 @@ function formatTreeExcerpt(
 
   candidateAnchors.sort((a, b) => a.distance - b.distance);
 
-  // 逐步加入保锚节点及其到根的祖先链，直到达到 220 节点上限
+  // 逐步加入保锚节点及其到根的祖先链，直到达到上限
   for (const { node } of candidateAnchors) {
-    if (keep.size >= 210) break;
+    if (keep.size >= maxKeptNodes - 2) break;
     let n: NormalizedSnapshotNode | undefined = node;
     const pathToRoot: NormalizedSnapshotNode[] = [];
     while (n && !keep.has(n.id)) {
       pathToRoot.push(n);
       n = n.pid >= 0 ? snapshot.nodeById.get(n.pid) : undefined;
     }
-    if (keep.size + pathToRoot.length <= 220) {
+    if (keep.size + pathToRoot.length <= maxKeptNodes) {
       for (const p of pathToRoot) keep.add(p.id);
     }
   }
@@ -386,7 +430,7 @@ function formatTreeExcerpt(
     `节点数量 ${snapshot.nodes.length}，展示目标节点相关子树（含关键文本/组件锚点）：`,
     ...snapshot.nodes
       .filter((node) => keep.has(node.id))
-      .slice(0, 220)
+      .slice(0, maxKeptNodes)
       .map((node) => formatIndentedNode(node)),
   ];
 }
@@ -430,6 +474,40 @@ function formatNodeLine(node: NormalizedSnapshotNode): string {
     `bounds=${node.attr.left},${node.attr.top},${node.attr.right},${node.attr.bottom}`,
   ].filter(Boolean);
   return parts.join(" ");
+}
+
+function collectNonGenericAnchorNodes(
+  snapshot: ParsedGkdSnapshot,
+  pickedNode: NormalizedSnapshotNode,
+): NormalizedSnapshotNode[] {
+  const genericWords = new Set([
+    "关闭",
+    "取消",
+    "跳过",
+    "确定",
+    "确认",
+    "知道",
+    "知道了",
+    "不再提示",
+    "close",
+    "cancel",
+    "skip",
+    "ok",
+  ]);
+  const seenText = new Set<string>();
+  const out: NormalizedSnapshotNode[] = [];
+  for (const node of snapshot.nodes) {
+    if (node.id === pickedNode.id || !node.attr.visibleToUser) continue;
+    const raw = (node.attr.text ?? node.attr.desc ?? "").trim();
+    if (!raw || raw.length < 2 || raw.length > 40) continue;
+    if (/^\d+$/.test(raw)) continue;
+    if (genericWords.has(raw.toLowerCase()) || isDynamicCountdownText(raw)) continue;
+    if (seenText.has(raw)) continue;
+    seenText.add(raw);
+    out.push(node);
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 function shortName(name: string): string {

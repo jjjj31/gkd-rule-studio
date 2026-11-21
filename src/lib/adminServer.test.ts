@@ -10,13 +10,14 @@ process.env.ANNOUNCEMENT_DATA_FILE = resolve(testScratchDir, "announcement.json"
 process.env.ANNOUNCEMENT_HISTORY_FILE = resolve(testScratchDir, "announcement-history.json");
 
 // @ts-expect-error admin/server.mjs is outside src
-import { createAppServer } from "../../admin/server.mjs";
+const serverModulePromise = import("../../admin/server.mjs");
 
 describe("admin/server.mjs", () => {
   let server: Server;
   let baseUrl: string;
 
   beforeAll(async () => {
+    const { createAppServer } = await serverModulePromise;
     server = createAppServer();
     await new Promise<void>((resolve) => {
       server.listen(0, "127.0.0.1", () => resolve());

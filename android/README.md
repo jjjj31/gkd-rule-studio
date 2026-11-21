@@ -6,7 +6,7 @@
 
 - 启动后直接加载内置 `index.html#android` 精简版界面。
 - 只使用 GKD 手机 HTTP 服务连接快照。
-- 首页可选择官方 GKD「正式版 / 测试版」，首次使用默认正式版；测试版支持官方 1.13 的本地规则追加接口，正式版保留复制后手动添加。两条路径按版本核对连接，分别使用旧/新选择器引擎，支持 PNG/WebP 截图。详见 [版本路径验收](../docs/verification/gkd-release-channels.md)。
+- 统一面向官方 GKD 1.13+（正式版与测试版均支持），连接时按官方包名与版本号核对，统一使用 `@gkd-kit/selector` 0.6.1 引擎，支持通过 `/api/appendRules` 直接追加本地规则及 PNG/WebP 截图。
 - 不包含 ADB 功能。
 - 默认允许 `http://局域网地址` 明文访问，方便连接 GKD HTTP 服务。
 - 内置剪贴板桥接，用于复制场景 prompt 和最终规则求助 prompt。

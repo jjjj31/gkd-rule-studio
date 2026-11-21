@@ -13,10 +13,7 @@ import {
 } from "../src/lib/aiCandidateVerification";
 import type { AiRuleCandidate } from "../src/lib/aiModel";
 import { validateAiCandidateAgainstSnapshot } from "../src/lib/selectorMatcher";
-import {
-  matchGkdSelectorString,
-  prepareSelectorEngine,
-} from "../src/lib/selectorAdapter";
+import { matchGkdSelectorString } from "../src/lib/selectorAdapter";
 import { normalizeSnapshot } from "../src/lib/snapshotNormalize";
 import type { ParsedGkdSnapshot } from "../src/types/gkdSnapshot";
 import type { AppRuleDraft, RuleDraft } from "../src/types/ruleDraft";
@@ -95,7 +92,6 @@ interface ReplayRecord {
 }
 
 test("replay LLM evidence and render failure report", async () => {
-  await prepareSelectorEngine("beta");
   const records = readJson<ReplayRecord[]>(EVIDENCE_PATH);
   if (!fs.existsSync(RAW_EVIDENCE_PATH)) {
     fs.copyFileSync(EVIDENCE_PATH, RAW_EVIDENCE_PATH);
