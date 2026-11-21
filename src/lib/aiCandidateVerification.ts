@@ -893,6 +893,22 @@ export function assessAiAutoRepairNeed(
     );
   }
 
+  const passingCandidates = reranked.rankedCandidates.filter((_, index) =>
+    reranked.verifications[index]?.status === "pass",
+  );
+  if (
+    passingCandidates.length > 0 &&
+    passingCandidates.every((cand) => {
+      const r = cand.app.groups[0]?.rules[0];
+      const delay = r?.actionDelay ?? 0;
+      return typeof delay === "number" && delay >= 1000;
+    })
+  ) {
+    reasons.push(
+      "所有通过验靶的候选均设置了 >=1000ms 的 actionDelay，3 秒开屏/弹窗会直接超时错过；首选测试版 A/B 必须去掉 actionDelay 实现立即点击",
+    );
+  }
+
   return {
     needsRepair: reasons.length > 0,
     reasons,
@@ -1181,6 +1197,11 @@ function executionReadinessAdjustment(
     delta += 12;
   } else if (collectContextualAnchorLiterals(snapshot).length > 0) {
     delta -= 15;
+  }
+
+  const effectiveDelay = firstRule.actionDelay;
+  if (typeof effectiveDelay === "number" && effectiveDelay >= 1000) {
+    delta -= effectiveDelay >= 2000 ? 30 : 20;
   }
 
   return delta;

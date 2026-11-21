@@ -1,9 +1,9 @@
 {
-  "id": "ann-20261121-0.2.3",
+  "id": "ann-20261121-0.2.4",
   "enabled": false,
-  "title": "🎉 GKD Rule Studio 0.2.3 版本更新公告",
-  "content": "欢迎更新 GKD Rule Studio v0.2.3！\n\n【本次核心更新】\n1. 统一适配官方 GKD 1.13+（正式版与测试版免手动切换），升级 @gkd-kit/selector 0.6.1。\n2. 机器规则引擎全面加固：\n   - 新增 ToBid / Meishu 等广告 SDK 特征与全角倒计时（如 跳过｜4、5秒后跳过）泛化；\n   - 修复 clickable=false 小控件自动补 clickCenter，可点击跳过容器自动抬升排序；\n   - 增强 Flutter desc 弹窗上下文配对与无 ID 关闭图标语义锚点识别，压低全屏遮罩误触分。\n3. AI 规则与多模态闭环升级：\n   - 发送 720x1280 目标红框高清截图，中心裁剪保留目标子树与输出前自检；\n   - 新增本地静态验靶、去硬编码坐标重排，以及失败后自动静默返修 1 轮闭环。",
+  "title": "🎉 GKD Rule Studio 0.2.4 版本更新公告",
+  "content": "欢迎更新 GKD Rule Studio v0.2.4！\n\n【本次核心修复】\n1. 修复内置/外部 AI 受示例模板误导，给开屏/弹窗默认候选盲加 2000~3500ms actionDelay 导致 3 秒开屏来不及点的问题：\n   - 精简默认规则输出示例，测试版 A/B 默认立即点击；\n   - 重排打分自动优选无延迟立即点击候选，若所有候选均带 ≥1s 延迟则触发自动返修去除多余延迟。",
   "type": "notice",
   "forced": false,
-  "updatedAt": "2026-11-21 09:05:00"
+  "updatedAt": "2026-11-21 09:26:00"
 }

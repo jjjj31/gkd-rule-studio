@@ -1165,7 +1165,7 @@ function buildSystemPrompt(mode: AiMode): string {
     "summary 说明验证思路；risk 说明误触风险。",
     AI_RULE_OUTPUT_CONTRACT,
     `完整 JSON5 示例（只学习字段结构，不要照抄 appId/selector）：\n${AI_RULE_OUTPUT_EXAMPLE}`,
-    "诊断矩阵：测试版 A 使用本地最高分/最短稳定 selector 的保守方案；测试版 B 验证同框节点、父节点或真实按钮层；测试版 C 优先调整 actionDelay/actionCd/actionMaximum/matchRoot 等执行参数；测试版 D 仅在上下文有 WebView、广告容器、遮罩或热区证据时生成兜底方案。",
+    "诊断矩阵：测试版 A 使用本地最高分/最短稳定 selector 的立即点击保守方案（禁止无故添加 actionDelay）；测试版 B 验证同框节点、父节点或真实按钮层（同样立即点击，不加 actionDelay）；测试版 C 仅在倒计时刚出现不可点或需要重点击时调整 actionDelay/actionCd/actionMaximum 等执行参数；测试版 D 仅在上下文有 WebView、广告容器、遮罩或热区证据时生成兜底方案。",
     "不同候选必须覆盖不同失败原因，不能只是重复同一个 matches 或只改规则名称。",
     "不要生成下载、安装、打开、浏览、查看详情等正向 CTA 点击规则。",
     mode === "flow"

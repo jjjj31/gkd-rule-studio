@@ -674,5 +674,65 @@ describe("dongman-ad regressions", () => {
     };
     const flutterRanked = rerankAiCandidates(flutterSnap, [bareClose, ctxClose], flutterPicked);
     expect(flutterRanked.rankedCandidates[0].id).toBe("ctx");
+
+    // Immediate-click outranks delayed splash rules, and all-delayed triggers auto-repair
+    const splashSnap = makeSnapshot([
+      node(0, -1, { name: "android.widget.FrameLayout", childCount: 1 }),
+      node(1, 0, {
+        id: "com.shizi.tool.p3:id/tobid_splash_skip_ll",
+        vid: "tobid_splash_skip_ll",
+        name: "android.widget.LinearLayout",
+        clickable: true,
+        left: 928,
+        top: 105,
+        right: 1159,
+        bottom: 203,
+        width: 231,
+        height: 98,
+      }),
+    ]);
+    const splashPicked = splashSnap.nodeById.get(1)!;
+    const delayedCand: AiRuleCandidate = {
+      id: "delayed",
+      title: "测试版 A",
+      summary: "",
+      risk: "",
+      app: {
+        id: "com.shizi.tool.p3",
+        name: "动漫共和国",
+        groups: [
+          {
+            key: 0,
+            name: "开屏广告",
+            rules: [{ key: 0, actionDelay: 2500, matches: ['[vid="tobid_splash_skip_ll"]'] }],
+          },
+        ],
+      },
+    };
+    const immediateCand: AiRuleCandidate = {
+      id: "immediate",
+      title: "测试版 B",
+      summary: "",
+      risk: "",
+      app: {
+        id: "com.shizi.tool.p3",
+        name: "动漫共和国",
+        groups: [
+          {
+            key: 0,
+            name: "开屏广告",
+            rules: [{ key: 0, matches: ['[vid="tobid_splash_skip_ll"]'] }],
+          },
+        ],
+      },
+    };
+    expect(rerankAiCandidates(splashSnap, [delayedCand, immediateCand], splashPicked).rankedCandidates[0].id).toBe("immediate");
+    expect(
+      assessAiAutoRepairNeed(
+        splashSnap,
+        rerankAiCandidates(splashSnap, [delayedCand], splashPicked),
+        splashPicked,
+      ).reasons.some((r) => r.includes("actionDelay")),
+    ).toBe(true);
   });
 });

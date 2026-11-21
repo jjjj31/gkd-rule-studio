@@ -110,7 +110,7 @@ export function buildHelpPrompt(input: PromptInput): string {
     "2. 每个候选的 id 使用 candidate-a/candidate-b 稳定短 id；title 使用“测试版 A / 测试版 B / 测试版 C”这种唯一短名称。",
     "3. app 必须是完整的 GKD 规则对象 { id, name, groups }，groups[].rules[].matches 是字符串数组。",
     "4. summary 用 1 句话（≤60 字）说明验证思路和可能失败点；risk 用 1 句话（≤60 字）说明误触风险。",
-    "5. 测试版默认 3 个：A=保守方案(高置信稳定 selector)，B=同框节点/父节点/真实按钮层验证，C=调整 actionDelay/actionCd/actionMaximum 等执行参数；只有材料明确显示需要广告容器兜底时才加 D，不要为了凑数输出 4 个。",
+    "5. 测试版默认 3 个：A=保守方案(高置信稳定 selector，不设 actionDelay 立即点击)，B=同框节点/父节点/真实按钮层验证（同样不设 actionDelay），C=调整 actionDelay/actionCd/actionMaximum 等执行参数（若当前已有明确跳过文案/容器，不要全套都加 actionDelay）；只有材料明确显示需要广告容器兜底时才加 D，不要为了凑数输出 4 个。",
     "6. 如果内容接近长度限制，优先保证 JSON 完整闭合；不要重复节点树或规则解释。",
     "7. 代码块之后附上“测试反馈格式”，要求用户反馈测试版编号、是否触发、是否关闭、是否误触、失败页面等信息。",
     "8. 不要输出节点树复述、不要输出无关长解释。不要加多个代码块——只允许一个 ```json5 块。",
