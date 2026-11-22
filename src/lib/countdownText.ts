@@ -26,11 +26,15 @@ export function isSkipLikeText(text: string): boolean {
 }
 
 /**
- * 判断 activityId 是否带有运行期/SDK 版本的动态后缀（如 InterstitialView_4012003、Foo$1）。
+ * 判断 activityId 是否带有运行期/SDK 版本的动态后缀（如 InterstitialView_4012003、Foo$1、Foo$1$2、AdActivity_a1b2c3d4）。
  * 这类名称不能自动锁死进 rules[].activityIds，否则换实例或 SDK 升级后立即失配。
  */
 export function isDynamicActivityId(activityId: string | null | undefined): boolean {
   const trimmed = (activityId ?? "").trim();
   if (!trimmed) return false;
-  return /_\d{4,}$/.test(trimmed) || /\$\d+$/.test(trimmed);
+  return (
+    /_\d{4,}$/.test(trimmed) ||
+    /\$\d+(?:\$[A-Za-z0-9_]+)*$/.test(trimmed) ||
+    /[_$](?:(?=[0-9a-f]{6,}$)[0-9a-f]*\d[0-9a-f]*|[0-9a-f]{8,})$/i.test(trimmed)
+  );
 }

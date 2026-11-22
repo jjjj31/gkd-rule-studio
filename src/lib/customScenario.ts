@@ -2,6 +2,7 @@
 import JSON5 from "json5";
 import type { ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type { RuleSettings } from "../types/ruleDraft";
+import { isDynamicActivityId } from "./countdownText";
 
 export interface CustomScenario {
   id: string;
@@ -28,10 +29,35 @@ interface CustomScenarioPayload {
   detail?: unknown;
 }
 
+const VALID_ACTIONS = new Set([
+  "click",
+  "clickNode",
+  "clickCenter",
+  "longClick",
+  "longClickNode",
+  "longClickCenter",
+  "back",
+  "swipe",
+  "none",
+]);
+
 export const CUSTOM_SCENARIO_STORAGE_KEY =
   "gkd-rule-studio-custom-scenarios";
 
+/** 将逗号或换行分隔的 activityIds 设置文本拆分为去空白的非空数组。 */
+export function parseActivityIdsSetting(raw: string | undefined): string[] {
+  if (!raw) return [];
+  return raw
+    .split(/[,，\r\n]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function buildCustomScenarioPrompt(snapshot: ParsedGkdSnapshot | null): string {
+  const dynamicActivityWarning = isDynamicActivityId(snapshot?.activityId)
+    ? `- ⚠️ 注意：当前 activityId（${snapshot?.activityId}）带有动态后缀，严禁写死或锁死为 current，请将 activityIds 设为 'empty'。`
+    : null;
+
   return [
     "你是 GKD 规则运行场景分析助手。请先向用户提问，确认这个自动点击规则属于什么场景，然后根据回答给出可导入 GKD Rule Studio 的场景参数。",
     "",
@@ -52,10 +78,10 @@ export function buildCustomScenarioPrompt(snapshot: ParsedGkdSnapshot | null): s
     "  actionMaximum: 1, // 数字，或 null",
     "  actionCd: 3000, // 数字毫秒，或 null",
     "  resetMatch: 'app | activity | match | empty',",
-    "  action: 'clickCenter | empty', // WebView/广告 SDK/自绘控件优先 clickCenter，否则 empty",
-    "  actionDelay: 2500, // 倒计时跳过常用 2500，或 null",
-    "  forcedTime: 10000, // WebView/动态广告常用 10000，或 null",
-    "  matchRoot: true, // 跨层级/WebView/全屏广告建议 true，否则 null",
+    "  action: 'clickCenter | empty', // 仅不可点击节点/WebView/自绘控件时选 clickCenter，否则 empty",
+    "  actionDelay: null, // 默认 null（立即点击）；仅倒计时初期不可点或已触发未关闭时按需填写毫秒数",
+    "  forcedTime: null, // 默认 null；仅 WebView/动态广告无无障碍事件刷新时按需开启（如 10000）",
+    "  matchRoot: null, // 默认 null；仅跨层级/WebView 或已触发未关闭需要从根节点重匹配时再设为 true",
     "  description: '一句话解释这个场景何时触发',",
     "  detail: '解释这些参数为什么这样选，提醒用户可调整哪些参数'",
     "}",
@@ -68,14 +94,15 @@ export function buildCustomScenarioPrompt(snapshot: ParsedGkdSnapshot | null): s
     "- 视频/阅读过程中周期弹窗：通常 activityIds='current'，matchTime=null，actionMaximum=1，actionCd=3000，resetMatch='match'。",
     "- 信息流/局部广告：通常 activityIds='current'，matchTime=null，actionMaximum=null，actionCd=3000，resetMatch='empty'。",
     "- 功能类自动确认：通常 activityIds='current'，matchTime=null，actionMaximum=null，actionCd=null，resetMatch='empty'。",
-    "- WebView、广告 SDK、自绘广告、全屏广告、倒计时跳过：通常 action='clickCenter'，actionDelay=2500，forcedTime=10000，matchRoot=true。",
-    "- 如果使用当前快照 Activity，请输出 activityIds='current'，不要把下面的 activityId 直接写死；工具会在导入/切换快照时替换成当前 Activity。",
-    "- 如果用户说有触发记录但没关，优先认为 selector 已匹配，应推荐 actionDelay、clickCenter、actionMaximum/actionCd，而不是只改 selector。",
+    "- actionDelay、forcedTime、matchRoot 默认均为 null（立即点击、尽量省电）；仅在 WebView 无无障碍事件刷新、倒计时初期不可点、或已触发未关闭时，再按需开启 clickCenter / actionDelay / forcedTime / matchRoot。",
+    "- 如果使用当前快照 Activity，请输出 activityIds='current'，不要把下面的 activityId 直接写死；工具会在导入/切换快照时替换成当前 Activity（若遇到带动态数字/匿名后缀的 Activity，请输出 activityIds='empty'）。",
+    "- 如果用户说有触发记录但没关，优先认为 selector 已匹配，再按需推荐 actionDelay、clickCenter、forcedTime、matchRoot、actionMaximum/actionCd，而不是只改 selector。",
     "",
     "当前快照上下文：",
     `- appId: ${snapshot?.appId ?? "(未加载快照)"}`,
     `- appName: ${snapshot?.appInfo?.name ?? "(未知)"}`,
     `- activityId: ${snapshot?.activityId ?? "(未加载快照)"}`,
+    ...(dynamicActivityWarning ? [dynamicActivityWarning] : []),
   ].join("\n");
 }
 
@@ -133,9 +160,10 @@ export function resolveCustomScenarioSettings(
   snapshot: ParsedGkdSnapshot | null,
 ): RuleSettings {
   if (scenario.activityIdsMode === "current") {
+    const currentActivityId = snapshot?.activityId ?? "";
     return {
       ...scenario.settings,
-      activityIds: snapshot?.activityId ?? "",
+      activityIds: isDynamicActivityId(currentActivityId) ? "" : currentActivityId,
     };
   }
 
@@ -151,7 +179,7 @@ export function resolveCustomScenarioSettings(
 
 function extractObjectSource(input: string): string {
   const trimmed = input.trim();
-  const fenced = trimmed.match(/```(?:json5|json)?\s*([\s\S]*?)```/i);
+  const fenced = trimmed.match(/```(?:json5?|javascript|js)?\s*([\s\S]*?)```/i);
   const source = fenced?.[1]?.trim() ?? trimmed;
   const start = source.indexOf("{");
   const end = source.lastIndexOf("}");
@@ -175,6 +203,16 @@ function readOptionalNumber(value: unknown): number | null {
 function normalizeActivityIdsMode(
   value: unknown,
 ): CustomScenario["activityIdsMode"] {
+  if (Array.isArray(value)) {
+    const items = value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (items.length === 0) return "empty";
+    if (items.length === 1) return normalizeActivityIdsMode(items[0]);
+    if (items.every((item) => item === "empty" || item === "留空")) return "empty";
+    return "literal";
+  }
   if (typeof value !== "string") return "empty";
   const normalized = value.trim();
   if (normalized === "current" || normalized === "当前") return "current";
@@ -186,10 +224,16 @@ function normalizeActivityIds(
   value: unknown,
   mode: CustomScenario["activityIdsMode"],
 ): string {
-  if (typeof value !== "string") return "";
-  const normalized = value.trim();
   if (mode !== "literal") return "";
-  return normalized;
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter((item) => Boolean(item) && item !== "empty" && item !== "留空")
+      .join(", ");
+  }
+  if (typeof value !== "string") return "";
+  return value.trim();
 }
 
 function normalizeResetMatch(value: unknown): RuleSettings["resetMatch"] {
@@ -205,6 +249,7 @@ function normalizeAction(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   if (!normalized || normalized === "empty" || normalized === "留空") return undefined;
+  if (!VALID_ACTIONS.has(normalized)) return undefined;
   return normalized;
 }
 

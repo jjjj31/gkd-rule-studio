@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { exactSelector, formatSimpleSelector, serializePlan } from "./selectorSerialize";
+import {
+  createRuleDraft,
+  exactSelector,
+  firstFastQueryAttr,
+  formatSimpleSelector,
+  serializePlan,
+} from "./selectorSerialize";
+import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import { matchGkdSelectorString } from "./selectorAdapter";
 import { normalizeSnapshot } from "./snapshotNormalize";
 import type { RawGkdSnapshot, SnapshotNode, SnapshotNodeAttr } from "../types/gkdSnapshot";
@@ -74,5 +81,102 @@ describe("selectorSerialize 字符串转义", () => {
     });
     expect(expr).toBe('[text="否" || text="暂\\n不"]');
     expect(matchGkdSelectorString(snapshotWithText("暂\n不"), expr).unparsed).toBe(false);
+  });
+});
+
+describe("selectorSerialize fastQuery 判定", () => {
+  it("严格校验 id/vid 仅 eq、text 仅 eq/startsWith/contains/endsWith 支持 fastQuery", () => {
+    expect(firstFastQueryAttr({ conditions: [{ attr: "id", op: "eq", value: "a:id/b" }] })).toBe(true);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "vid", op: "eq", value: "skip" }] })).toBe(true);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "id", op: "endsWith", value: "_skip" }] })).toBe(false);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "vid", op: "startsWith", value: "skip" }] })).toBe(false);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "vid", op: "contains", value: "skip" }] })).toBe(false);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "vid", op: "notEq", value: "ad" }] })).toBe(false);
+
+    expect(firstFastQueryAttr({ conditions: [{ attr: "text", op: "eq", value: "跳过" }] })).toBe(true);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "text", op: "startsWith", value: "跳过" }] })).toBe(true);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "text", op: "contains", value: "跳过" }] })).toBe(true);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "text", op: "endsWith", value: "跳过" }] })).toBe(true);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "text", op: "notEq", value: "广告" }] })).toBe(false);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "text", op: "notStartsWith", value: "广告" }] })).toBe(false);
+    expect(firstFastQueryAttr({ conditions: [{ attr: "text", op: "orEq", value: ["否", "暂不"] }] })).toBe(true);
+
+    expect(firstFastQueryAttr({ conditions: [{ attr: "desc", op: "eq", value: "关闭" }] })).toBe(false);
+  });
+
+  it("createRuleDraft 基于官方 canSelectorFastQuery 判定 sibling 与 orEq 的 fastQuery", () => {
+    const siblingDescRight = createRuleDraft(
+      {
+        kind: "sibling",
+        target: exactSelector("vid", "close"),
+        neighbor: exactSelector("desc", "广告"),
+        relation: "next",
+        distance: 1,
+      },
+      DEFAULT_RULE_SETTINGS,
+    );
+    expect(siblingDescRight.matches).toEqual(['@[vid="close"] + [desc="广告"]']);
+    expect(siblingDescRight.fastQuery).toBeUndefined();
+
+    const siblingTextRight = createRuleDraft(
+      {
+        kind: "sibling",
+        target: { typeName: "ImageView", conditions: [] },
+        neighbor: exactSelector("text", "广告"),
+        relation: "previous",
+        distance: 1,
+      },
+      DEFAULT_RULE_SETTINGS,
+    );
+    expect(siblingTextRight.matches).toEqual(['@ImageView - [text="广告"]']);
+    expect(siblingTextRight.fastQuery).toBe(true);
+
+    const orEqRule = createRuleDraft(
+      {
+        kind: "simple",
+        selector: {
+          conditions: [{ attr: "text", op: "orEq", value: ["否", "暂不"] }],
+        },
+      },
+      DEFAULT_RULE_SETTINGS,
+    );
+    expect(orEqRule.matches).toEqual(['[text="否" || text="暂不"]']);
+    expect(orEqRule.fastQuery).toBe(true);
+  });
+
+  it("createRuleDraft 按逗号/换行拆分多元素 activityIds 并兼容单元素字符串", () => {
+    const single = createRuleDraft(
+      { kind: "simple", selector: exactSelector("vid", "close") },
+      { ...DEFAULT_RULE_SETTINGS, activityIds: "com.demo.A" },
+    );
+    expect(single.activityIds).toBe("com.demo.A");
+
+    const multiple = createRuleDraft(
+      { kind: "simple", selector: exactSelector("vid", "close") },
+      { ...DEFAULT_RULE_SETTINGS, activityIds: "com.demo.A, com.demo.B\ncom.demo.C" },
+    );
+    expect(multiple.activityIds).toEqual(["com.demo.A", "com.demo.B", "com.demo.C"]);
+  });
+
+  it("matchesChain 仅在所有链段均支持 fastQuery 时才设 fastQuery: true", () => {
+    const bothFast = createRuleDraft(
+      {
+        kind: "matchesChain",
+        context: exactSelector("text", "更新提示", "TextView"),
+        target: exactSelector("text", "取消", "Button"),
+      },
+      DEFAULT_RULE_SETTINGS,
+    );
+    expect(bothFast.fastQuery).toBe(true);
+
+    const descContext = createRuleDraft(
+      {
+        kind: "matchesChain",
+        context: exactSelector("desc", "广告弹窗"),
+        target: exactSelector("text", "关闭", "Button"),
+      },
+      DEFAULT_RULE_SETTINGS,
+    );
+    expect(descContext.fastQuery).toBeUndefined();
   });
 });

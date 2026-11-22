@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { matchGkdSelectorString } from "./selectorAdapter";
+import {
+  canSelectorFastQuery,
+  matchGkdSelectorString,
+} from "./selectorAdapter";
 import { normalizeSnapshot } from "./snapshotNormalize";
 import {
   validateAiCandidateAgainstSnapshot,
@@ -625,5 +628,161 @@ describe("selectorMatcher AI 路径（@gkd-kit/selector）", () => {
     // 17 的祖先链：17 ← 16 ← 15，15 是 LinearLayout
     const v = run(snap, [`LinearLayout TextView[text="ChainEnd"]`]);
     expect(ids(v.clickNodes)).toEqual([17]);
+  });
+
+  it("canSelectorFastQuery 与 matchGkdSelectorString.canFastQuery 正确识别 fastQuery 能力", () => {
+    const snap = buildFixture();
+    expect(canSelectorFastQuery('[vid="btn_skip"]')).toBe(true);
+    expect(canSelectorFastQuery('[id="com.demo:id/btn_skip"]')).toBe(true);
+    expect(canSelectorFastQuery('[text^="跳过"]')).toBe(true);
+    expect(canSelectorFastQuery('[desc="关闭"]')).toBe(false);
+    expect(canSelectorFastQuery('[text~="跳.*"]')).toBe(false);
+    expect(canSelectorFastQuery('[id$="_skip"]')).toBe(false);
+    expect(canSelectorFastQuery("not a selector ???")).toBe(false);
+
+    expect(matchGkdSelectorString(snap, '[text^="跳过"]').canFastQuery).toBe(true);
+    expect(matchGkdSelectorString(snap, '[id$="_skip"]').canFastQuery).toBe(false);
+    expect(matchGkdSelectorString(snap, "not a selector ???").canFastQuery).toBe(false);
+  });
+
+  it("getChild 负数索引安全从末尾取值，越界时安全返回空命中", () => {
+    const snap = buildFixture();
+    // 节点 5 有 4 个子项：6(A), 7(X), 8(Y), 9(B)，getChild(-1) 应取最后一个子节点 B
+    const lastChild = matchGkdSelectorString(snap, '[getChild(-1).text="B"]');
+    expect(lastChild).toMatchObject({ unparsed: false, clickIds: [5] });
+
+    const outOfRange = matchGkdSelectorString(snap, '[getChild(-99).text="B"]');
+    expect(outOfRange).toMatchObject({ unparsed: false, clickIds: [] });
+  });
+
+  it("anyMatches-only 规则命中时收集 clickNodes 并返回 satisfied", () => {
+    const snap = buildFixture();
+    const [satisfied] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({
+        matches: [],
+        anyMatches: [`[text="不存在"]`, `[text="跳过"]`],
+      }),
+    );
+    expect(satisfied).toMatchObject({ status: "satisfied", hitCount: 1 });
+    expect(ids(satisfied.clickNodes)).toEqual([2]);
+
+    const [missed] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({
+        matches: [],
+        anyMatches: [`[text="不存在1"]`, `[text="不存在2"]`],
+      }),
+    );
+    expect(missed).toMatchObject({
+      status: "unsatisfied",
+      hitCount: 0,
+      failureReason: "any_matches_miss",
+    });
+  });
+
+  it("activityMatches 严格精确匹配并拒绝空字符串与截断前缀", () => {
+    const snap = buildFixture();
+
+    const [exactShort] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`], activityIds: ".MainActivity" }),
+    );
+    expect(exactShort).toMatchObject({ status: "satisfied", hitCount: 1 });
+
+    const [prefixOnly] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`], activityIds: "com.demo.Main" }),
+    );
+    expect(prefixOnly).toMatchObject({
+      status: "unsatisfied",
+      hitCount: 0,
+      failureReason: "activity_mismatch",
+    });
+
+    const [emptyString] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`], activityIds: "" }),
+    );
+    expect(emptyString).toMatchObject({
+      status: "unsatisfied",
+      hitCount: 0,
+      failureReason: "activity_mismatch",
+    });
+
+    const [emptyItemArray] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`], activityIds: [""] }),
+    );
+    expect(emptyItemArray).toMatchObject({
+      status: "unsatisfied",
+      hitCount: 0,
+      failureReason: "activity_mismatch",
+    });
+
+    const [emptyExclude] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`], excludeActivityIds: [] }),
+    );
+    expect(emptyExclude).toMatchObject({ status: "satisfied", hitCount: 1 });
+  });
+
+  it("输出结构化 failureReason 区分 disabled / excluded / context_miss / target_miss / invalid / partial", () => {
+    const snap = buildFixture();
+
+    const [disabled] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`], enable: false }),
+    );
+    expect(disabled.failureReason).toBe("disabled");
+
+    const [excluded] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`], excludeMatches: [`[text="P"]`] }),
+    );
+    expect(excluded.failureReason).toBe("excluded");
+
+    const [contextMiss] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="不存在"]`, `[text="A"]`] }),
+    );
+    expect(contextMiss.failureReason).toBe("context_miss");
+
+    const [targetMiss] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="P"]`, `[text="不存在"]`] }),
+    );
+    expect(targetMiss.failureReason).toBe("target_miss");
+
+    const [invalid] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`not a selector ???`] }),
+    );
+    expect(invalid.failureReason).toBe("invalid");
+
+    const [partial] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({ matches: [`[text="A"]`], versionCodes: [1] }),
+    );
+    expect(partial.failureReason).toBe("partial");
+  });
+
+  it("anyMatches 与必需 matches 同时含不可解析表达式时优先判定为 invalid", () => {
+    const snap = buildFixture();
+    const [value] = validateAppRuleAgainstSnapshot(
+      snap,
+      appWithRule({
+        anyMatches: [`[text="P"]`, `not valid any ???`],
+        matches: [`not valid match ???`],
+      }),
+    );
+
+    expect(value).toMatchObject({
+      status: "invalid",
+      hitCount: 0,
+      failureReason: "invalid",
+    });
+    expect(value.clickNodes).toEqual([]);
+    expect(value.unparsedMatches).toEqual([`not valid any ???`, `not valid match ???`]);
   });
 });

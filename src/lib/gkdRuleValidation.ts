@@ -213,14 +213,26 @@ function validateGroup(
     `${path}.excludeActivityIds`,
     context.issues,
   );
-  checkOptionalNumber(value.matchTime, `${path}.matchTime`, context.issues);
-  checkOptionalInteger(value.actionMaximum, `${path}.actionMaximum`, context.issues);
-  checkOptionalInteger(value.actionCd, `${path}.actionCd`, context.issues);
-  checkOptionalInteger(value.cd, `${path}.cd`, context.issues);
-  checkOptionalInteger(value.actionDelay, `${path}.actionDelay`, context.issues);
-  checkOptionalInteger(value.delay, `${path}.delay`, context.issues);
+  checkOptionalNonNegativeInteger(value.matchTime, `${path}.matchTime`, context.issues);
+  checkOptionalPositiveInteger(
+    value.actionMaximum,
+    `${path}.actionMaximum`,
+    context.issues,
+  );
+  checkOptionalNonNegativeInteger(value.actionCd, `${path}.actionCd`, context.issues);
+  checkOptionalNonNegativeInteger(value.cd, `${path}.cd`, context.issues);
+  checkOptionalNonNegativeInteger(
+    value.actionDelay,
+    `${path}.actionDelay`,
+    context.issues,
+  );
+  checkOptionalNonNegativeInteger(value.delay, `${path}.delay`, context.issues);
   checkOptionalNumber(value.matchDelay, `${path}.matchDelay`, context.issues);
-  checkOptionalInteger(value.forcedTime, `${path}.forcedTime`, context.issues);
+  checkOptionalNonNegativeInteger(
+    value.forcedTime,
+    `${path}.forcedTime`,
+    context.issues,
+  );
   checkOptionalBoolean(value.fastQuery, `${path}.fastQuery`, context.issues);
   checkOptionalBoolean(value.matchRoot, `${path}.matchRoot`, context.issues);
   checkOptionalBoolean(
@@ -283,7 +295,6 @@ function validateRule(
   checkOptionalInteger(value.key, `${path}.key`, context.issues);
   checkOptionalString(value.name, `${path}.name`, context.issues);
   checkOptionalIntegerList(value.preKeys, `${path}.preKeys`, context.issues);
-  checkOptionalString(value.action, `${path}.action`, context.issues);
   checkOptionalEnum(value.action, `${path}.action`, ACTION_NAMES, context.issues);
   checkActivityIds(value.activityIds, `${path}.activityIds`, context.issues);
   checkActivityIds(
@@ -294,14 +305,26 @@ function validateRule(
   checkOptionalBoolean(value.enable, `${path}.enable`, context.issues);
   checkOptionalBoolean(value.fastQuery, `${path}.fastQuery`, context.issues);
   checkOptionalBoolean(value.matchRoot, `${path}.matchRoot`, context.issues);
-  checkOptionalInteger(value.actionDelay, `${path}.actionDelay`, context.issues);
+  checkOptionalNonNegativeInteger(
+    value.actionDelay,
+    `${path}.actionDelay`,
+    context.issues,
+  );
   checkOptionalNumber(value.matchDelay, `${path}.matchDelay`, context.issues);
-  checkOptionalNumber(value.matchTime, `${path}.matchTime`, context.issues);
-  checkOptionalInteger(value.actionMaximum, `${path}.actionMaximum`, context.issues);
-  checkOptionalInteger(value.actionCd, `${path}.actionCd`, context.issues);
-  checkOptionalInteger(value.cd, `${path}.cd`, context.issues);
-  checkOptionalInteger(value.delay, `${path}.delay`, context.issues);
-  checkOptionalInteger(value.forcedTime, `${path}.forcedTime`, context.issues);
+  checkOptionalNonNegativeInteger(value.matchTime, `${path}.matchTime`, context.issues);
+  checkOptionalPositiveInteger(
+    value.actionMaximum,
+    `${path}.actionMaximum`,
+    context.issues,
+  );
+  checkOptionalNonNegativeInteger(value.actionCd, `${path}.actionCd`, context.issues);
+  checkOptionalNonNegativeInteger(value.cd, `${path}.cd`, context.issues);
+  checkOptionalNonNegativeInteger(value.delay, `${path}.delay`, context.issues);
+  checkOptionalNonNegativeInteger(
+    value.forcedTime,
+    `${path}.forcedTime`,
+    context.issues,
+  );
   checkOptionalEnum(
     value.resetMatch,
     `${path}.resetMatch`,
@@ -457,6 +480,32 @@ function checkOptionalInteger(
   }
 }
 
+function checkOptionalNonNegativeInteger(
+  value: unknown,
+  path: string,
+  issues: GkdRuleValidationIssue[],
+): void {
+  if (value === undefined || value === null) return;
+  if (!Number.isSafeInteger(value)) {
+    issue(path, "必须是非负整数", "type", issues);
+  } else if ((value as number) < 0) {
+    issue(path, "必须大于等于 0", "value", issues);
+  }
+}
+
+function checkOptionalPositiveInteger(
+  value: unknown,
+  path: string,
+  issues: GkdRuleValidationIssue[],
+): void {
+  if (value === undefined || value === null) return;
+  if (!Number.isSafeInteger(value)) {
+    issue(path, "必须是大于等于 1 的整数", "type", issues);
+  } else if ((value as number) < 1) {
+    issue(path, "必须大于等于 1", "value", issues);
+  }
+}
+
 function checkOptionalNumber(
   value: unknown,
   path: string,
@@ -477,9 +526,22 @@ function checkActivityIds(
   issues: GkdRuleValidationIssue[],
 ): void {
   if (value === undefined || value === null) return;
-  if (readStringList(value) === null) {
+  const list = readStringList(value);
+  if (list === null) {
     issue(path, "必须是字符串或字符串数组", "type", issues);
+    return;
   }
+  if (typeof value === "string") {
+    if (!value.trim()) {
+      issue(path, "activityIds 不能为空字符串", "value", issues);
+    }
+    return;
+  }
+  list.forEach((item, index) => {
+    if (!item.trim()) {
+      issue(`${path}[${index}]`, "activityIds 元素不能为空字符串", "value", issues);
+    }
+  });
 }
 
 function checkOptionalStringList(
@@ -512,7 +574,11 @@ function checkOptionalEnum(
   issues: GkdRuleValidationIssue[],
 ): void {
   if (value === undefined || value === null) return;
-  if (typeof value !== "string" || !allowed.has(value)) {
+  if (typeof value !== "string") {
+    issue(path, "必须是字符串", "type", issues);
+    return;
+  }
+  if (!allowed.has(value)) {
     issue(path, `必须是以下值之一：${[...allowed].join(" / ")}`, "value", issues);
   }
 }

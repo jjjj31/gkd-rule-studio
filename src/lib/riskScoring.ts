@@ -10,7 +10,7 @@ import {
   GENERIC_ACTION_TEXT,
 } from "../data/riskWords";
 import { detectAdSdkForNode, matchAdSdkSkipSignal } from "../data/adSdkSignatures";
-import { isDynamicCountdownText } from "./countdownText";
+import { isDynamicActivityId, isDynamicCountdownText } from "./countdownText";
 import { nodeArea } from "../types/gkdSnapshot";
 import type { NormalizedSnapshotNode, ParsedGkdSnapshot } from "../types/gkdSnapshot";
 import type {
@@ -54,12 +54,12 @@ export function scoreCandidate(input: {
   addActivityScore(items, rule.activityIds, Boolean(allowNoActivityIds));
   addBoundsScore(items, snapshot, target);
   addClickableScore(items, target, rule.action);
-  addTextRiskScore(items, target, plan);
+  addTextRiskScore(items, validation.clickNodes, plan);
   addAnonymousAnchorScore(items, plan);
   addDynamicCountdownScore(items, plan);
-  addAdSdkOverlayScore(items, target);
-  addAdSdkSignatureScore(items, target);
-  addAdContextScore(items, snapshot, target);
+  addAdSdkOverlayScore(items, validation.clickNodes);
+  addAdSdkSignatureScore(items, validation.clickNodes);
+  addAdContextScore(items, snapshot, validation.clickNodes);
   addParentRiskScore(items, snapshot, plan, validation);
   addComplexityScore(items, plan);
 
@@ -116,12 +116,26 @@ function addActivityScore(
   activityIds: string | string[] | undefined,
   allowNoActivityIds: boolean,
 ): void {
-  if (Array.isArray(activityIds) ? activityIds.length > 0 : Boolean(activityIds)) {
-    items.push({
-      label: "activityIds",
-      value: 12,
-      reason: "规则被限制在当前 Activity",
-    });
+  const normalizedIds = (
+    Array.isArray(activityIds) ? activityIds : activityIds ? [activityIds] : []
+  )
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (normalizedIds.length > 0) {
+    if (normalizedIds.some((id) => isDynamicActivityId(id))) {
+      items.push({
+        label: "动态 activityIds",
+        value: -15,
+        reason: "activityIds 含运行期或 SDK 动态后缀，换实例或升级后易失配",
+      });
+    } else {
+      items.push({
+        label: "activityIds",
+        value: 12,
+        reason: "规则被限制在当前 Activity",
+      });
+    }
   } else if (allowNoActivityIds) {
     items.push({
       label: "短窗口替代",
@@ -239,33 +253,38 @@ function addAnonymousAnchorScore(items: RiskItem[], plan: SelectorPlan): void {
 
 function addTextRiskScore(
   items: RiskItem[],
-  target: NormalizedSnapshotNode | null,
+  clickNodes: NormalizedSnapshotNode[],
   plan: SelectorPlan,
 ): void {
-  if (!target) return;
+  if (clickNodes.length === 0) return;
 
-  const targetText = [
-    target.attr.text,
-    target.attr.desc,
-    target.attr.id,
-    target.attr.vid,
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const hasDangerousHit = clickNodes.some((node) => {
+    const nodeText = [
+      node.attr.text,
+      node.attr.desc,
+      node.attr.id,
+      node.attr.vid,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return DANGEROUS_CLICK_WORDS.some((word) =>
+      nodeText.includes(word.toLowerCase()),
+    );
+  });
 
-  const normalizedTargetText = targetText.toLowerCase();
-  if (
-    DANGEROUS_CLICK_WORDS.some((word) =>
-      normalizedTargetText.includes(word.toLowerCase()),
-    )
-  ) {
+  if (hasDangerousHit) {
     items.push({
       label: "危险 CTA",
       value: -90,
-      reason: "最终点击目标含下载、安装、打开等高危词",
+      reason:
+        clickNodes.length > 1
+          ? "命中集合中包含下载、安装、打开等高危 CTA 节点"
+          : "最终点击目标含下载、安装、打开等高危词",
     });
   }
 
+  const target = clickNodes[0];
   const text = target.attr.text ?? target.attr.desc ?? "";
   if (
     text &&
@@ -286,15 +305,15 @@ function addDynamicCountdownScore(items: RiskItem[], plan: SelectorPlan): void {
   items.push({
     label: "动态倒计时",
     value: -45,
-    reason: "selector 精确匹配了跳过倒计时文本，跨秒数不稳定",
+    reason: "selector 匹配了含具体秒数的跳过倒计时文本，跨秒数不稳定",
   });
 }
 
 function addAdSdkOverlayScore(
   items: RiskItem[],
-  target: NormalizedSnapshotNode | null,
+  clickNodes: NormalizedSnapshotNode[],
 ): void {
-  if (!target || !isAdSdkOverlayTarget(target)) return;
+  if (!clickNodes.some((node) => isAdSdkOverlayTarget(node))) return;
 
   items.push({
     label: "广告遮罩热区",
@@ -305,11 +324,12 @@ function addAdSdkOverlayScore(
 
 function addAdSdkSignatureScore(
   items: RiskItem[],
-  target: NormalizedSnapshotNode | null,
+  clickNodes: NormalizedSnapshotNode[],
 ): void {
+  const target = clickNodes[0] ?? null;
   if (!target) return;
   // 广告遮罩/热区不是跳过按钮，交给 addAdSdkOverlayScore 扣分，不在这里加分。
-  if (isAdSdkOverlayTarget(target)) return;
+  if (clickNodes.some((node) => isAdSdkOverlayTarget(node))) return;
   const match = matchAdSdkSkipSignal(target);
   if (!match) return;
   items.push({
@@ -322,15 +342,19 @@ function addAdSdkSignatureScore(
 function addAdContextScore(
   items: RiskItem[],
   snapshot: ParsedGkdSnapshot,
-  target: NormalizedSnapshotNode | null,
+  clickNodes: NormalizedSnapshotNode[],
 ): void {
+  const target = clickNodes[0] ?? null;
   if (!target) return;
 
-  if (isLargeAdHotArea(snapshot, target)) {
+  if (clickNodes.some((node) => isLargeAdHotArea(snapshot, node))) {
     items.push({
       label: "广告热区",
       value: -90,
-      reason: "最终点击目标像广告热区或整屏广告容器",
+      reason:
+        clickNodes.length > 1
+          ? "命中集合中包含广告热区或整屏广告容器"
+          : "最终点击目标像广告热区或整屏广告容器",
     });
     return;
   }
@@ -455,11 +479,32 @@ function selectorUsesGenericText(
 function usesExactDynamicCountdownText(plan: SelectorPlan): boolean {
   return getPlanSelectors(plan).some((selector) =>
     selector.conditions.some((condition) => {
-      if (condition.op !== "eq") return false;
       if (condition.attr !== "text" && condition.attr !== "desc") return false;
-      return isDynamicCountdownText(String(condition.value));
+      const value = String(condition.value).trim();
+      if (!value) return false;
+      if (condition.op === "eq") {
+        return isDynamicCountdownText(value);
+      }
+      if (
+        condition.op === "startsWith" ||
+        condition.op === "contains" ||
+        condition.op === "endsWith"
+      ) {
+        return isCountdownDigitLiteral(value);
+      }
+      return false;
     }),
   );
+}
+
+function isCountdownDigitLiteral(value: string): boolean {
+  if (isDynamicCountdownText(value)) return true;
+  if (/^(?:跳过|skip)[\s|｜·•:：\-/()（）]*\d+/i.test(value)) return true;
+  if (/\d+[\s|｜·•:：\-/()（）]*(?:s|秒)?[\s|｜·•:：\-/()（）]*后?[\s|｜·•:：\-/()（）]*(?:跳过|skip)/i.test(value)) {
+    return true;
+  }
+  if (/^\(?（?\d+\s*(?:s|秒)[)）]?$/i.test(value)) return true;
+  return false;
 }
 
 function hasAdAncestor(

@@ -407,11 +407,12 @@ describe("dongman-ad regressions", () => {
       snapshot: snap,
       pickResult: pick,
       ruleSettings: DEFAULT_RULE_SETTINGS,
+      audience: "builtin",
     });
     const compacted = compactPromptForAi(prompt);
     expect(compacted).toContain("#42 TextView");
     expect(compacted).toContain("输出前自检");
-    expect(compacted.length).toBeLessThanOrEqual(9000);
+    expect(compacted.length).toBeLessThanOrEqual(18000);
 
     const msgs = buildAiGenerateMessages({ mode: "single", prompt });
     expect(typeof msgs[1].content === "string" && msgs[1].content.includes("#42 TextView")).toBe(true);

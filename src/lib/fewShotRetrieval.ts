@@ -96,6 +96,11 @@ const TOKEN_WEIGHTS: Array<[RegExp, number]> = [
   [/^depth:/, 0.3],
 ];
 
+const SYSTEM_GENERIC_ID_PREFIX = /^android:id\//i;
+const BARE_SINGLE_TEXT_OR_DESC_RE = /^\[(?:text|desc)\s*=\s*"[^"]+"\]$/;
+const RESOURCE_ID_SELECTOR_RE = /\[(?:vid|id)\s*(?:=|\^=|\$=|\*=)/;
+const CONTEXT_RELATION_SELECTOR_RE = /\s(?:>|<|\+|-)\d*|\s(?:<<|>>)\d*/;
+
 function tokenWeight(token: string): number {
   for (const [pattern, weight] of TOKEN_WEIGHTS) {
     if (pattern.test(token)) return weight;
@@ -113,6 +118,50 @@ function bucket(value: number | null, cuts: Array<[number, string]>): string {
 
 export function shortClassName(name: string): string {
   return name.split(".").pop() || name;
+}
+
+/** 提取节点的有效资源标识：优先 vid，否则取非系统通用 id 的后缀名称。 */
+function extractEffectiveResourceId(node: NormalizedSnapshotNode): string | null {
+  const vid = node.attr.vid?.trim();
+  if (vid) return vid;
+  const id = node.attr.id?.trim();
+  if (!id || SYSTEM_GENERIC_ID_PREFIX.test(id)) return null;
+  const slashIndex = id.lastIndexOf("/");
+  const shortId = slashIndex >= 0 ? id.slice(slashIndex + 1).trim() : id;
+  return shortId || null;
+}
+
+/** 同分排序优先含上下文关系或资源 ID 锚点的写法，避免把裸泛用词排在前面。 */
+function selectorTieBreakPriority(record: FewShotRecord): number {
+  const selector = record.selector.trim();
+  let priority = 0;
+  if (
+    record.selectorShape.hasHierarchy ||
+    record.selectorShape.hasSibling ||
+    CONTEXT_RELATION_SELECTOR_RE.test(selector)
+  ) {
+    priority += 3;
+  }
+  if (RESOURCE_ID_SELECTOR_RE.test(selector)) {
+    priority += 2;
+  }
+  if (record.selectorShape.hasAt || selector.includes("@")) {
+    priority += 1;
+  }
+  if (BARE_SINGLE_TEXT_OR_DESC_RE.test(selector)) {
+    priority -= 2;
+  }
+  return priority;
+}
+
+function compareFewShotHits(a: FewShotHit, b: FewShotHit): number {
+  if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
+  const priorityDiff =
+    selectorTieBreakPriority(b.record) - selectorTieBreakPriority(a.record);
+  if (priorityDiff !== 0) return priorityDiff;
+  const lengthDiff = a.record.selector.length - b.record.selector.length;
+  if (lengthDiff !== 0) return lengthDiff;
+  return a.record.id < b.record.id ? -1 : a.record.id > b.record.id ? 1 : 0;
 }
 
 /** 从目标与上下文生成检索特征 token。 */
@@ -175,13 +224,7 @@ export function retrieveFewShot(
     const score = featureSimilarity(query.features, record.features);
     hits.push({ record, score });
   }
-  // 特征相同时（真机里同类控件很多），优先给更短、更简单的答案做示例，模型更好仿写。
-  hits.sort((a, b) => {
-    if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
-    const lengthDiff = a.record.selector.length - b.record.selector.length;
-    if (lengthDiff !== 0) return lengthDiff;
-    return a.record.id < b.record.id ? -1 : a.record.id > b.record.id ? 1 : 0;
-  });
+  hits.sort(compareFewShotHits);
 
   const seen = new Set<string>();
   const picked: FewShotHit[] = [];
@@ -294,14 +337,15 @@ export function formatFewShotExamples(examples: FewShotHit[]): string[] {
 
 function toBrief(node: NormalizedSnapshotNode): FewShotNodeBrief {
   const hits: string[] = [];
-  const text = `${node.attr.text ?? ""} ${node.attr.desc ?? ""} ${node.attr.vid ?? ""}`.toLowerCase();
+  const resId = extractEffectiveResourceId(node);
+  const text = `${node.attr.text ?? ""} ${node.attr.desc ?? ""} ${resId ?? ""}`.toLowerCase();
   for (const word of ANCHOR_WORDS) {
     if (text.includes(word.toLowerCase())) hits.push(word);
   }
   return {
     id: node.id,
     name: node.attr.name,
-    vid: node.attr.vid,
+    vid: resId,
     text: node.attr.text,
     desc: node.attr.desc,
     clickable: node.attr.clickable,
@@ -320,7 +364,7 @@ export function buildQueryFromSnapshot(
   const target: FewShotTarget = {
     id: targetNode.id,
     name: targetNode.attr.name,
-    vid: targetNode.attr.vid,
+    vid: extractEffectiveResourceId(targetNode),
     text: targetNode.attr.text,
     desc: targetNode.attr.desc,
     clickable: targetNode.attr.clickable,
@@ -339,9 +383,11 @@ export function buildQueryFromSnapshot(
     .slice(0, 8)
     .map(toBrief);
 
+  // ancestors[0] 是 targetNode 的直接父节点（id === targetNode.pid），
+  // 扫描 targetNode.pid（同父兄弟）与 ancestors[1]?.id（叔节点）避免重复。
   const scanIds = new Set<number>([
     targetNode.pid,
-    ...(ancestors.length > 0 ? [ancestors[0].id] : []),
+    ...(ancestors[1] ? [ancestors[1].id] : []),
   ]);
   const anchors: FewShotNodeBrief[] = [];
   for (const node of snapshot.nodes) {
@@ -471,7 +517,7 @@ function ensureDistilledEntries(): Array<{
       selectorShape: {
         kind: entry.k,
         hasAt: entry.s.includes("@"),
-        hasUnion: entry.s.includes("||") || entry.s.includes(","),
+        hasUnion: entry.s.includes("||"),
         hasHierarchy: entry.k === "hierarchy",
         hasSibling: entry.k === "sibling",
         attrs: [],
@@ -520,12 +566,15 @@ export function retrieveOnDeviceFewShot({
     "depth:" + bucket(targetNode.attr.depth, [[3, "d0-3"], [5, "d4-5"], [8, "d6-8"]]),
   ]);
 
-  if (!targetNode.attr.vid) {
+  const targetResId = extractEffectiveResourceId(targetNode);
+  if (!targetResId) {
     tokens.add("vid:no");
-  } else if (isObfuscatedVidValue(targetNode.attr.vid)) {
+  } else if (isObfuscatedVidValue(targetResId)) {
     tokens.add("vid:obfuscated");
   } else {
-    const vidHits = visibleNodes.filter((n) => n.attr.vid === targetNode.attr.vid).length;
+    const vidHits = visibleNodes.filter(
+      (n) => extractEffectiveResourceId(n) === targetResId,
+    ).length;
     tokens.add(vidHits > 1 ? "vid:multi" : "vid:unique");
   }
 
@@ -560,13 +609,19 @@ export function retrieveOnDeviceFewShot({
   if (visibleSiblings.some((s) => s.attr.text || s.attr.desc)) {
     tokens.add("ctx:sib_text");
   }
-  if (visibleSiblings.some((s) => s.attr.vid && !isObfuscatedVidValue(s.attr.vid))) {
+  if (
+    visibleSiblings.some((s) => {
+      const resId = extractEffectiveResourceId(s);
+      return Boolean(resId && !isObfuscatedVidValue(resId));
+    })
+  ) {
     tokens.add("ctx:sib_vid");
   }
   if (
-    pickResult.ancestors
-      .slice(0, 4)
-      .some((a) => a.attr.vid && !isObfuscatedVidValue(a.attr.vid))
+    pickResult.ancestors.slice(0, 4).some((a) => {
+      const resId = extractEffectiveResourceId(a);
+      return Boolean(resId && !isObfuscatedVidValue(resId));
+    })
   ) {
     tokens.add("ctx:anc_vid");
   }
@@ -578,7 +633,8 @@ export function retrieveOnDeviceFewShot({
     ...pickResult.ancestors.slice(0, 3),
   ];
   for (const node of anchorSourceNodes) {
-    const text = `${node.attr.text ?? ""} ${node.attr.desc ?? ""} ${node.attr.vid ?? ""}`.toLowerCase();
+    const resId = extractEffectiveResourceId(node);
+    const text = `${node.attr.text ?? ""} ${node.attr.desc ?? ""} ${resId ?? ""}`.toLowerCase();
     for (const word of ANCHOR_WORDS) {
       if (text.includes(word.toLowerCase())) tokens.add("anchor:" + word);
     }
@@ -593,12 +649,7 @@ export function retrieveOnDeviceFewShot({
     scored.push({ record: entry.record, score });
   }
 
-  scored.sort((a, b) => {
-    if (Math.abs(b.score - a.score) > 1e-9) return b.score - a.score;
-    const lenDiff = a.record.selector.length - b.record.selector.length;
-    if (lenDiff !== 0) return lenDiff;
-    return a.record.id < b.record.id ? -1 : a.record.id > b.record.id ? 1 : 0;
-  });
+  scored.sort(compareFewShotHits);
 
   if (scored.length === 0) return [];
 

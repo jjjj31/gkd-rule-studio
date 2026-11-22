@@ -23,6 +23,7 @@ import type {
 } from "../types/ruleDraft";
 import { applyActionPlanToRule, buildActionPlan } from "./actionPlan";
 import { candidateDedupeKey } from "./candidateIdentity";
+import { parseActivityIdsSetting } from "./customScenario";
 import { scoreCandidate } from "./riskScoring";
 import {
   clickableSelector,
@@ -1274,6 +1275,13 @@ function buildCandidate(
     context.ruleSettings,
     seed.title,
   );
+  const configuredActivityIds = parseActivityIdsSetting(context.ruleSettings.activityIds);
+  const configuredActivityValue =
+    configuredActivityIds.length === 1
+      ? configuredActivityIds[0]
+      : configuredActivityIds.length > 1
+        ? configuredActivityIds
+        : undefined;
   const actionPlan = buildActionPlan({
     snapshot: context.snapshot,
     pickedNode: context.pickedNode,
@@ -1285,8 +1293,8 @@ function buildCandidate(
         {
           key: 0,
           name: context.ruleSettings.groupName.trim() || seed.groupName,
-          ...(context.ruleSettings.activityIds.trim()
-            ? { activityIds: context.ruleSettings.activityIds.trim() }
+          ...(configuredActivityValue !== undefined
+            ? { activityIds: configuredActivityValue }
             : {}),
           rules: [{ key: 0, matches: serializePlan(seed.plan) }],
         },
@@ -1864,7 +1872,7 @@ function hasShortOneShotWindow(
   settings: GenerationContext["ruleSettings"],
 ): boolean {
   return (
-    !settings.activityIds.trim() &&
+    parseActivityIdsSetting(settings.activityIds).length === 0 &&
     settings.matchTime !== null &&
     settings.matchTime <= 30000 &&
     settings.actionMaximum === 1 &&

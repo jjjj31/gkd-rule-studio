@@ -16,6 +16,8 @@ export interface MatchResult {
   supportIds: number[];
   unparsed: boolean;
   unparsedReason?: string;
+  /** 官方解析器判定该 selector 是否支持 fastQuery（fastQueryList.length > 0）。 */
+  canFastQuery?: boolean;
 }
 
 let cachedTypeModel: ReturnType<typeof createDefaultSelectorTypeModel> | null = null;
@@ -35,6 +37,18 @@ export function validateGkdSelectorSyntax(expression: string): string | null {
   }
 }
 
+/** 判断单个 selector 字符串是否满足官方 fastQuery 条件；解析或类型校验失败返回 false。 */
+export function canSelectorFastQuery(selectorSource: string): boolean {
+  if (!selectorSource.trim()) return false;
+  try {
+    const selector = Selector.compile(selectorSource).value;
+    selector.validateType(ensureTypeModel()).value;
+    return selector.fastQueryList.length > 0;
+  } catch {
+    return false;
+  }
+}
+
 export function matchGkdSelectorString(
   snapshot: ParsedGkdSnapshot,
   expr: string,
@@ -42,6 +56,7 @@ export function matchGkdSelectorString(
   try {
     const selector = Selector.compile(expr).value;
     selector.validateType(ensureTypeModel()).value;
+    const canFastQuery = selector.fastQueryList.length > 0;
 
     class SnapshotAdapter extends JsNodeAdapter<NormalizedSnapshotNode> {
       getAttr(target: unknown, name: string): unknown {
@@ -59,9 +74,16 @@ export function matchGkdSelectorString(
           target &&
           typeof target === "object" &&
           "attr" in target &&
-          typeof args[0] === "number"
+          typeof args[0] === "number" &&
+          Number.isInteger(args[0])
         ) {
-          return this.getChild(target as NormalizedSnapshotNode, args[0]);
+          const node = target as NormalizedSnapshotNode;
+          const rawIndex = args[0];
+          const resolvedIndex = rawIndex < 0 ? node.children.length + rawIndex : rawIndex;
+          if (resolvedIndex < 0 || resolvedIndex >= node.children.length) {
+            return null;
+          }
+          return this.getChild(node, resolvedIndex);
         }
         return null;
       }
@@ -75,7 +97,13 @@ export function matchGkdSelectorString(
       }
 
       getChild(node: NormalizedSnapshotNode, index: number) {
-        return snapshot.nodeById.get(node.children[index]) ?? null;
+        if (!Number.isInteger(index)) return null;
+        const resolvedIndex = index < 0 ? node.children.length + index : index;
+        if (resolvedIndex < 0 || resolvedIndex >= node.children.length) {
+          return null;
+        }
+        const childId = node.children[resolvedIndex];
+        return childId === undefined ? null : snapshot.nodeById.get(childId) ?? null;
       }
 
       getParent(node: NormalizedSnapshotNode) {
@@ -94,6 +122,7 @@ export function matchGkdSelectorString(
         supportIds: [],
         unparsed: true,
         unparsedReason: "empty-snapshot",
+        canFastQuery,
       };
     }
 
@@ -116,13 +145,19 @@ export function matchGkdSelectorString(
       }
     }
     for (const id of clickIds) supportIds.delete(id);
-    return { clickIds: [...clickIds], supportIds: [...supportIds], unparsed: false };
+    return {
+      clickIds: [...clickIds],
+      supportIds: [...supportIds],
+      unparsed: false,
+      canFastQuery,
+    };
   } catch (error) {
     return {
       clickIds: [],
       supportIds: [],
       unparsed: true,
       unparsedReason: error instanceof Error ? error.message : String(error),
+      canFastQuery: false,
     };
   }
 }

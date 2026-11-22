@@ -1,5 +1,6 @@
 /** 动作计划：为每条候选决定触发后的行为（action/max/cd/delay/matchRoot 等）。 */
 import { detectAdSdkForNode } from "../data/adSdkSignatures";
+import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
 import { nodeArea } from "../types/gkdSnapshot";
 import type {
   NormalizedSnapshotNode,
@@ -13,7 +14,15 @@ import type {
   SelectorPlan,
   SelectorValidation,
 } from "../types/ruleDraft";
-import { isDynamicCountdownText } from "./countdownText";
+import { isDynamicActivityId, isDynamicCountdownText } from "./countdownText";
+import { parseActivityIdsSetting } from "./customScenario";
+import { findSafeClickableAncestor } from "./visualTarget";
+
+declare module "../types/ruleDraft" {
+  interface RuleActionPlan {
+    fastQuery?: boolean;
+  }
+}
 
 export interface RuleRunObservation {
   selectorMatched: boolean;
@@ -89,12 +98,33 @@ export function buildActionPlan(input: {
     (!hasNativeDismissTarget &&
       relatedNodes.some((node) => isLargeAdContainer(snapshot, node)));
   const rawSnapshotActivity = (snapshot.activityId ?? "").trim();
+  const hasDynamicActivity = Boolean(
+    rawSnapshotActivity && isDynamicActivityId(rawSnapshotActivity),
+  );
+  const safeSnapshotActivity = hasDynamicActivity ? "" : rawSnapshotActivity;
+  const configuredActivityIds = parseActivityIdsSetting(ruleSettings.activityIds);
+  const configuredActivityValue =
+    configuredActivityIds.length === 1
+      ? configuredActivityIds[0]
+      : configuredActivityIds.length > 1
+        ? configuredActivityIds
+        : undefined;
   const needsActivityGuard =
-    !ruleSettings.activityIds.trim() &&
-    Boolean(rawSnapshotActivity) &&
+    configuredActivityIds.length === 0 &&
+    Boolean(safeSnapshotActivity) &&
     isGenericDismissAction(targetNode, relatedNodes);
+  const hasExplicitNativeSkipButton =
+    !pickedInWebView &&
+    !targetInWebView &&
+    (hasNativeDismissTarget ||
+      (targetNode.attr.clickable &&
+        isSmallDismissControlWithContext(snapshot, targetNode, relatedNodes)));
   const shouldApplyCountdownRetry =
-    hasCountdown && (!hasNativeDismissTarget || !targetNode.attr.clickable);
+    hasCountdown &&
+    (hasWebOrAdContext ||
+      (!hasExplicitNativeSkipButton &&
+        !targetNode.attr.clickable &&
+        !hasSafeClickableAncestor(snapshot, targetNode)));
   const likelyCoveredStableNode =
     strategyName === "stableResourceSemantic" &&
     pickedInAdLayer &&
@@ -110,6 +140,9 @@ export function buildActionPlan(input: {
     actionPlan.action = "clickCenter";
     actionPlan.matchRoot = true;
     actionPlan.rankAdjustment += 4;
+    if (hasWebOrAdContext) {
+      actionPlan.fastQuery = false;
+    }
     actionPlan.riskNotes.push(
       "目标处于 WebView/广告容器或跨层级 selector，默认用 clickCenter 并开启 matchRoot。",
     );
@@ -135,20 +168,23 @@ export function buildActionPlan(input: {
   }
 
   if (needsActivityGuard) {
-    actionPlan.activityIds = rawSnapshotActivity ? [rawSnapshotActivity] : [];
+    actionPlan.activityIds = [safeSnapshotActivity];
     actionPlan.rankAdjustment += 10;
     actionPlan.riskNotes.push(
       "跳过/关闭类泛化动作默认补充当前 Activity，降低误触并减少无效扫描。",
     );
+  } else if (configuredActivityIds.length === 0 && hasDynamicActivity) {
+    actionPlan.riskNotes.push(
+      "当前 Activity 含动态后缀，未自动锁定到 activityIds，避免换实例或 SDK 升级后失配。",
+    );
   }
 
   if (hasDynamicFullscreenContext) {
-    const configuredActivityIds = ruleSettings.activityIds.trim();
     actionPlan.activityIds =
-      configuredActivityIds ||
-      actionPlan.activityIds ||
-      // activityId 为 null/空串时不能退化成 [""]——那种 activityIds 永不匹配任何界面。
-      (rawSnapshotActivity ? [rawSnapshotActivity] : undefined);
+      configuredActivityValue ??
+      actionPlan.activityIds ??
+      // activityId 为 null/空串或动态后缀时不能自动锁死进 activityIds。
+      (safeSnapshotActivity ? [safeSnapshotActivity] : undefined);
     actionPlan.forcedTime = 10000;
     actionPlan.matchTime = 10000;
     actionPlan.riskNotes.push(
@@ -173,7 +209,10 @@ export function buildActionPlan(input: {
     }
   }
 
-  applyExplicitActionSettings(actionPlan, ruleSettings);
+  applyExplicitActionSettings(actionPlan, ruleSettings, {
+    hasDynamicFullscreenContext,
+    shouldApplyCountdownRetry,
+  });
 
   if (strategyName === "adContainerSkipFallback" && pickedInAdLayer) {
     actionPlan.rankAdjustment += 25;
@@ -202,7 +241,15 @@ export function buildActionPlan(input: {
 function applyExplicitActionSettings(
   actionPlan: RuleActionPlan,
   ruleSettings: RuleSettings,
+  context: {
+    hasDynamicFullscreenContext: boolean;
+    shouldApplyCountdownRetry: boolean;
+  },
 ): void {
+  const isDefaultSplashPreset =
+    ruleSettings.groupName === DEFAULT_RULE_SETTINGS.groupName &&
+    ruleSettings.resetMatch === DEFAULT_RULE_SETTINGS.resetMatch;
+
   if (ruleSettings.action) {
     actionPlan.action = ruleSettings.action;
   }
@@ -215,14 +262,40 @@ function applyExplicitActionSettings(
   if (ruleSettings.matchRoot !== null && ruleSettings.matchRoot !== undefined) {
     actionPlan.matchRoot = ruleSettings.matchRoot;
   }
+  if (ruleSettings.matchTime !== null && ruleSettings.matchTime !== undefined) {
+    const keepDynamicMatchTime =
+      context.hasDynamicFullscreenContext &&
+      isDefaultSplashPreset &&
+      ruleSettings.matchTime === DEFAULT_RULE_SETTINGS.matchTime;
+    if (!keepDynamicMatchTime) {
+      actionPlan.matchTime = ruleSettings.matchTime;
+    }
+  }
+  if (ruleSettings.actionMaximum !== null && ruleSettings.actionMaximum !== undefined) {
+    const keepCountdownMaximum =
+      context.shouldApplyCountdownRetry &&
+      isDefaultSplashPreset &&
+      ruleSettings.actionMaximum === DEFAULT_RULE_SETTINGS.actionMaximum;
+    if (!keepCountdownMaximum) {
+      actionPlan.actionMaximum = ruleSettings.actionMaximum;
+    }
+  }
+  if (ruleSettings.actionCd !== null && ruleSettings.actionCd !== undefined) {
+    actionPlan.actionCd = ruleSettings.actionCd;
+  }
 }
 
 export function applyActionPlanToRule(
   rule: RuleDraft,
   actionPlan: RuleActionPlan,
 ): RuleDraft {
+  const nextFastQuery =
+    actionPlan.fastQuery === false
+      ? undefined
+      : actionPlan.fastQuery ?? rule.fastQuery;
   return removeUndefined({
     ...rule,
+    fastQuery: nextFastQuery,
     activityIds: actionPlan.activityIds ?? rule.activityIds,
     action: actionPlan.action,
     actionDelay: actionPlan.actionDelay,
@@ -380,16 +453,7 @@ function hasSafeClickableAncestor(
   snapshot: ParsedGkdSnapshot,
   node: NormalizedSnapshotNode,
 ): boolean {
-  const screenArea = Math.max(1, snapshot.screenWidth * snapshot.screenHeight);
-  return ancestorsOf(snapshot, node)
-    .slice(0, 3)
-    .some((ancestor) => {
-      if (!ancestor.attr.clickable || !ancestor.attr.visibleToUser) return false;
-      if (nodeArea(ancestor.attr) / screenArea > 0.15) return false;
-      if (isDangerousActionNode(ancestor)) return false;
-      const res = `${ancestor.attr.id ?? ""} ${ancestor.attr.vid ?? ""}`.toLowerCase();
-      return /(skip|close|cancel)/.test(res);
-    });
+  return findSafeClickableAncestor(snapshot, node) !== null;
 }
 
 function isAncestorOf(
@@ -473,6 +537,20 @@ function isSmallNativeDismissControl(
     value.includes("close") ||
     value.includes("cancel")
   );
+}
+
+function isSmallDismissControlWithContext(
+  snapshot: ParsedGkdSnapshot,
+  node: NormalizedSnapshotNode,
+  relatedNodes: NormalizedSnapshotNode[],
+): boolean {
+  if (!node.attr.clickable) return false;
+  const screenArea = snapshot.screenWidth * snapshot.screenHeight;
+  const ratio = screenArea > 0 ? nodeArea(node.attr) / screenArea : 1;
+  if (ratio > 0.08) return false;
+  if (isDangerousActionNode(node)) return false;
+
+  return isGenericDismissAction(node, relatedNodes);
 }
 
 function isSplashActivity(activityId: string | null | undefined): boolean {

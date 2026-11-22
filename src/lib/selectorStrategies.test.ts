@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { pickNodeAtPoint } from "./nodePicker";
 import { normalizeSnapshot } from "./snapshotNormalize";
 import { generateSelectorCandidates } from "./selectorStrategies";
-import { diagnoseRuleRun } from "./actionPlan";
+import {
+  applyActionPlanToRule,
+  buildActionPlan,
+  diagnoseRuleRun,
+} from "./actionPlan";
+import { isDynamicActivityId } from "./countdownText";
+import { scoreCandidate } from "./riskScoring";
 import { createAppRuleDraft, stringifyRuleDraft } from "./ruleDraft";
 import { serializePlan } from "./selectorSerialize";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
@@ -460,7 +466,7 @@ describe("selector MVP flow", () => {
     expect(candidates[0].rule.matchRoot).toBeUndefined();
   });
 
-  it("generates a low-risk interstitial skip rule with rule-level activityIds", () => {
+  it("generates a low-risk interstitial skip rule without locking dynamic activityIds", () => {
     const snapshot = buildGuoguoInterstitialSnapshot();
 
     const pick = pickNodeAtPoint(snapshot, { x: 380, y: 625 });
@@ -486,20 +492,20 @@ describe("selector MVP flow", () => {
     expect(candidates[0].rule).toMatchObject({
       matches: ['[vid="tobid_interstitial_skip_ll"][visibleToUser=true]'],
       fastQuery: true,
-      activityIds: ["com.windmill.sdk.widget.InterstitialView_4012003"],
       matchTime: 30000,
       actionMaximum: 1,
       resetMatch: "app",
     });
+    // InterstitialView_4012003 属于动态 Activity 后缀，不应自动锁死进 activityIds
+    expect(candidates[0].rule.activityIds).toBeUndefined();
     expect(candidates[0].rule.action).toBeUndefined();
     expect(candidates[0].rule.forcedTime).toBeUndefined();
     expect(candidates[0].rule.matchRoot).toBeUndefined();
+    expect(candidates[0].risk.level).toBe("low");
 
     const draft = createAppRuleDraft(snapshot, candidates[0], candidates);
     expect(draft.groups[0].activityIds).toBeUndefined();
-    expect(draft.groups[0].rules[0].activityIds).toEqual([
-      "com.windmill.sdk.widget.InterstitialView_4012003",
-    ]);
+    expect(draft.groups[0].rules[0].activityIds).toBeUndefined();
   });
 
   it("excludes oversized skip nodes from textSkipGuarded via width/height guard", () => {
@@ -1006,6 +1012,196 @@ describe("selector MVP flow", () => {
     expect(structural?.rule.matches[0]).toContain("index=1");
     expect(structural?.validation.hitCount).toBe(1);
     expect(structural?.validation.clickNodes[0]?.id).toBe(2);
+  });
+
+  it("identifies multi-level anonymous classes and hex-suffixed dynamic activityIds without false positives", () => {
+    expect(isDynamicActivityId("com.windmill.sdk.widget.InterstitialView_4012003")).toBe(true);
+    expect(isDynamicActivityId("com.demo.Ad$1")).toBe(true);
+    expect(isDynamicActivityId("com.demo.Foo$1$2")).toBe(true);
+    expect(isDynamicActivityId("com.demo.AdActivity_a1b2c3d4")).toBe(true);
+    expect(isDynamicActivityId("com.demo.AdActivity_1a2b3c")).toBe(true);
+
+    expect(isDynamicActivityId("com.demo.MainActivity")).toBe(false);
+    expect(isDynamicActivityId("com.demo.SplashActivity")).toBe(false);
+    expect(isDynamicActivityId("com.demo.Foo$Inner")).toBe(false);
+    expect(isDynamicActivityId("com.demo.Coffee_Facade")).toBe(false);
+  });
+
+  it("removes fastQuery on WebView/ad layers, respects explicit settings, and avoids blind delay on native splash skip", () => {
+    // 1. WebView 倒计时场景：textSkipGuarded 原本带 fastQuery=true，但 WebView 上下文应移除 fastQuery
+    const webViewSnap = buildCloudNotesSplashSnapshot();
+    const webPick = pickNodeAtPoint(webViewSnap, { x: 1900, y: 140 });
+    const webCandidates = generateSelectorCandidates({
+      snapshot: webViewSnap,
+      ruleSettings: {
+        ...DEFAULT_RULE_SETTINGS,
+        activityIds: webViewSnap.activityId ?? "",
+      },
+      pickedNode: webPick!.pickedNode,
+      ancestors: webPick!.ancestors,
+      siblings: webPick!.siblings,
+      clickableAncestor: webPick!.clickableAncestor,
+      nearbyTextNodes: webPick!.nearbyTextNodes,
+    });
+    const webTextSkip = webCandidates.find((c) => c.strategyName === "textSkipGuarded");
+    expect(webTextSkip).toBeDefined();
+    expect(webTextSkip?.rule.fastQuery).toBeUndefined();
+
+    // 2. 用户显式配置 matchTime / actionMaximum / actionCd 时必须被尊重
+    const explicitPlan = buildActionPlan({
+      snapshot: webViewSnap,
+      pickedNode: webPick!.pickedNode,
+      plan: webCandidates[0].plan,
+      validation: webCandidates[0].validation,
+      strategyName: webCandidates[0].strategyName,
+      ruleSettings: {
+        ...DEFAULT_RULE_SETTINGS,
+        matchTime: 18000,
+        actionMaximum: 5,
+        actionCd: 2500,
+      },
+    });
+    expect(explicitPlan).toMatchObject({
+      matchTime: 18000,
+      actionMaximum: 5,
+      actionCd: 2500,
+    });
+    const appliedRule = applyActionPlanToRule(
+      { key: 0, matches: ['[text^="跳过"]'], fastQuery: true },
+      explicitPlan,
+    );
+    expect(appliedRule.fastQuery).toBeUndefined();
+
+    // 3. 普通非 WebView 可点击开屏跳过按钮含倒计时，不应盲目强加 2500~3500ms 延迟
+    const nativeSplashSnap = buildSnapshot(
+      [
+        node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 1 })),
+        node(
+          1,
+          0,
+          attr({
+            name: "android.widget.Button",
+            text: "跳过 3s",
+            clickable: true,
+            left: 840,
+            top: 80,
+            right: 1020,
+            bottom: 150,
+            width: 180,
+            height: 70,
+          }),
+        ),
+      ],
+      { activityId: "com.demo.SplashActivity" },
+    );
+    const nativePick = pickNodeAtPoint(nativeSplashSnap, { x: 920, y: 115 });
+    const nativeCandidates = generateSelectorCandidates({
+      snapshot: nativeSplashSnap,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      pickedNode: nativePick!.pickedNode,
+      ancestors: nativePick!.ancestors,
+      siblings: nativePick!.siblings,
+      clickableAncestor: nativePick!.clickableAncestor,
+      nearbyTextNodes: nativePick!.nearbyTextNodes,
+    });
+    expect(nativeCandidates[0].actionPlan.actionDelay).toBeUndefined();
+  });
+
+  it("penalizes dynamic activityIds, inspects all multi-hit clickNodes, and catches countdown digits in startsWith/contains", () => {
+    const snap = buildSnapshot([
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 2 })),
+      node(
+        1,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "跳过",
+          clickable: true,
+          left: 860,
+          top: 60,
+          right: 1020,
+          bottom: 130,
+          width: 160,
+          height: 70,
+          index: 0,
+        }),
+      ),
+      node(
+        2,
+        0,
+        attr({
+          name: "android.widget.Button",
+          text: "立即下载",
+          clickable: true,
+          left: 200,
+          top: 1600,
+          right: 880,
+          bottom: 1720,
+          width: 680,
+          height: 120,
+          index: 1,
+        }),
+      ),
+    ]);
+
+    const safeNode = snap.nodeById.get(1)!;
+    const dangerNode = snap.nodeById.get(2)!;
+
+    // 1. 动态 activityIds 扣 -15 而非 +12
+    const dynamicActScore = scoreCandidate({
+      baseScore: 90,
+      snapshot: snap,
+      plan: { kind: "simple", selector: { conditions: [{ attr: "text", op: "eq", value: "跳过" }] } },
+      rule: { key: 0, matches: ['[text="跳过"]'], activityIds: "com.demo.Foo$1$2" },
+      validation: { hitCount: 1, clickNodes: [safeNode], supportNodes: [], status: "satisfied" },
+    });
+    expect(dynamicActScore.items).toContainEqual(
+      expect.objectContaining({ label: "动态 activityIds", value: -15 }),
+    );
+
+    // 2. 多命中（hitCount > 1）时遍历所有 clickNodes，第二个节点是危险 CTA 也要扣 -90
+    const multiHitScore = scoreCandidate({
+      baseScore: 90,
+      snapshot: snap,
+      plan: { kind: "simple", selector: { conditions: [{ attr: "clickable", op: "eq", value: true }] } },
+      rule: { key: 0, matches: ["[clickable=true]"], activityIds: "com.demo.MainActivity" },
+      validation: {
+        hitCount: 2,
+        clickNodes: [safeNode, dangerNode],
+        supportNodes: [],
+        status: "satisfied",
+      },
+    });
+    expect(multiHitScore.items).toContainEqual(
+      expect.objectContaining({ label: "危险 CTA", value: -90 }),
+    );
+
+    // 3. startsWith / contains 含具体秒数数字（如 [text^="跳过 3"]）触发动态倒计时扣分；[text^="跳过"] 不误杀
+    const startsWithDigit = scoreCandidate({
+      baseScore: 80,
+      snapshot: snap,
+      plan: {
+        kind: "simple",
+        selector: { conditions: [{ attr: "text", op: "startsWith", value: "跳过 3" }] },
+      },
+      rule: { key: 0, matches: ['[text^="跳过 3"]'], activityIds: "com.demo.MainActivity" },
+      validation: { hitCount: 1, clickNodes: [safeNode], supportNodes: [], status: "satisfied" },
+    });
+    expect(startsWithDigit.items).toContainEqual(
+      expect.objectContaining({ label: "动态倒计时", value: -45 }),
+    );
+
+    const startsWithClean = scoreCandidate({
+      baseScore: 80,
+      snapshot: snap,
+      plan: {
+        kind: "simple",
+        selector: { conditions: [{ attr: "text", op: "startsWith", value: "跳过" }] },
+      },
+      rule: { key: 0, matches: ['[text^="跳过"]'], activityIds: "com.demo.MainActivity" },
+      validation: { hitCount: 1, clickNodes: [safeNode], supportNodes: [], status: "satisfied" },
+    });
+    expect(startsWithClean.items.some((item) => item.label === "动态倒计时")).toBe(false);
   });
 });
 

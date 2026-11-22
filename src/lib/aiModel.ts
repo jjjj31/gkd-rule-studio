@@ -234,8 +234,10 @@ const DEFAULT_CONFIG: AiModelConfig = {
 
 const MIN_GENERATION_TIMEOUT_MS = 120000;
 const AI_MAX_TOKENS = 8192;
-const MAX_COMPACT_TREE_LINES = 40;
-const MAX_COMPACT_PROMPT_CHARS = 9000;
+const MAX_COMPACT_TREE_LINES = 65;
+const MAX_COMPACT_FLOW_STEP_TREE_LINES = 35;
+const MAX_COMPACT_PROMPT_CHARS = 18000;
+const MIN_COMPACT_TREE_BUDGET_CHARS = 2800;
 
 export function loadAiConfig(): AiModelConfig {
   const store = loadAiProfileStore();
@@ -552,6 +554,8 @@ export function buildAiAutoRepairMessages({
     "",
     "原始快照上下文参考：",
     compactPromptForAi(originalPrompt),
+    "",
+    "重要：只返回一个单一 JSON5 对象，将修正后的所有候选放入同一个 candidates 数组：{ candidates: [...] }。不要返回 Markdown 解释或测试反馈格式。",
   ]
     .filter((line) => line !== "")
     .join("\n");
@@ -615,7 +619,7 @@ export function buildAiFeedbackMessages({
     "用户补充说明：",
     note.trim() || "-",
     "",
-    "重要：修正后的所有候选必须放在同一个 JSON5 代码块中，作为一个 candidates 数组统一输出。格式：{ candidates: [...] }。",
+    "重要：只返回一个单一 JSON5 对象，将修正后的所有候选放入同一个 candidates 数组：{ candidates: [...] }。不要返回 Markdown 解释或测试反馈格式。",
   ]
     .filter((line) => line !== "")
     .join("\n");
@@ -646,7 +650,7 @@ export function buildAiBatchFeedbackMessages({
     "原始上下文：",
     compactPromptForAi(originalPrompt),
     "",
-    "重要：修正后的所有候选必须放在同一个 JSON5 代码块中，作为一个 candidates 数组统一输出。格式：{ candidates: [...] }。",
+    "重要：只返回一个单一 JSON5 对象，将修正后的所有候选放入同一个 candidates 数组：{ candidates: [...] }。不要返回 Markdown 解释或测试反馈格式。",
     "",
     "批量测试反馈：",
     JSON5.stringify(
@@ -680,10 +684,14 @@ export function buildAiBatchFeedbackMessages({
 }
 
 export function compactPromptForAi(prompt: string): string {
+  if (isFlowHelpPrompt(prompt)) {
+    return compactFlowPromptForAi(prompt);
+  }
+
   const [rawBeforeTree, treeExcerpt, afterTree] = splitPromptTreeExcerpt(prompt);
   // 内置 AI 的 system 消息已包含完整 AI_RULE_OUTPUT_CONTRACT 与 AI_RULE_OUTPUT_EXAMPLE，
-  // 去掉 user 消息中的重复契约块可腾出近两千字符给目标节点树，防止尾部被截断。
-  const strippedBeforeTree = stripRedundantContractSection(rawBeforeTree);
+  // 去掉 user 消息中的重复契约块与外部专用测试反馈格式，腾出空间给目标节点树。
+  const strippedBeforeTree = stripRedundantExternalSections(rawBeforeTree);
   const compactLines = compactPromptLines(strippedBeforeTree);
   if (treeExcerpt.length === 0) {
     if (afterTree.length > 0) {
@@ -692,28 +700,402 @@ export function compactPromptForAi(prompt: string): string {
     return limitCompactPromptChars(compactLines.join("\n").trim());
   }
 
-  const keptTreeLines = treeExcerpt.slice(0, MAX_COMPACT_TREE_LINES);
-  const omittedLines = treeExcerpt.length - keptTreeLines.length;
-  const headerText = compactLines.join("\n").trim();
+  const pickedNodeToken = extractPickedNodeToken(rawBeforeTree);
+  const keptTreeLines = selectTreeWindowLines(
+    treeExcerpt,
+    MAX_COMPACT_TREE_LINES,
+    pickedNodeToken,
+  );
+  const omittedByLineLimit = treeExcerpt.length - keptTreeLines.length;
+  let headerText = compactLines.join("\n").trim();
   const tailText = afterTree.length > 0 ? `\n\n${afterTree.join("\n")}` : "";
   const treeHeader = `\n\n节点树摘要（目标相关节选，最多 ${MAX_COMPACT_TREE_LINES} 行，用于判断父子层、遮罩层和真实按钮层）：\n`;
 
-  const availableForTree =
-    MAX_COMPACT_PROMPT_CHARS - headerText.length - treeHeader.length - tailText.length - 80;
-  const pickedIdMatch = /"id":\s*(\d+)/.exec(rawBeforeTree);
-  const pickedNodeToken = pickedIdMatch?.[1] ? `#${pickedIdMatch[1]} ` : null;
+  const omittedNoteReserve = 48;
+  const desiredTreeChars = Math.min(
+    MIN_COMPACT_TREE_BUDGET_CHARS,
+    keptTreeLines.reduce((sum, line) => sum + line.length + 1, 0),
+  );
+  let availableForTree =
+    MAX_COMPACT_PROMPT_CHARS - headerText.length - treeHeader.length - tailText.length - omittedNoteReserve;
+
+  if (availableForTree < desiredTreeChars) {
+    headerText = compressRedundantHeaderSections(
+      headerText,
+      desiredTreeChars - availableForTree,
+    );
+    availableForTree =
+      MAX_COMPACT_PROMPT_CHARS - headerText.length - treeHeader.length - tailText.length - omittedNoteReserve;
+  }
+
+  if (availableForTree < Math.min(1200, desiredTreeChars)) {
+    const minTreeNeed = Math.min(1800, desiredTreeChars);
+    const maxHeaderChars = Math.max(
+      400,
+      MAX_COMPACT_PROMPT_CHARS - treeHeader.length - tailText.length - minTreeNeed - omittedNoteReserve,
+    );
+    headerText = trimHeaderPreservingCriticalFacts(headerText, maxHeaderChars);
+    availableForTree =
+      MAX_COMPACT_PROMPT_CHARS - headerText.length - treeHeader.length - tailText.length - omittedNoteReserve;
+  }
+
   const fittedTreeLines = fitTreeLinesWithinBudget(
     keptTreeLines,
-    availableForTree,
+    Math.max(0, availableForTree),
     pickedNodeToken,
   );
 
-  const totalOmitted = omittedLines + (keptTreeLines.length - fittedTreeLines.length);
+  const totalOmitted = omittedByLineLimit + (keptTreeLines.length - fittedTreeLines.length);
   const omittedNote =
     totalOmitted > 0 ? `\n... 已省略 ${totalOmitted} 行节点树摘要` : "";
 
   const assembled = `${headerText}${treeHeader}${fittedTreeLines.join("\n")}${omittedNote}${tailText}`.trim();
   return limitCompactPromptChars(assembled);
+}
+
+function isFlowHelpPrompt(prompt: string): boolean {
+  return (
+    prompt.includes("- 当前步骤节点树摘要：") ||
+    /\n步骤\s+\d+：/.test(prompt)
+  );
+}
+
+function compactFlowPromptForAi(prompt: string): string {
+  const cleaned = stripRedundantExternalSections(prompt);
+  const segments = cleaned.split(/(?=\n步骤\s+\d+：)/);
+  if (segments.length <= 1) {
+    return limitCompactPromptChars(compactPromptLines(cleaned).join("\n").trim());
+  }
+
+  let preamble = compactPromptLines(segments[0] ?? "").join("\n").trim();
+  const parsedSteps = segments.slice(1).map((segment) => {
+    const marker = "\n- 当前步骤节点树摘要：";
+    const markerIdx = segment.indexOf(marker);
+    if (markerIdx < 0) {
+      return {
+        header: compactPromptLines(segment).join("\n").trim(),
+        treeLines: [] as string[],
+        pickedToken: extractPickedNodeToken(segment),
+      };
+    }
+    const header = compactPromptLines(segment.slice(0, markerIdx)).join("\n").trim();
+    const rawTree = segment.slice(markerIdx + marker.length);
+    const treeLines = rawTree
+      .split(/\r?\n/)
+      .map((line) => line.trimEnd())
+      .filter((line) => line.trim().length > 0);
+    return {
+      header,
+      treeLines,
+      pickedToken: extractPickedNodeToken(header),
+    };
+  });
+
+  const stepsWithTreesCount = parsedSteps.filter((s) => s.treeLines.length > 0).length;
+  const separatorOverhead = (parsedSteps.length + (preamble ? 1 : 0)) * 2;
+  const treeWrapperOverhead = stepsWithTreesCount * 64;
+  const fixedOverhead = separatorOverhead + treeWrapperOverhead + 32;
+
+  const computeAvailableForTrees = () => {
+    const headersLen = parsedSteps.reduce((sum, s) => sum + s.header.length, 0);
+    return MAX_COMPACT_PROMPT_CHARS - preamble.length - headersLen - fixedOverhead;
+  };
+
+  const comfortablePerStepTree = 360;
+  const minimumPerStepTree = 200;
+
+  if (
+    stepsWithTreesCount > 0 &&
+    computeAvailableForTrees() < stepsWithTreesCount * comfortablePerStepTree
+  ) {
+    preamble = compactFlowPreamble(preamble);
+  }
+
+  if (
+    stepsWithTreesCount > 0 &&
+    computeAvailableForTrees() < stepsWithTreesCount * comfortablePerStepTree
+  ) {
+    for (const step of parsedSteps) {
+      step.header = compactFlowStepHeader(step.header, false);
+    }
+  }
+
+  if (
+    stepsWithTreesCount > 0 &&
+    computeAvailableForTrees() < stepsWithTreesCount * minimumPerStepTree
+  ) {
+    for (const step of parsedSteps) {
+      step.header = compactFlowStepHeader(step.header, true);
+    }
+  }
+
+  const minTotalTreeReserve = stepsWithTreesCount * 150;
+  const maxHeaderAndPreambleBudget =
+    MAX_COMPACT_PROMPT_CHARS - fixedOverhead - minTotalTreeReserve;
+  const currentTextLen =
+    preamble.length + parsedSteps.reduce((sum, s) => sum + s.header.length, 0);
+  if (maxHeaderAndPreambleBudget > 0 && currentTextLen > maxHeaderAndPreambleBudget) {
+    const maxPreamble = Math.min(
+      preamble.length,
+      Math.max(120, Math.floor(maxHeaderAndPreambleBudget * 0.12)),
+    );
+    if (preamble.length > maxPreamble) {
+      preamble = `${preamble.slice(0, Math.max(60, maxPreamble - 12)).trimEnd()}\n...`;
+    }
+    const remainingForHeaders = Math.max(
+      parsedSteps.length * 80,
+      maxHeaderAndPreambleBudget - preamble.length,
+    );
+    const totalStepHeaderChars = parsedSteps.reduce((sum, s) => sum + s.header.length, 0);
+    if (totalStepHeaderChars > remainingForHeaders) {
+      const perStepCap = Math.max(
+        80,
+        Math.floor(remainingForHeaders / Math.max(1, parsedSteps.length)),
+      );
+      for (const step of parsedSteps) {
+        if (step.header.length > perStepCap) {
+          step.header = capFlowStepHeaderPreservingTarget(step.header, perStepCap);
+        }
+      }
+    }
+  }
+
+  const availableForTrees = Math.max(0, computeAvailableForTrees());
+  const windowedSteps = parsedSteps.map((step) =>
+    step.treeLines.length > 0
+      ? selectTreeWindowLines(
+          step.treeLines,
+          MAX_COMPACT_FLOW_STEP_TREE_LINES,
+          step.pickedToken,
+        )
+      : [],
+  );
+
+  const perStepBudgets = allocateProportionalBudgets(
+    windowedSteps.map((lines) => (lines.length > 0 ? lines.join("\n").length : 0)),
+    availableForTrees,
+  );
+
+  const compactedSteps = parsedSteps.map((step, index) => {
+    const windowed = windowedSteps[index] ?? [];
+    const budget = perStepBudgets[index] ?? 0;
+    if (step.treeLines.length === 0) return step.header;
+    if (budget <= 0) {
+      return [
+        step.header,
+        `  ... 已按预算省略本步 ${step.treeLines.length} 行节点树摘要`,
+      ].join("\n");
+    }
+    const fitted = fitTreeLinesWithinBudget(windowed, budget, step.pickedToken);
+    const omitted = step.treeLines.length - fitted.length;
+    const lines = [
+      step.header,
+      "- 当前步骤节点树摘要：",
+      ...fitted,
+      ...(omitted > 0 ? [`  ... 已省略 ${omitted} 行本步节点树摘要`] : []),
+    ];
+    return lines.join("\n");
+  });
+
+  const assembled = [preamble, ...compactedSteps].filter(Boolean).join("\n\n").trim();
+  return limitCompactPromptChars(assembled);
+}
+
+function compactFlowPreamble(preamble: string): string {
+  const flowInfoIdx = preamble.indexOf("流程信息：");
+  if (flowInfoIdx > 0) {
+    const firstLine = preamble.split("\n")[0]?.trim() ?? "";
+    const flowInfo = preamble.slice(flowInfoIdx).trim();
+    return [firstLine, "（规则与格式细则见 system 指令）", "", flowInfo]
+      .filter((line, i) => i === 2 || Boolean(line))
+      .join("\n");
+  }
+  return preamble;
+}
+
+function compactFlowStepHeader(header: string, aggressive: boolean): string {
+  const lines = header.split("\n");
+  const out: string[] = [];
+  let skipIndentedSection = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!;
+    if (i === 0) {
+      out.push(line);
+      continue;
+    }
+    if (skipIndentedSection) {
+      if (/^\s{2,}/.test(line)) {
+        continue;
+      }
+      skipIndentedSection = false;
+    }
+    if (/^- 场景参数：/.test(line)) {
+      skipIndentedSection = true;
+      continue;
+    }
+    if (/^- (?:sourceName|appName):/.test(line)) {
+      continue;
+    }
+    if (/^- (?:note|delayNote):/.test(line) && line.length > 140) {
+      out.push(`${line.slice(0, 137)}...`);
+      continue;
+    }
+    if (aggressive && /^- 本步真实 (?:vid|id) 白名单:/.test(line) && line.length > 160) {
+      out.push(`${line.slice(0, 157)}...`);
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
+function capFlowStepHeaderPreservingTarget(header: string, maxChars: number): string {
+  if (header.length <= maxChars) return header;
+  const lines = header.split("\n");
+  const titleLine = lines[0] ?? "";
+  const targetIdx = lines.findIndex((line) => /用户点击的?目标节点/.test(line));
+  const criticalLines: string[] = [titleLine];
+  if (targetIdx > 0) {
+    criticalLines.push(lines[targetIdx]!);
+    if (lines[targetIdx + 1] !== undefined) {
+      criticalLines.push(lines[targetIdx + 1]!);
+    }
+  }
+  const criticalText = criticalLines.join("\n");
+  if (criticalText.length <= maxChars) {
+    return criticalText;
+  }
+  return `${criticalText.slice(0, Math.max(40, maxChars - 3)).trimEnd()}...`;
+}
+
+function allocateProportionalBudgets(needs: number[], totalBudget: number): number[] {
+  const budgets = needs.map(() => 0);
+  let remaining = Math.max(0, totalBudget);
+  const active = new Set<number>();
+  needs.forEach((need, index) => {
+    if (need > 0) active.add(index);
+  });
+  while (active.size > 0 && remaining > 0) {
+    const share = Math.floor(remaining / active.size);
+    if (share <= 0) {
+      for (const index of active) {
+        if (remaining <= 0) break;
+        if (budgets[index]! < needs[index]!) {
+          budgets[index]! += 1;
+          remaining -= 1;
+        }
+      }
+      break;
+    }
+    let satisfiedAny = false;
+    for (const index of [...active]) {
+      const deficit = needs[index]! - budgets[index]!;
+      if (deficit <= share) {
+        budgets[index]! += deficit;
+        remaining -= deficit;
+        active.delete(index);
+        satisfiedAny = true;
+      }
+    }
+    if (!satisfiedAny) {
+      for (const index of active) {
+        budgets[index]! += share;
+        remaining -= share;
+      }
+      break;
+    }
+  }
+  return budgets;
+}
+
+function extractPickedNodeToken(text: string): string | null {
+  const headingMatch = /用户点击的?目标节点/.exec(text);
+  const searchArea = headingMatch ? text.slice(headingMatch.index) : text;
+  const pickedIdMatch = /(?:"id"|'id'|\bid)\s*:\s*(\d+)/.exec(searchArea);
+  return pickedIdMatch?.[1] ? `#${pickedIdMatch[1]} ` : null;
+}
+
+function selectTreeWindowLines(
+  lines: string[],
+  maxLines: number,
+  pickedNodeToken: string | null,
+): string[] {
+  if (lines.length <= maxLines) return lines;
+  const pickedIndex = pickedNodeToken
+    ? lines.findIndex((line) => line.trimStart().startsWith(pickedNodeToken))
+    : -1;
+  if (pickedIndex < 0 || pickedIndex < maxLines) {
+    return lines.slice(0, maxLines);
+  }
+  const half = Math.floor(maxLines / 2);
+  let start = Math.max(0, pickedIndex - half);
+  let end = start + maxLines;
+  if (end > lines.length) {
+    end = lines.length;
+    start = Math.max(0, end - maxLines);
+  }
+  return lines.slice(start, end);
+}
+
+function compressRedundantHeaderSections(headerText: string, neededSavings: number): string {
+  let result = headerText;
+  let saved = 0;
+
+  const trimListSection = (title: string, maxItems: number) => {
+    if (saved >= neededSavings) return;
+    const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escaped}\\n)([\\s\\S]*?)(?=\\n\\n|$)`);
+    result = result.replace(regex, (full, heading: string, body: string) => {
+      const items = body.split("\n").filter((l) => l.trim().length > 0);
+      if (items.length <= maxItems) return full;
+      const replacement = `${heading}${items.slice(0, maxItems).join("\n")}\n... 已精简 ${items.length - maxItems} 条`;
+      saved += Math.max(0, full.length - replacement.length);
+      return replacement;
+    });
+  };
+
+  trimListSection("附近文本/描述节点：", 4);
+  trimListSection("同级节点：", 4);
+  trimListSection("祖先链（从近到远）：", 5);
+
+  if (saved < neededSavings) {
+    const before = result.length;
+    result = result.replace(
+      /\n相似历史案例[\s\S]*?(?=\n(?:应用信息：|用户点击的?目标节点：|同屏业务文案锚点参考|$))/,
+      "\n（相似历史案例已按预算省略）\n",
+    );
+    saved += Math.max(0, before - result.length);
+  }
+
+  if (saved < neededSavings) {
+    const before = result.length;
+    result = result.replace(
+      /\n高频错误对照[\s\S]*?(?=\n输出格式|\n应用信息：|$)/,
+      "\n",
+    );
+    saved += Math.max(0, before - result.length);
+  }
+
+  return result;
+}
+
+function trimHeaderPreservingCriticalFacts(headerText: string, maxChars: number): string {
+  if (headerText.length <= maxChars) return headerText;
+  const criticalStart = headerText.indexOf("应用信息：");
+  if (criticalStart >= 0) {
+    const criticalTail = headerText.slice(criticalStart);
+    if (criticalStart > 0 && criticalTail.length < maxChars - 120) {
+      const prefixBudget = maxChars - criticalTail.length - 60;
+      return `${headerText.slice(0, Math.max(0, prefixBudget)).trimEnd()}\n（部分通用说明已精简）\n\n${criticalTail}`;
+    }
+    // criticalTail 本身超限时，彻底舍弃泛用前文，优先保留 criticalTail 头部（应用信息 + 目标节点 + 可点击性警示 + 白名单）
+    if (criticalTail.length <= maxChars) {
+      return criticalTail;
+    }
+    return `${criticalTail.slice(0, Math.max(200, maxChars - 32)).trimEnd()}\n... 已精简后续非关键上下文`;
+  }
+  return `${headerText.slice(0, Math.max(200, maxChars - 40)).trimEnd()}\n... 已精简部分前文`;
 }
 
 function fitTreeLinesWithinBudget(
@@ -725,6 +1107,12 @@ function fitTreeLinesWithinBudget(
   const totalChars = lines.reduce((sum, line) => sum + line.length + 1, 0);
   if (totalChars <= budgetChars) return lines;
 
+  const capLine = (line: string, limit: number): string => {
+    if (line.length <= limit) return line;
+    if (limit <= 4) return line.slice(0, Math.max(0, limit));
+    return `${line.slice(0, limit - 3)}...`;
+  };
+
   const pickedIndex = pickedNodeToken
     ? lines.findIndex((line) => line.trimStart().startsWith(pickedNodeToken))
     : -1;
@@ -732,9 +1120,15 @@ function fitTreeLinesWithinBudget(
     const out: string[] = [];
     let used = 0;
     for (const line of lines) {
-      if (out.length > 0 && used + line.length + 1 > budgetChars) break;
+      const nextLen = line.length + (out.length > 0 ? 1 : 0);
+      if (used + nextLen > budgetChars) {
+        if (out.length === 0) {
+          out.push(capLine(line, budgetChars));
+        }
+        break;
+      }
       out.push(line);
-      used += line.length + 1;
+      used += nextLen;
     }
     return out;
   }
@@ -742,7 +1136,8 @@ function fitTreeLinesWithinBudget(
   // 从 pickedNode 所在行向前后扩展，确保目标节点及父兄节点优先保留在预算内
   let start = pickedIndex;
   let end = pickedIndex;
-  let used = lines[pickedIndex]!.length + 1;
+  const pickedLine = capLine(lines[pickedIndex]!, budgetChars);
+  let used = pickedLine.length;
   while (start > 0 || end < lines.length - 1) {
     let expanded = false;
     if (start > 0) {
@@ -763,18 +1158,35 @@ function fitTreeLinesWithinBudget(
     }
     if (!expanded) break;
   }
-  return lines.slice(start, end + 1);
+  const result = lines.slice(start, end + 1);
+  result[pickedIndex - start] = pickedLine;
+  return result;
 }
 
-function stripRedundantContractSection(beforeTree: string): string {
-  return beforeTree.replace(
-    /\n字段类型硬约束[\s\S]*?(?=\n应用信息：)/,
-    "\n（字段类型硬约束与 JSON5 示例已在 system 指令中给出，此处省略重复文本）\n",
-  );
+function stripRedundantExternalSections(beforeTree: string): string {
+  return beforeTree
+    .replace(
+      /\n字段类型硬约束[\s\S]*?(?=\n应用信息：)/,
+      "\n（字段类型硬约束与 JSON5 示例已在 system 指令中给出，此处省略重复文本）\n",
+    )
+    .replace(/\n\d+\.\s*代码块之后附上“测试反馈格式”[^\n]*/g, "");
 }
 
 function limitCompactPromptChars(prompt: string): string {
   if (prompt.length <= MAX_COMPACT_PROMPT_CHARS) return prompt;
+  const selfCheckIdx = prompt.lastIndexOf("\n输出前自检");
+  if (selfCheckIdx > 0) {
+    const tail = prompt.slice(selfCheckIdx);
+    const keepHead = MAX_COMPACT_PROMPT_CHARS - tail.length - 80;
+    if (keepHead > 400) {
+      return [
+        prompt.slice(0, keepHead).trimEnd(),
+        "",
+        `... 已按内置 AI 请求限制省略 ${prompt.length - keepHead - tail.length} 个字符`,
+        tail.trimStart(),
+      ].join("\n");
+    }
+  }
   return [
     prompt.slice(0, MAX_COMPACT_PROMPT_CHARS - 80).trimEnd(),
     "",
@@ -1055,26 +1467,41 @@ function hasImageContent(content: AiChatMessageContent): boolean {
 
 /**
  * 外部 AI 精简反馈文本：粘回同一个对话时用。
- * 不重发原始 prompt、不重发规则 JSON——上文里都有了，只给测试结论。
+ * 不重发原始 prompt 或完整规则 JSON，仅附每版关键选择器摘要与结构化测试诊断。
  */
 export function buildExternalFeedbackPrompt(
   feedbacks: AiCandidateFeedback[],
   flowMode: boolean,
 ): string {
   const lines = feedbacks.map((feedback) => {
-    const note = feedback.note.trim();
     const description = classifyAuthoringFeedback(feedback);
     const label = feedback.result === "flow-note" ? "流程备注" : description.label;
-    const details = formatAuthoringFeedbackPrompt({
-      description,
-      staticValidation: feedback.staticValidation,
-    });
+    const selectors = feedback.candidate.app.groups.flatMap((group) =>
+      group.rules.flatMap((rule) => [
+        ...(rule.matches ?? []),
+        ...(rule.anyMatches ?? []),
+      ]),
+    );
+    const selectorSummary =
+      selectors.length > 0 ? selectors.slice(0, 4).join(" && ") : "-";
+    const structured = {
+      result: description.category,
+      label: description.label,
+      evidence: description.evidence,
+      confidence: description.confidence,
+      userNote: description.note || null,
+      snapshotId: description.snapshotId ?? null,
+      appId: description.appId ?? null,
+      staticValidation: feedback.staticValidation ?? null,
+      reasons: description.reasons,
+      knownLimitations: description.knownLimitations,
+      repairHint: description.repairHint,
+    };
     return [
-      `- ${feedback.candidate.title}：${label}。修复建议：${description.repairHint}`,
-      note && note !== description.note ? `补充：${note}` : "",
-      JSON5.stringify(feedback.candidate, null, 2),
-      details,
-    ].filter(Boolean).join("\n");
+      `- ${feedback.candidate.title}：${label}（选择器：${selectorSummary}）`,
+      "testing feedback (structured):",
+      JSON.stringify(structured, null, 2),
+    ].join("\n");
   });
   return [
     flowMode
@@ -1082,24 +1509,25 @@ export function buildExternalFeedbackPrompt(
       : "以上各测试版的测试结果如下：",
     ...lines,
     "",
+    "证据规则：user-observation 只代表用户观察而非已确认根因；静态验证结果单独列出；修正版必须重新验证测试。",
     "请基于本对话上面已经给出的测试版规则修正，只返回修正后的 JSON5 代码块，所有修正版必须放在唯一一个 ```json5 代码块中，作为一个 candidates 数组统一输出。格式：{ candidates: [...] }。不要复述节点树或原始 prompt。",
   ].join("\n");
 }
 
 export function parseAiCandidates(source: string): AiRuleCandidate[] {
-  const candidates = extractJsonLikeTexts(source).flatMap((text) => {
-    try {
-      return normalizeAiCandidatePayload(JSON5.parse(text) as unknown);
-    } catch {
-      return [];
-    }
-  });
+  const fencedSnippets = extractFencedSnippets(source);
+  let candidates = parseFencedSnippets(fencedSnippets);
+
+  if (candidates.length === 0) {
+    const objectSnippets = extractBalancedObjects(source);
+    candidates = parseCandidateSnippets(objectSnippets);
+  }
 
   if (candidates.length === 0) {
     const raw = extractJsonLikeText(source);
     const repaired = tryRepairJson5(raw);
     const parsed = JSON5.parse(repaired) as unknown;
-    return normalizeAiCandidatePayload(parsed, true);
+    candidates = normalizeAiCandidatePayload(parsed, true);
   }
 
   const seenIds = new Set<string>();
@@ -1114,6 +1542,44 @@ export function parseAiCandidates(source: string): AiRuleCandidate[] {
         ? `测试版 ${candidateLabel(index)}`
         : candidate.title,
     };
+  });
+}
+
+function cleanCodeSnippet(snippet: string): string {
+  return snippet
+    .trim()
+    .replace(
+      /^((?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*)(?:export\s+default|module\.exports\s*=)\s+/i,
+      "$1",
+    )
+    .replace(/;+\s*$/, "")
+    .trim();
+}
+
+function parseFencedSnippets(snippets: string[]): AiRuleCandidate[] {
+  const out: AiRuleCandidate[] = [];
+  for (const snippet of uniqueStrings(snippets)) {
+    const cleaned = cleanCodeSnippet(snippet);
+    const direct = parseCandidateSnippets([tryRepairJson5(cleaned)]);
+    if (direct.length > 0) {
+      out.push(...direct);
+      continue;
+    }
+    const balanced = extractBalancedObjects(cleaned);
+    if (balanced.length > 0) {
+      out.push(...parseCandidateSnippets(balanced));
+    }
+  }
+  return out;
+}
+
+function parseCandidateSnippets(snippets: string[]): AiRuleCandidate[] {
+  return uniqueStrings(snippets).flatMap((text) => {
+    try {
+      return normalizeAiCandidatePayload(JSON5.parse(text) as unknown);
+    } catch {
+      return [];
+    }
   });
 }
 
@@ -1190,26 +1656,31 @@ function candidateLabel(index: number): string {
 
 function extractJsonLikeText(source: string): string {
   const fenced = /```(?:json5?|javascript|js)?\s*([\s\S]*?)```/i.exec(source);
-  if (fenced?.[1]) return fenced[1].trim();
+  if (fenced?.[1]) return cleanCodeSnippet(fenced[1]);
 
+  const firstArray = source.indexOf("[");
+  const lastArray = source.lastIndexOf("]");
   const firstObject = source.indexOf("{");
   const lastObject = source.lastIndexOf("}");
-  if (firstObject >= 0 && lastObject > firstObject) {
-    return source.slice(firstObject, lastObject + 1).trim();
+  if (
+    firstArray >= 0 &&
+    lastArray > firstArray &&
+    (firstObject < 0 || firstArray < firstObject)
+  ) {
+    return cleanCodeSnippet(source.slice(firstArray, lastArray + 1));
   }
-  return source.trim();
+  if (firstObject >= 0 && lastObject > firstObject) {
+    return cleanCodeSnippet(source.slice(firstObject, lastObject + 1));
+  }
+  return cleanCodeSnippet(source);
 }
 
-function extractJsonLikeTexts(source: string): string[] {
+function extractFencedSnippets(source: string): string[] {
   const snippets: string[] = [];
   const fencePattern = /```(?:json5?|javascript|js)?\s*([\s\S]*?)```/gi;
   for (const match of source.matchAll(fencePattern)) {
     if (match[1]?.trim()) snippets.push(match[1].trim());
   }
-
-  const objectSnippets = extractBalancedObjects(source);
-  snippets.push(...objectSnippets);
-
   return uniqueStrings(snippets);
 }
 
@@ -1233,16 +1704,39 @@ function extractBalancedObjects(source: string): string[] {
       continue;
     }
 
-    if (char === '"' || char === "'" || char === "`") {
-      quote = char;
-      continue;
+    if (depth > 0) {
+      // 跳过 JSON5 单行注释 // ...
+      if (char === "/" && source[index + 1] === "/") {
+        index += 2;
+        while (index < source.length && source[index] !== "\n") {
+          index += 1;
+        }
+        continue;
+      }
+      // 跳过 JSON5 块注释 /* ... */
+      if (char === "/" && source[index + 1] === "*") {
+        index += 2;
+        while (
+          index + 1 < source.length &&
+          !(source[index] === "*" && source[index + 1] === "/")
+        ) {
+          index += 1;
+        }
+        index += 1;
+        continue;
+      }
+      if (char === '"' || char === "'" || char === "`") {
+        quote = char;
+        continue;
+      }
     }
+
     if (char === "{") {
       if (depth === 0) start = index;
       depth += 1;
       continue;
     }
-    if (char !== "}") continue;
+    if (char !== "}" || depth === 0) continue;
 
     depth -= 1;
     if (depth === 0 && start >= 0) {
@@ -1297,7 +1791,10 @@ function isAppDraftLike(value: unknown): boolean {
         group.rules.some(
           (rule) =>
             isRecord(rule) &&
-            (typeof rule.matches === "string" || Array.isArray(rule.matches)),
+            (typeof rule.matches === "string" ||
+              Array.isArray(rule.matches) ||
+              typeof rule.anyMatches === "string" ||
+              Array.isArray(rule.anyMatches)),
         ),
     )
   );
@@ -1430,14 +1927,19 @@ function normalizeRuleDraft(value: unknown): RuleDraft {
     throw new Error("AI 返回 rule 缺少 matches");
   }
 
-  return {
+  const normalized: Record<string, unknown> = {
     ...value,
     key: typeof value.key === "number" ? value.key : 0,
-    matches,
     ...(anyMatches.length > 0 ? { anyMatches } : {}),
     ...(excludeMatches.length > 0 ? { excludeMatches } : {}),
     ...(excludeAllMatches.length > 0 ? { excludeAllMatches } : {}),
-  } as RuleDraft;
+  };
+  if (matches.length > 0) {
+    normalized.matches = matches;
+  } else {
+    delete normalized.matches;
+  }
+  return normalized as unknown as RuleDraft;
 }
 
 function normalizeRuleMatches(value: unknown, field: string): string[] {

@@ -25,6 +25,12 @@ import {
   upsertAiProfile,
 } from "./aiModel";
 import type { AppRuleDraft } from "../types/ruleDraft";
+import type { RawGkdSnapshot, SnapshotNode, SnapshotNodeAttr } from "../types/gkdSnapshot";
+import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
+import { buildFlowHelpPrompt } from "./flowDraft";
+import type { FlowRuleStep } from "../types/flowDraft";
+import { normalizeSnapshot } from "./snapshotNormalize";
+import { pickNodeAtPoint } from "./nodePicker";
 import { toCandidateFeedback, type FailureFeedbackDraft } from "../components/FailureFeedbackPanel";
 import {
   classifyAuthoringFeedback,
@@ -247,7 +253,7 @@ describe("ai model helpers", () => {
     );
   });
 
-  it("keeps official anyMatches rules that do not declare matches", () => {
+  it("keeps official anyMatches rules without injecting empty matches array", () => {
     const parsed = parseAiCandidates(JSON.stringify({
       candidates: [{
         id: "a",
@@ -266,10 +272,88 @@ describe("ai model helpers", () => {
       }],
     }));
 
-    expect(parsed[0].app.groups[0].rules[0]).toMatchObject({
-      matches: [],
-      anyMatches: ['[text="A"]'],
-    });
+    expect(parsed[0].app.groups[0].rules[0].matches).toBeUndefined();
+    expect(parsed[0].app.groups[0].rules[0].anyMatches).toEqual(['[text="A"]']);
+
+    // Bare anyMatches-only app draft without outer candidates wrapper
+    const bareParsed = parseAiCandidates(`\`\`\`json5
+      {
+        id: 'com.demo',
+        name: 'Demo',
+        groups: [{
+          key: 0,
+          name: '弹窗',
+          rules: [{ key: 0, anyMatches: ['[text="关闭"]', '[desc="关闭"]'] }],
+        }],
+      }
+    \`\`\``);
+    expect(bareParsed).toHaveLength(1);
+    expect(bareParsed[0].app.groups[0].rules[0].matches).toBeUndefined();
+    expect(bareParsed[0].app.groups[0].rules[0].anyMatches).toEqual([
+      '[text="关闭"]',
+      '[desc="关闭"]',
+    ]);
+  });
+
+  it("does not duplicate candidates when fenced json5 contains comments or trailing semicolon", () => {
+    const parsed = parseAiCandidates(`
+      \`\`\`json5
+      // 下面是生成的 3 个候选（don't duplicate!）
+      {
+        candidates: [
+          {
+            id: 'candidate-a',
+            title: '测试版 A',
+            summary: '保守',
+            risk: '低',
+            app: { id: 'com.demo', name: 'Demo', groups: [{ key: 0, name: 'g', rules: [{ key: 0, matches: ['[vid="a"]'] }] }] },
+          },
+          /* 块注释里带花括号 { 和撇号 ' 不应打断提取 */
+          {
+            id: 'candidate-b',
+            title: '测试版 B',
+            summary: '同框',
+            risk: '低',
+            app: { id: 'com.demo', name: 'Demo', groups: [{ key: 0, name: 'g', rules: [{ key: 0, matches: ['[vid="b"]'] }] }] },
+          },
+          {
+            id: 'candidate-c',
+            title: '测试版 C',
+            summary: '兜底',
+            risk: '中',
+            app: { id: 'com.demo', name: 'Demo', groups: [{ key: 0, name: 'g', rules: [{ key: 0, matches: ['[vid="c"]'] }] }] },
+          },
+        ],
+      };
+      \`\`\`
+    `);
+
+    expect(parsed).toHaveLength(3);
+    expect(parsed.map((c) => c.id)).toEqual([
+      "candidate-a",
+      "candidate-b",
+      "candidate-c",
+    ]);
+  });
+
+  it("skips JSON5 line/block comments and prose apostrophes when extracting unfenced objects", () => {
+    const parsed = parseAiCandidates(`
+      Here's the rule you'll want:
+      {
+        // don't break on apostrophe or { in single-line comment
+        /* block comment with } and ' shouldn't break either */
+        id: 'com.demo',
+        name: 'Demo',
+        groups: [{
+          key: 0,
+          name: 'g',
+          rules: [{ key: 0, matches: ['[text="跳过"]'] }],
+        }],
+      }
+    `);
+
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].app.groups[0].rules[0].matches).toEqual(['[text="跳过"]']);
   });
 
   it("rejects malformed exclusion fields instead of silently weakening the rule", () => {
@@ -676,10 +760,120 @@ describe("ai model helpers", () => {
     expect(compact).toContain("当前 JSON5 草稿");
     expect(compact).toContain("节点树摘要");
     expect(compact).toContain("#0 FrameLayout");
-    expect(compact).toContain("#39 View");
+    expect(compact).toContain("#64 View");
     expect(compact).toContain("已省略");
-    expect(compact).not.toContain("#41 View");
-    expect(compact.length).toBeLessThanOrEqual(9000);
+    expect(compact).not.toContain("#66 View");
+    expect(compact.length).toBeLessThanOrEqual(18000);
+  });
+
+  it("preserves all steps and per-step target subtrees when compacting flow prompts", () => {
+    const buildStepTree = (stepNum: number, pickedId: number) =>
+      Array.from(
+        { length: 70 },
+        (_, i) =>
+          `  #${i} View d=1 p=#0 idx=${i} 100x50 ${i === pickedId ? `text="步骤${stepNum}目标"` : `text="占位节点${stepNum}-${i}"`} bounds=[0,${i * 10},100,${i * 10 + 10}]`,
+      ).join("\n");
+
+    const flowPrompt = [
+      "你是 GKD 规则专家。请根据下面的多快照流程信息生成完整的多步骤 GKD 规则。",
+      "",
+      "流程信息：",
+      "- flowName: 三步跳过流程",
+      "- stepCount: 3",
+      "",
+      "步骤 1：点击入口",
+      "- appId: com.demo",
+      "- 用户点击目标节点：",
+      '{"id":55,"name":"TextView","text":"步骤1目标"}',
+      "- 当前步骤节点树摘要：",
+      buildStepTree(1, 55),
+      "",
+      "步骤 2：关闭弹窗",
+      "- appId: com.demo",
+      "- 用户点击目标节点：",
+      '{"id":60,"name":"TextView","text":"步骤2目标"}',
+      "- 当前步骤节点树摘要：",
+      buildStepTree(2, 60),
+      "",
+      "步骤 3：确认退出",
+      "- appId: com.demo",
+      "- 用户点击目标节点：",
+      '{"id":62,"name":"TextView","text":"步骤3目标"}',
+      "- 当前步骤节点树摘要：",
+      buildStepTree(3, 62),
+    ].join("\n");
+
+    const compact = compactPromptForAi(flowPrompt);
+
+    expect(compact).toContain("步骤 1：点击入口");
+    expect(compact).toContain("步骤 2：关闭弹窗");
+    expect(compact).toContain("步骤 3：确认退出");
+    expect(compact).toContain('#55 View');
+    expect(compact).toContain('#60 View');
+    expect(compact).toContain('#62 View');
+    expect(compact.length).toBeLessThanOrEqual(18000);
+  });
+
+  it("compresses redundant header lists instead of starving the node tree when header is very long", () => {
+    const longSiblings = Array.from(
+      { length: 40 },
+      (_, i) => `#${i + 100} TextView text="${"很长的兄弟节点冗余说明文本".repeat(12)}-${i}"`,
+    );
+    const longNearby = Array.from(
+      { length: 40 },
+      (_, i) => `#${i + 200} TextView text="${"很长的附近无关文案列表内容".repeat(12)}-${i}"`,
+    );
+    const prompt = [
+      "你是 GKD 规则专家。",
+      "",
+      "应用信息：",
+      "- appId: com.demo",
+      "",
+      "用户点击的目标节点：",
+      '{"id": 9, "name": "android.widget.TextView", "text": "跳过"}',
+      "",
+      "同屏属性冲突与全屏遮罩告警：",
+      "- ⚠️ 同屏属性冲突：[text=\"跳过\"] 另命中 1 个节点",
+      "",
+      "同级节点：",
+      ...longSiblings,
+      "",
+      "附近文本/描述节点：",
+      ...longNearby,
+      "",
+      "节点树摘要：",
+      "#0 FrameLayout d=0 p=#-1",
+      "  #9 TextView clickable d=1 p=#0 text=\"跳过\"",
+      "",
+      "输出前自检（在内部完成，不要输出自检过程）：",
+      "1. 检查全部规则。",
+    ].join("\n");
+
+    const compact = compactPromptForAi(prompt);
+
+    expect(compact).toContain("同屏属性冲突与全屏遮罩告警");
+    expect(compact).toContain("#9 TextView");
+    expect(compact).toContain("输出前自检");
+    expect(compact.length).toBeLessThanOrEqual(18000);
+  });
+
+  it("streams concise external feedback without dumping full candidate JSON twice", () => {
+    const app = appDraft();
+    const prompt = buildExternalFeedbackPrompt(
+      [
+        {
+          candidate: { id: "a", title: "测试版 A", summary: "s-only-once", risk: "r", app },
+          result: "not-triggered",
+          note: "没触发",
+        },
+      ],
+      false,
+    );
+
+    expect(prompt).toContain('[vid="skip"]');
+    expect(prompt).toContain("testing feedback (structured)");
+    expect(prompt).not.toContain("s-only-once");
+    expect(prompt.match(/testing feedback \(structured\)/g)?.length).toBe(1);
   });
 
   it("emits developer diagnostics for AI request sizing", async () => {
@@ -800,6 +994,211 @@ describe("tryRepairJson5", () => {
     expect(candidates).toHaveLength(1);
     expect(candidates[0].id).toBe("a");
     expect(candidates[0].app.id).toBe("com.app");
+  });
+
+  it("parseAiCandidates parses unfenced bare candidate array without markdown fences", () => {
+    const input = `
+      以下是 2 个候选：
+      [
+        {
+          id: 'candidate-a',
+          title: '测试版 A',
+          summary: '直接匹配 vid',
+          risk: '低',
+          app: {
+            id: 'com.demo',
+            name: 'Demo',
+            groups: [{ key: 0, name: 'g', rules: [{ key: 0, matches: ['[vid="skip_a"]'] }] }],
+          },
+        },
+        {
+          id: 'candidate-b',
+          title: '测试版 B',
+          summary: '匹配文本',
+          risk: '低',
+          app: {
+            id: 'com.demo',
+            name: 'Demo',
+            groups: [{ key: 0, name: 'g', rules: [{ key: 0, matches: ['[text="跳过"]'] }] }],
+          },
+        },
+      ]
+    `;
+    const candidates = parseAiCandidates(input);
+    expect(candidates).toHaveLength(2);
+    expect(candidates.map((c) => c.id)).toEqual(["candidate-a", "candidate-b"]);
+    expect(candidates[0].app.groups[0].rules[0].matches).toEqual(['[vid="skip_a"]']);
+    expect(candidates[1].app.groups[0].rules[0].matches).toEqual(['[text="跳过"]']);
+  });
+
+  it("parseAiCandidates isolates fenced export default JSON5 from unclosed brace in preceding prose", () => {
+    const input = `
+      提示：遇到类似 { text="跳过" 这种未闭合花括号说明时不要被干扰。
+      \`\`\`json5
+      // 合法围栏规则
+      export default {
+        candidates: [
+          {
+            id: 'candidate-a',
+            title: '测试版 A',
+            summary: '围栏内独立解析',
+            risk: '低',
+            app: {
+              id: 'com.demo',
+              name: 'Demo',
+              groups: [{ key: 0, name: 'g', rules: [{ key: 0, matches: ['[vid="real_skip"]'] }] }],
+            },
+          },
+        ],
+      };
+      \`\`\`
+    `;
+    const candidates = parseAiCandidates(input);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].id).toBe("candidate-a");
+    expect(candidates[0].app.groups[0].rules[0].matches).toEqual(['[vid="real_skip"]']);
+  });
+});
+
+describe("compactPromptForAi integration & critical-fact preservation", () => {
+  function makeFlowStep(stepIndex: number): FlowRuleStep {
+    const pickedId = 48 + stepIndex;
+    const baseAttr = (overrides: Partial<SnapshotNodeAttr>): SnapshotNodeAttr => ({
+      id: null,
+      vid: null,
+      name: "android.view.View",
+      text: null,
+      desc: null,
+      clickable: false,
+      focusable: false,
+      checkable: false,
+      checked: false,
+      editable: false,
+      longClickable: false,
+      visibleToUser: true,
+      left: 0,
+      top: 0,
+      right: 1080,
+      bottom: 2400,
+      width: 1080,
+      height: 2400,
+      childCount: 0,
+      index: 0,
+      depth: 0,
+      ...overrides,
+    });
+    const nodes: SnapshotNode[] = [
+      {
+        id: 0,
+        pid: -1,
+        idQf: false,
+        textQf: false,
+        attr: baseAttr({ name: "android.widget.FrameLayout", childCount: 60 }),
+      },
+    ];
+    for (let i = 1; i <= 60; i += 1) {
+      const isTarget = i === pickedId;
+      nodes.push({
+        id: i,
+        pid: 0,
+        idQf: isTarget,
+        textQf: true,
+        attr: baseAttr({
+          name: isTarget ? "android.widget.Button" : "android.widget.TextView",
+          id: isTarget ? `com.demo:id/step_${stepIndex}_target` : null,
+          vid: isTarget ? `step_${stepIndex}_target` : `filler_node_${stepIndex}_${i}`,
+          text: isTarget
+            ? `步骤${stepIndex}真实目标按钮`
+            : `流程第${stepIndex}步背景列表项超长文案描述用于压测紧凑裁剪逻辑-${i}`,
+          clickable: isTarget,
+          left: isTarget ? 800 : 20,
+          top: isTarget ? 100 : i * 30,
+          right: isTarget ? 1020 : 700,
+          bottom: isTarget ? 180 : i * 30 + 25,
+          width: isTarget ? 220 : 680,
+          height: isTarget ? 80 : 25,
+          depth: 1,
+          index: i - 1,
+        }),
+      });
+    }
+    const raw: RawGkdSnapshot = {
+      id: 100 + stepIndex,
+      appId: "com.demo",
+      activityId: `com.demo.Step${stepIndex}Activity`,
+      screenWidth: 1080,
+      screenHeight: 2400,
+      isLandscape: false,
+      appInfo: { id: "com.demo", name: "DemoApp" },
+      nodes,
+    };
+    const snapshot = normalizeSnapshot(raw, `blob:step-${stepIndex}`, `step-${stepIndex}.zip`);
+    const pickResult = pickNodeAtPoint(snapshot, { x: 900, y: 140 });
+    return {
+      id: `step-${stepIndex}`,
+      title: `第${stepIndex}步关键动作`,
+      scenarioId: "popup",
+      snapshot,
+      pickResult,
+      candidates: [],
+      selectedCandidate: null,
+      ruleSettings: { ...DEFAULT_RULE_SETTINGS, groupName: "六步流程", activityIds: "" },
+      note: `这是第 ${stepIndex} 步的操作说明：`.repeat(6),
+      delayNote: `延迟说明 ${stepIndex}`,
+    };
+  }
+
+  it("preserves all 6 step titles, target nodes, and stays within MAX_COMPACT_PROMPT_CHARS for real buildFlowHelpPrompt output", () => {
+    const steps = Array.from({ length: 6 }, (_, i) => makeFlowStep(i + 1));
+    const fullFlowPrompt = buildFlowHelpPrompt({
+      flowName: "六步超长真实流程压测",
+      flowDesc: "验证 6 个超长步骤在 compactPromptForAi 裁剪后不会丢失尾部步骤或目标节点",
+      steps,
+      includeNodeTrees: true,
+      audience: "builtin",
+    });
+
+    expect(fullFlowPrompt.length).toBeGreaterThan(18000);
+
+    const compact = compactPromptForAi(fullFlowPrompt);
+    expect(compact.length).toBeLessThanOrEqual(18000);
+    for (let i = 1; i <= 6; i += 1) {
+      expect(compact).toContain(`步骤 ${i}：第${i}步关键动作`);
+      expect(compact).toContain(`步骤${i}真实目标按钮`);
+      expect(compact).toContain(`#${48 + i} `);
+    }
+  });
+
+  it("drops generic preamble instead of critical facts when criticalTail exceeds single-step header budget", () => {
+    const hugePreamble = `你是 GKD 规则专家。\n${"这是一段非常冗长的通用背景说明废话。".repeat(250)}\n\n`;
+    const hugeJsonDraft = `当前 JSON5 草稿：\n${"  { key: 0, matches: ['[text=\"占位\"]'] },\n".repeat(450)}`;
+    const prompt = [
+      hugePreamble,
+      "应用信息：",
+      "- appId: com.demo",
+      "",
+      "用户点击的目标节点：",
+      '{"id": 7, "name": "android.widget.TextView", "text": "立即跳过", "clickable": false}',
+      "⚠️ 警示：目标节点 #7 clickable=false，必须使用 action: \"clickCenter\"",
+      "- 真实 vid 白名单: vid=\"skip_btn\"",
+      "",
+      hugeJsonDraft,
+      "",
+      "节点树摘要：",
+      "#0 FrameLayout d=0 p=#-1",
+      '  #7 TextView d=1 p=#0 text="立即跳过" vid="skip_btn"',
+      '  #8 Button d=1 p=#0 text="底部按钮"',
+    ].join("\n");
+
+    const compact = compactPromptForAi(prompt);
+    expect(compact.length).toBeLessThanOrEqual(18000);
+    expect(compact).toContain("应用信息：");
+    expect(compact).toContain("用户点击的目标节点：");
+    expect(compact).toContain("clickable=false");
+    expect(compact).toContain('vid="skip_btn"');
+    expect(compact).toContain("#7 TextView");
+    expect(compact).toContain("#8 Button");
+    expect(compact).not.toContain("这是一段非常冗长的通用背景说明废话。");
   });
 });
 

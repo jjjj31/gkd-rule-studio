@@ -5,6 +5,8 @@ import type {
   SelectorPlan,
   SimpleSelector,
 } from "../types/ruleDraft";
+import { parseActivityIdsSetting } from "./customScenario";
+import { canSelectorFastQuery } from "./selectorAdapter";
 
 export function serializePlan(plan: SelectorPlan): string[] {
   switch (plan.kind) {
@@ -60,12 +62,18 @@ export function createRuleDraft(
     rule.name = name;
   }
 
-  const activityIds = ruleSettings.activityIds.trim();
-  if (activityIds) {
+  const activityIds = parseActivityIdsSetting(ruleSettings.activityIds);
+  if (activityIds.length === 1) {
+    rule.activityIds = activityIds[0];
+  } else if (activityIds.length > 1) {
     rule.activityIds = activityIds;
   }
 
-  if (isFastQueryFriendlyPlan(plan)) {
+  if (
+    plan.kind !== "ancestorDescendant" &&
+    matches.length > 0 &&
+    matches.every(canSelectorFastQuery)
+  ) {
     rule.fastQuery = true;
   }
 
@@ -124,30 +132,8 @@ export function clickableSelector(at = false): SimpleSelector {
 }
 
 export function firstFastQueryAttr(selector: SimpleSelector): boolean {
-  const first = selector.conditions[0];
-  if (!first) return false;
-  return (
-    first.attr === "id" ||
-    first.attr === "vid" ||
-    first.attr === "text"
-  );
-}
-
-function isFastQueryFriendlyPlan(plan: SelectorPlan): boolean {
-  switch (plan.kind) {
-    case "simple":
-      return firstFastQueryAttr(plan.selector);
-    case "parentChild":
-      return firstFastQueryAttr(plan.child);
-    case "sibling":
-      return firstFastQueryAttr(plan.target);
-    case "contextSibling":
-      return firstFastQueryAttr(plan.target);
-    case "matchesChain":
-      return firstFastQueryAttr(plan.target);
-    case "ancestorDescendant":
-      return false;
-  }
+  if (selector.conditions.length === 0) return false;
+  return canSelectorFastQuery(formatSimpleSelector(selector));
 }
 
 function formatRelation(

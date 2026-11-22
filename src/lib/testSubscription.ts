@@ -191,6 +191,35 @@ export function summarizeTestSubscription(
   };
 }
 
+const GROUP_RUNTIME_FIELDS = [
+  "desc",
+  "activityIds",
+  "excludeActivityIds",
+  "fastQuery",
+  "matchRoot",
+  "forcedTime",
+  "matchTime",
+  "matchDelay",
+  "actionMaximum",
+  "actionCd",
+  "actionDelay",
+  "cd",
+  "delay",
+  "order",
+  "priorityTime",
+  "priorityActionMaximum",
+  "scopeKeys",
+  "ignoreGlobalGroupMatch",
+  "resetMatch",
+  "enable",
+  "versionCode",
+  "versionCodes",
+  "excludeVersionCodes",
+  "versionName",
+  "versionNames",
+  "excludeVersionNames",
+] as const;
+
 function addGroupToTestSubscription(
   draft: TestSubscriptionDraft,
   sourceApp: AppRuleDraft,
@@ -208,9 +237,8 @@ function addGroupToTestSubscription(
     apps.push(app);
   }
 
-  let group = app.groups.find(
-    (item) => item.name === sourceGroup.name || item.key === sourceGroup.key,
-  );
+  let group = app.groups.find((item) => canMergeGroups(item, sourceGroup));
+  const isNewGroup = !group;
 
   if (!group) {
     group = {
@@ -223,12 +251,12 @@ function addGroupToTestSubscription(
 
   for (const rule of sourceGroup.rules) {
     if (group.rules.some((item) => sameRuleSelector(item, rule))) continue;
-    const cleanRule = removeUndefinedDeep(rule) as RuleDraft;
-    group.rules.push({
-      ...cleanRule,
-      key: nextRuleKey(group),
-      matches: normalizeMatches(rule.matches),
-    });
+    const usedKeys = new Set(group.rules.map((item) => item.key));
+    const ruleKey =
+      isNewGroup && Number.isSafeInteger(rule.key) && !usedKeys.has(rule.key)
+        ? rule.key
+        : nextRuleKey(group);
+    group.rules.push(normalizeRuleForStorage(rule, ruleKey));
   }
 
   return {
@@ -236,6 +264,78 @@ function addGroupToTestSubscription(
     apps,
     dirty: true,
   };
+}
+
+function canMergeGroups(
+  existing: AppRuleDraft["groups"][number],
+  incoming: AppRuleDraft["groups"][number],
+): boolean {
+  if (existing.name !== incoming.name) return false;
+  if (hasKeyReferenceConflict(existing, incoming)) return false;
+
+  const existingRecord = existing as unknown as Record<string, unknown>;
+  const incomingRecord = incoming as unknown as Record<string, unknown>;
+  for (const field of GROUP_RUNTIME_FIELDS) {
+    if (
+      stableSerialize(normalizeGroupFieldValue(field, existingRecord[field])) !==
+      stableSerialize(normalizeGroupFieldValue(field, incomingRecord[field]))
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function normalizeGroupFieldValue(field: string, value: unknown): unknown {
+  if (
+    field === "activityIds" ||
+    field === "excludeActivityIds" ||
+    field === "versionNames" ||
+    field === "excludeVersionNames"
+  ) {
+    return normalizeOptionalStringList(value);
+  }
+  if (
+    field === "versionCodes" ||
+    field === "excludeVersionCodes" ||
+    field === "scopeKeys"
+  ) {
+    return normalizeOptionalNumberList(value);
+  }
+  return value === undefined ? null : value;
+}
+
+function hasKeyReferenceConflict(
+  existing: AppRuleDraft["groups"][number],
+  incoming: AppRuleDraft["groups"][number],
+): boolean {
+  return groupUsesKeyReferences(existing) || groupUsesKeyReferences(incoming);
+}
+
+function groupUsesKeyReferences(
+  group: AppRuleDraft["groups"][number],
+): boolean {
+  const groupRecord = group as unknown as Record<string, unknown>;
+  if (
+    hasNonEmptyKeyRef(groupRecord.actionCdKey) ||
+    hasNonEmptyKeyRef(groupRecord.actionMaximumKey)
+  ) {
+    return true;
+  }
+  return group.rules.some((rule) => {
+    const ruleRecord = rule as unknown as Record<string, unknown>;
+    return (
+      hasNonEmptyKeyRef(ruleRecord.preKeys) ||
+      hasNonEmptyKeyRef(ruleRecord.actionCdKey) ||
+      hasNonEmptyKeyRef(ruleRecord.actionMaximumKey)
+    );
+  });
+}
+
+function hasNonEmptyKeyRef(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (Array.isArray(value)) return value.length > 0;
+  return true;
 }
 
 function normalizeImportValue(
@@ -308,29 +408,120 @@ function normalizeRuleDraft(value: unknown): RuleDraft {
     throw new Error("规则必须是对象");
   }
 
-  return removeUndefinedDeep({
-    ...value,
-    key: typeof value.key === "number" ? value.key : 0,
-    matches: normalizeMatches(value.matches),
-  }) as RuleDraft;
+  const key = typeof value.key === "number" ? value.key : 0;
+  return normalizeRuleForStorage(value, key);
 }
 
-function normalizeMatches(value: unknown): string[] {
+function normalizeRuleForStorage(
+  value: Record<string, unknown> | RuleDraft,
+  key: number,
+): RuleDraft {
+  const record = value as Record<string, unknown>;
+  const normalizedMatches = normalizeMatches(record.matches, record.anyMatches);
+  const normalizedAnyMatches = readOptionalSelectorArray(record.anyMatches);
+  const cleaned = removeUndefinedDeep({
+    ...record,
+    key,
+  }) as Record<string, unknown>;
+
+  if (normalizedMatches && normalizedMatches.length > 0) {
+    cleaned.matches = normalizedMatches;
+  } else {
+    delete cleaned.matches;
+  }
+
+  if (normalizedAnyMatches && normalizedAnyMatches.length > 0) {
+    cleaned.anyMatches = normalizedAnyMatches;
+  }
+
+  return cleaned as unknown as RuleDraft;
+}
+
+function readOptionalSelectorArray(value: unknown): string[] | undefined {
+  if (value === undefined || value === null) return undefined;
   if (typeof value === "string") return [value];
   if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
     return [...value];
+  }
+  return undefined;
+}
+
+function normalizeMatches(
+  value: unknown,
+  anyMatches?: unknown,
+): string[] | undefined {
+  const parsedMatches = readOptionalSelectorArray(value);
+  if (parsedMatches && parsedMatches.length > 0) {
+    return parsedMatches;
+  }
+  const parsedAnyMatches = readOptionalSelectorArray(anyMatches);
+  if (
+    (value === undefined || value === null || (parsedMatches && parsedMatches.length === 0)) &&
+    parsedAnyMatches &&
+    parsedAnyMatches.length > 0
+  ) {
+    return undefined;
+  }
+  if (parsedMatches && parsedMatches.length === 0) {
+    throw new Error("规则缺少 matches 或 anyMatches");
   }
   throw new Error("规则缺少 matches");
 }
 
 function sameRuleSelector(a: RuleDraft, b: RuleDraft): boolean {
-  return selectorKey(normalizeMatches(a.matches)) === selectorKey(normalizeMatches(b.matches));
+  return ruleFingerprint(a) === ruleFingerprint(b);
+}
+
+function ruleFingerprint(rule: RuleDraft): string {
+  const record = rule as unknown as Record<string, unknown>;
+  return stableSerialize({
+    matches: normalizeOptionalStringList(record.matches),
+    anyMatches: normalizeOptionalStringList(record.anyMatches),
+    excludeMatches: normalizeOptionalStringList(record.excludeMatches),
+    excludeAllMatches: normalizeOptionalStringList(record.excludeAllMatches),
+    activityIds: normalizeOptionalStringList(record.activityIds),
+    excludeActivityIds: normalizeOptionalStringList(record.excludeActivityIds),
+    action: record.action ?? null,
+    actionDelay: record.actionDelay ?? null,
+    actionMaximum: record.actionMaximum ?? null,
+    actionCd: record.actionCd ?? null,
+    cd: record.cd ?? null,
+    delay: record.delay ?? null,
+    matchTime: record.matchTime ?? null,
+    matchDelay: record.matchDelay ?? null,
+    forcedTime: record.forcedTime ?? null,
+    resetMatch: record.resetMatch ?? null,
+    enable: record.enable ?? null,
+    swipeArg: record.swipeArg ?? null,
+    order: record.order ?? null,
+    priorityTime: record.priorityTime ?? null,
+    priorityActionMaximum: record.priorityActionMaximum ?? null,
+    matchRoot: record.matchRoot ?? null,
+    fastQuery: record.fastQuery ?? null,
+    position: record.position ?? null,
+    preKeys: normalizeOptionalNumberList(record.preKeys),
+    versionCode: record.versionCode ?? null,
+    versionCodes: normalizeOptionalNumberList(record.versionCodes),
+    excludeVersionCodes: normalizeOptionalNumberList(record.excludeVersionCodes),
+    versionName: record.versionName ?? null,
+    versionNames: normalizeOptionalStringList(record.versionNames),
+    excludeVersionNames: normalizeOptionalStringList(record.excludeVersionNames),
+  });
+}
+
+function rulePrimarySelectors(rule: RuleDraft): string[] {
+  const record = rule as unknown as Record<string, unknown>;
+  const matches = normalizeMatches(record.matches, record.anyMatches);
+  if (matches && matches.length > 0) return matches;
+  const anyMatches = readOptionalSelectorArray(record.anyMatches);
+  if (anyMatches && anyMatches.length > 0) return anyMatches;
+  return [];
 }
 
 function collectRuleSelectors(draft: TestSubscriptionDraft): string[] {
   return draft.apps.flatMap((app) =>
     app.groups.flatMap((group) =>
-      group.rules.map((rule) => selectorKey(normalizeMatches(rule.matches))),
+      group.rules.map((rule) => selectorKey(rulePrimarySelectors(rule))),
     ),
   );
 }
@@ -342,7 +533,7 @@ function collectImportedRuleRecords(
   return draft.apps.flatMap((app) =>
     app.groups.flatMap((group) =>
       group.rules.map((rule) => {
-        const matches = normalizeMatches(rule.matches);
+        const matches = rulePrimarySelectors(rule);
         return {
           id: [app.id, group.key, rule.key, selectorKey(matches)].join("|"),
           importedAt,
@@ -411,4 +602,34 @@ function removeUndefinedDeep(value: unknown): unknown {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function normalizeOptionalStringList(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  return [];
+}
+
+function normalizeOptionalNumberList(value: unknown): number[] {
+  if (typeof value === "number" && Number.isFinite(value)) return [value];
+  if (Array.isArray(value)) {
+    return value.filter((item): item is number => typeof item === "number" && Number.isFinite(item));
+  }
+  return [];
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableSerialize).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableSerialize(item)}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
 }

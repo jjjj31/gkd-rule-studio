@@ -153,6 +153,7 @@ import {
   type SnapshotNameMap,
 } from "../lib/snapshotNames";
 import {
+  assessAiAutoRepairNeed,
   verifyAiCandidates,
   rerankAiCandidates,
   buildAiStaticFailurePrompt,
@@ -461,6 +462,7 @@ export function AndroidLiteApp() {
       flowDesc,
       steps: flowSteps,
       stepScenarios: stepScenarioInfos,
+      audience: "builtin",
     });
   }, [flowName, flowDesc, flowSteps, stepScenarioInfos]);
   const singleAiPrompt = useMemo(() => {
@@ -469,6 +471,7 @@ export function AndroidLiteApp() {
       pickResult,
       ruleSettings,
       scenario: scenarioInfo,
+      audience: "builtin",
     });
   }, [snapshot, pickResult, ruleSettings, scenarioInfo]);
   const selectedSnapshotList = useMemo(
@@ -1044,6 +1047,7 @@ export function AndroidLiteApp() {
       pickResult,
       ruleSettings,
       scenario: scenarioInfo,
+      audience: "external",
     });
     await copyTextToClipboard(prompt);
     markCopied("rule");
@@ -1062,6 +1066,7 @@ export function AndroidLiteApp() {
       flowDesc,
       steps: flowSteps,
       stepScenarios: stepScenarioInfos,
+      audience: "external",
     });
     await copyTextToClipboard(prompt);
     markCopied("flowPrompt");
@@ -1789,22 +1794,19 @@ export function AndroidLiteApp() {
         nodeId: mode === "flow" ? activeFlowStep?.pickResult?.pickedNode.id : pickResult?.pickedNode.id,
         thumbnailUrl: await createSessionThumbnailForMode(mode).catch(() => undefined),
       } satisfies Parameters<typeof addAiSession>[1];
-      const reusableSession =
-        activeAiSession &&
-        activeAiSession.mode === sessionInput.mode &&
-        activeAiSession.snapshotId === sessionInput.snapshotId &&
-        activeAiSession.controlKey === sessionInput.controlKey &&
-        activeAiSession.candidates.length === 0
-          ? activeAiSession
-          : null;
-      const withSession = reusableSession
-        ? inlineTestingRef.current
-        : addAiSession(inlineTestingRef.current, sessionInput);
-      const sessionId = reusableSession?.id ?? withSession.aiSessions[0]?.id ?? null;
+      const allowActionDelay =
+        effectiveRuleSettings.actionDelay !== null &&
+        effectiveRuleSettings.actionDelay !== undefined &&
+        effectiveRuleSettings.actionDelay >= 1000;
       let finalCandidates = nextCandidates;
       let autoRepaired = false;
       if (snapshot && mode === "single") {
-        const machineBest = generatedCandidates.find((c) => c.validation.hitCount === 1);
+        const machineBest = generatedCandidates.find(
+          (c) =>
+            c.validation.status === "satisfied" &&
+            c.validation.hitCount === 1 &&
+            c.risk.finalScore >= 70,
+        );
         const loopResult = await runAiAutoRepairLoop({
           snapshot,
           pickedNode: pickResult?.pickedNode ?? null,
@@ -1812,6 +1814,7 @@ export function AndroidLiteApp() {
           machineHint: machineBest
             ? { matches: machineBest.rule.matches, action: machineBest.rule.action }
             : null,
+          options: { allowActionDelay },
           requestRepairCandidates: async (failurePrompt) => {
             appendAiDebugLog("generate:auto-repair:start");
             return requestAiCandidatesWithTextFallback({
@@ -1838,6 +1841,23 @@ export function AndroidLiteApp() {
         }
       }
 
+      // 等返修完成后再基于最新的 inlineTestingRef.current 创建/复用 session，避免覆盖等待期间的用户操作
+      const latestTestingState = inlineTestingRef.current;
+      const latestActiveSession = activeAiSession
+        ? latestTestingState.aiSessions.find((s) => s.id === activeAiSession.id) ?? null
+        : null;
+      const reusableSession =
+        latestActiveSession &&
+        latestActiveSession.mode === sessionInput.mode &&
+        latestActiveSession.snapshotId === sessionInput.snapshotId &&
+        latestActiveSession.controlKey === sessionInput.controlKey &&
+        latestActiveSession.candidates.length === 0
+          ? latestActiveSession
+          : null;
+      const withSession = reusableSession
+        ? latestTestingState
+        : addAiSession(latestTestingState, sessionInput);
+      const sessionId = reusableSession?.id ?? withSession.aiSessions[0]?.id ?? null;
       const withCandidates = sessionId
         ? setAiSessionCandidates(withSession, sessionId, finalCandidates)
         : withSession;
@@ -1962,13 +1982,19 @@ export function AndroidLiteApp() {
 
   async function createAiImageForMode(
     mode: "single" | "flow",
+    nodeIdOverride?: number | string | null,
   ): Promise<string | undefined> {
-    const sourceSnapshot = mode === "flow" ? activeFlowStep?.snapshot ?? snapshot : snapshot;
+    const sourceSnapshot = mode === "flow" ? activeFlowStep?.snapshot ?? null : snapshot;
     if (!sourceSnapshot) return undefined;
+    const overrideNode =
+      nodeIdOverride !== undefined && nodeIdOverride !== null
+        ? resolveSnapshotNodeById(sourceSnapshot, nodeIdOverride)
+        : null;
     const highlightNode =
-      mode === "flow"
+      overrideNode ??
+      (mode === "flow"
         ? activeFlowStep?.pickResult?.pickedNode ?? null
-        : pickResult?.pickedNode ?? null;
+        : pickResult?.pickedNode ?? null);
     return createAiMultimodalImage(sourceSnapshot, highlightNode);
   }
 
@@ -2004,41 +2030,70 @@ export function AndroidLiteApp() {
   async function importPastedAiResult(): Promise<void> {
     const text = aiPasteText.trim();
     if (!text) {
-      setExternalAiMessage("请先粘贴 AI 返回内容");
+      setPersistentExternalAiMessage("请先粘贴 AI 返回内容");
       return;
     }
 
     const input = createCurrentAiSessionInput(
       false,
       await createSessionThumbnailForMode(workspaceMode).catch(() => undefined),
+      setPersistentExternalAiMessage,
     );
     if (!input) return;
 
     try {
       const rawCandidates = parseAiCandidates(text);
       if (rawCandidates.length === 0) {
-        setExternalAiMessage("没有提取到可用规则");
+        setPersistentExternalAiMessage("没有提取到可用规则");
         return;
       }
 
+      const allowActionDelay =
+        effectiveRuleSettings.actionDelay !== null &&
+        effectiveRuleSettings.actionDelay !== undefined &&
+        effectiveRuleSettings.actionDelay >= 1000;
       let nextCandidates = rawCandidates;
       if (snapshot && input.mode === "single") {
+        const pickedNode = pickResult?.pickedNode ?? null;
         const reranked = rerankAiCandidates(
           snapshot,
           rawCandidates,
-          pickResult?.pickedNode ?? null,
+          pickedNode,
+          { allowActionDelay },
         );
         nextCandidates = reranked.rankedCandidates;
-        if (!reranked.bestPassed) {
+        const assessment = assessAiAutoRepairNeed(
+          snapshot,
+          reranked,
+          pickedNode,
+          { allowActionDelay },
+        );
+        const machineBest = generatedCandidates.find(
+          (c) =>
+            c.validation.status === "satisfied" &&
+            c.validation.hitCount === 1 &&
+            c.risk.finalScore >= 70,
+        );
+        const machineHint = machineBest
+          ? { matches: machineBest.rule.matches, action: machineBest.rule.action }
+          : null;
+
+        if (!reranked.bestPassed || assessment.needsRepair) {
           const failurePrompt = buildAiStaticFailurePrompt({
             snapshot,
             candidates: reranked.rankedCandidates,
             verifications: reranked.verifications,
-            pickedNode: pickResult?.pickedNode ?? null,
+            pickedNode,
+            qualityReasons: assessment.reasons,
+            machineHint,
+            audience: "external",
+            options: { allowActionDelay },
           });
           setExternalAiStaticFailurePrompt(failurePrompt);
-          setExternalAiMessage(
-            "⚠️ 提示：所有规则均未通过快照静态验证（0命中或点偏）。可点击下方按钮一键复制诊断提示词贴回 AI 修正。",
+          setPersistentExternalAiMessage(
+            !reranked.bestPassed
+              ? "⚠️ 提示：候选未通过快照静态验靶（0命中、错靶或存在高危规则）。可点击下方按钮一键复制诊断提示词贴回 AI 修正。"
+              : `⚠️ 提示：候选存在稳定性隐患（${assessment.reasons[0] ?? "需按诊断加固"}）。可点击下方按钮一键复制诊断提示词贴回 AI 修正。`,
           );
         } else {
           setExternalAiStaticFailurePrompt(null);
@@ -2082,13 +2137,73 @@ export function AndroidLiteApp() {
       setExternalAiMode(input.mode);
       setAiPasteText("");
     } catch (cause) {
-      setExternalAiMessage(cause instanceof Error ? cause.message : "解析 AI 返回内容失败");
+      setPersistentExternalAiMessage(cause instanceof Error ? cause.message : "解析 AI 返回内容失败");
     }
+  }
+
+  function resolveSnapshotNodeById(
+    targetSnapshot: ParsedGkdSnapshot,
+    nodeId: number | string | undefined,
+  ): NormalizedSnapshotNode | null {
+    if (nodeId === undefined || nodeId === "") return null;
+    const numericId = typeof nodeId === "number" ? nodeId : Number(nodeId);
+    if (!Number.isFinite(numericId)) return null;
+    return targetSnapshot.nodeById.get(numericId) ?? null;
+  }
+
+  function verifyCandidateBeforeTestZone(
+    candidate: AiRuleCandidate,
+    reportError: (msg: string) => void,
+    sessionSnapshotId?: number | string,
+    sessionNodeId?: number | string,
+    sessionMode?: "single" | "flow",
+  ): boolean {
+    const effectiveMode = sessionMode ?? workspaceMode;
+    if (effectiveMode !== "single" || !snapshot) return true;
+    if (
+      sessionSnapshotId !== undefined &&
+      String(sessionSnapshotId) !== String(snapshot.id)
+    ) {
+      return true;
+    }
+    const targetNode =
+      resolveSnapshotNodeById(snapshot, sessionNodeId) ??
+      pickResult?.pickedNode ??
+      null;
+    const verification = verifyAiCandidates(snapshot, [candidate], targetNode)[0];
+    if (!verification) return true;
+    if (verification.failureCodes.includes("invalid_selector")) {
+      reportError(
+        `无法加入测试：${candidate.title} 包含无效选择器（${verification.diagnostics[0] || "语法无法解析"}）`,
+      );
+      return false;
+    }
+    if (verification.failureCodes.includes("wrong_target")) {
+      const confirmed = window.confirm(
+        `⚠️ 风险提示：${candidate.title} 在当前快照上命中了非目标节点（${verification.diagnostics[0] || "错靶"}）。\n\n确定仍要加入测试集合吗？`,
+      );
+      if (!confirmed) {
+        reportError(`已取消加入测试：${candidate.title} 存在错靶风险`);
+        return false;
+      }
+    }
+    return true;
   }
 
   function addExternalAiCandidateToTestZone(candidate: AiRuleCandidate): void {
     if (!externalAiSessionId) {
-      setExternalAiMessage("请先提取外部 AI 规则");
+      setPersistentExternalAiMessage("请先提取外部 AI 规则");
+      return;
+    }
+    if (
+      !verifyCandidateBeforeTestZone(
+        candidate,
+        setPersistentExternalAiMessage,
+        externalAiSession?.snapshotId,
+        externalAiSession?.nodeId,
+        externalAiSession?.mode,
+      )
+    ) {
       return;
     }
     const nextState = startAiCandidateTest(
@@ -2103,15 +2218,16 @@ export function AndroidLiteApp() {
   function createCurrentAiSessionInput(
     focusAiTabOnError = true,
     thumbnailUrl?: string,
+    onError: (msg: string) => void = setAiMessage,
   ): Parameters<typeof addAiSession>[1] | null {
     const mode = workspaceMode;
     if (mode === "single" && (!snapshot || !pickResult)) {
-      setAiMessage("请先在截图上选择目标控件");
+      onError("请先在截图上选择目标控件");
       if (focusAiTabOnError) setActiveTab("ai");
       return null;
     }
     if (mode === "flow" && flowSteps.length === 0) {
-      setAiMessage("流程里还没有步骤");
+      onError("流程里还没有步骤");
       if (focusAiTabOnError) setActiveTab("ai");
       return null;
     }
@@ -2136,6 +2252,17 @@ export function AndroidLiteApp() {
   function addAiCandidateToTestZone(candidate: AiRuleCandidate): void {
     if (!activeAiSession) {
       setAiMessage("请先生成一个 AI 会话");
+      return;
+    }
+    if (
+      !verifyCandidateBeforeTestZone(
+        candidate,
+        setAiMessage,
+        activeAiSession.snapshotId,
+        activeAiSession.nodeId,
+        activeAiSession.mode,
+      )
+    ) {
       return;
     }
     const nextState = startAiCandidateTest(
@@ -2170,17 +2297,17 @@ export function AndroidLiteApp() {
     modeOverride?: "single" | "flow" | null,
   ): Promise<void> {
     if (feedbacks.length === 0) {
-      setExternalAiMessage("请先填写至少一条测试反馈");
+      setPersistentExternalAiMessage("请先填写至少一条测试反馈");
       return;
     }
     const mode = modeOverride ?? aiGeneratedMode ?? workspaceMode;
-    setExternalAiMessage(null);
+    setPersistentExternalAiMessage(null);
     try {
       await copyTextToClipboard(buildExternalFeedbackPrompt(enrichCurrentFeedback(feedbacks), mode === "flow"));
       showExternalAiTransient("已复制测试反馈 prompt，可粘贴给外部 AI 修正规则");
       appendAiDebugLog(`feedback:copied mode=${mode} count=${feedbacks.length}`);
     } catch (cause) {
-      setExternalAiMessage(cause instanceof Error ? cause.message : "复制测试反馈失败");
+      setPersistentExternalAiMessage(cause instanceof Error ? cause.message : "复制测试反馈失败");
       appendAiDebugLog(`feedback:error ${cause instanceof Error ? cause.message : "copy failed"}`);
     }
   }
@@ -2192,36 +2319,102 @@ export function AndroidLiteApp() {
     }
     const mode = aiGeneratedMode ?? workspaceMode;
     const session = activeAiSession;
+    const snapshotMatchesSession = Boolean(
+      snapshot &&
+        (session?.snapshotId === undefined ||
+          String(session.snapshotId) === String(snapshot.id)),
+    );
+    const originalPrompt =
+      session?.originalPrompt ?? (mode === "flow" ? flowPrompt : singleAiPrompt);
+    const requestConfig = withAiGenerationTimeout(aiConfig);
     startAiOperation("feedback");
     setAiMessage(null);
     try {
-      const imageUrl = aiConfig.supportsMultimodal
-        ? await createAiImageForMode(mode).catch(() => undefined)
+      const canAttachImage =
+        aiConfig.supportsMultimodal && (mode === "flow" || snapshotMatchesSession);
+      const imageUrl = canAttachImage
+        ? await createAiImageForMode(mode, session?.nodeId ?? null).catch(() => undefined)
         : undefined;
       const messages = buildAiBatchFeedbackMessages({
         mode,
-        originalPrompt: session?.originalPrompt ?? (mode === "flow" ? flowPrompt : singleAiPrompt),
+        originalPrompt,
         feedbacks: enrichCurrentFeedback(feedbacks),
         imageUrl,
       });
-      appendAiDebugLog(`feedback:start mode=${mode} count=${feedbacks.length} multimodal=${Boolean(imageUrl)}`);
+      appendAiDebugLog(
+        `feedback:start mode=${mode} count=${feedbacks.length} multimodal=${Boolean(imageUrl)} snapshotMatch=${snapshotMatchesSession}`,
+      );
       const nextCandidates = await requestAiCandidatesWithTextFallback({
-        config: withAiGenerationTimeout(aiConfig),
+        config: requestConfig,
         messages,
         phase: "feedback",
         onDebugLog: appendAiDebugLog,
       });
       let finalCandidates = nextCandidates;
-      if (snapshot && mode === "single") {
-        const reranked = rerankAiCandidates(
+      let autoRepaired = false;
+      if (snapshot && mode === "single" && snapshotMatchesSession) {
+        const feedbackPickedNode =
+          resolveSnapshotNodeById(snapshot, session?.nodeId) ??
+          pickResult?.pickedNode ??
+          null;
+        const machineBest =
+          feedbackPickedNode && pickResult?.pickedNode.id === feedbackPickedNode.id
+            ? generatedCandidates.find(
+                (c) =>
+                  c.validation.status === "satisfied" &&
+                  c.validation.hitCount === 1 &&
+                  c.risk.finalScore >= 70,
+              )
+            : undefined;
+        const allowActionDelay =
+          (effectiveRuleSettings.actionDelay !== null &&
+            effectiveRuleSettings.actionDelay !== undefined &&
+            effectiveRuleSettings.actionDelay >= 1000) ||
+          feedbacks.some((feedback) => {
+            const rawResult = String(feedback.result);
+            const rawCategory = String(feedback.category ?? "");
+            return (
+              rawResult === "triggered-no-close" ||
+              rawCategory === "triggered-no-close" ||
+              rawResult === "action-or-target-failed" ||
+              rawCategory === "action-or-target-failed"
+            );
+          });
+        const loopResult = await runAiAutoRepairLoop({
           snapshot,
-          nextCandidates,
-          pickResult?.pickedNode ?? null,
-        );
-        finalCandidates = reranked.rankedCandidates;
-        if (reranked.repairedCount > 0) {
-          appendAiDebugLog(`feedback:auto-repaired count=${reranked.repairedCount}`);
+          pickedNode: feedbackPickedNode,
+          initialCandidates: nextCandidates,
+          maxRepairRounds: 1,
+          machineHint: machineBest
+            ? { matches: machineBest.rule.matches, action: machineBest.rule.action }
+            : null,
+          options: { allowActionDelay },
+          requestRepairCandidates: async (failurePrompt) => {
+            appendAiDebugLog("feedback:auto-repair:start");
+            return requestAiCandidatesWithTextFallback({
+              config: requestConfig,
+              messages: buildAiAutoRepairMessages({
+                originalPrompt,
+                failurePrompt,
+                imageUrl,
+              }),
+              phase: "feedback",
+              onDebugLog: appendAiDebugLog,
+            });
+          },
+        });
+        finalCandidates = loopResult.rankedCandidates;
+        autoRepaired = loopResult.autoRepairTriggered && loopResult.autoRepairSucceeded;
+        if (loopResult.repairedCount > 0) {
+          appendAiDebugLog(`feedback:auto-repaired count=${loopResult.repairedCount}`);
         }
+        if (loopResult.autoRepairTriggered) {
+          appendAiDebugLog(
+            `feedback:auto-repair:done improved=${loopResult.autoRepairSucceeded} reasons=${loopResult.autoRepairReasons.join(";")}`,
+          );
+        }
+      } else if (mode === "single" && !snapshotMatchesSession) {
+        appendAiDebugLog("feedback:skip-rerank reason=snapshot-mismatch");
       }
       if (session) {
         const nextState = setAiSessionCandidates(
@@ -2234,7 +2427,11 @@ export function AndroidLiteApp() {
       setAiCandidates(finalCandidates);
       setAiGeneratedMode(mode);
       setActiveTab("ai");
-      showAiTransient(`反馈已返回 ${finalCandidates.length} 个候选`);
+      showAiTransient(
+        autoRepaired
+          ? `反馈已返回 ${finalCandidates.length} 个候选（已自动验靶返修并重排）`
+          : `反馈已返回 ${finalCandidates.length} 个候选`,
+      );
       appendAiDebugLog(`feedback:done candidates=${finalCandidates.length}`);
     } catch (cause) {
       setAiMessage(formatAiError(cause, aiConfig.apiKey));
@@ -2312,6 +2509,11 @@ export function AndroidLiteApp() {
     if (externalAiMessageTimerRef.current === null) return;
     window.clearTimeout(externalAiMessageTimerRef.current);
     externalAiMessageTimerRef.current = null;
+  }
+
+  function setPersistentExternalAiMessage(text: string | null): void {
+    clearTransientExternalAiMessage();
+    setExternalAiMessage(text);
   }
 
   function clearAllTransientMessages(): void {
@@ -3157,9 +3359,14 @@ async function renderScaledSnapshotDataUrl(
   highlightNode: NormalizedSnapshotNode | null,
 ): Promise<string | undefined> {
   if (typeof document === "undefined") return undefined;
+  if (!snapshot.screenshotUrl?.trim()) return undefined;
 
   return new Promise((resolve) => {
     const image = new Image();
+    const src = snapshot.screenshotUrl;
+    if (src && !src.startsWith("blob:") && !src.startsWith("data:")) {
+      image.crossOrigin = "anonymous";
+    }
     image.onload = () => {
       try {
         const ratio = Math.min(maxWidth / image.naturalWidth, maxHeight / image.naturalHeight, 1);
@@ -3179,8 +3386,16 @@ async function renderScaledSnapshotDataUrl(
           const sy = height / snapshot.screenHeight;
           const rx = highlightNode.attr.left * sx;
           const ry = highlightNode.attr.top * sy;
-          const rw = Math.max(4, highlightNode.attr.width * sx);
-          const rh = Math.max(4, highlightNode.attr.height * sy);
+          const rawWidth =
+            highlightNode.attr.right > highlightNode.attr.left
+              ? highlightNode.attr.right - highlightNode.attr.left
+              : highlightNode.attr.width;
+          const rawHeight =
+            highlightNode.attr.bottom > highlightNode.attr.top
+              ? highlightNode.attr.bottom - highlightNode.attr.top
+              : highlightNode.attr.height;
+          const rw = Math.max(4, rawWidth * sx);
+          const rh = Math.max(4, rawHeight * sy);
           context.strokeStyle = "#ff3b30";
           context.lineWidth = Math.max(2, Math.round(3 * ratio));
           context.strokeRect(rx, ry, rw, rh);
@@ -3191,13 +3406,16 @@ async function renderScaledSnapshotDataUrl(
       }
     };
     image.onerror = () => resolve(undefined);
-    image.src = snapshot.screenshotUrl;
+    image.src = src;
   });
 }
 
 function collectAiCandidateSelectors(candidate: AiRuleCandidate): string[] {
   return candidate.app.groups.flatMap((group) =>
-    group.rules.flatMap((rule) => rule.matches),
+    group.rules.flatMap((rule) => [
+      ...(rule.matches ?? []),
+      ...(rule.anyMatches ?? []),
+    ]),
   );
 }
 

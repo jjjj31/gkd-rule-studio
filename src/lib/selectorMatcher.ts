@@ -13,6 +13,22 @@ import type { AiRuleCandidate } from "./aiModel";
 import { matchGkdSelectorString } from "./selectorAdapter";
 import { serializePlan } from "./selectorSerialize";
 
+export type SelectorFailureReason =
+  | "disabled"
+  | "activity_mismatch"
+  | "excluded"
+  | "any_matches_miss"
+  | "context_miss"
+  | "target_miss"
+  | "invalid"
+  | "partial";
+
+declare module "../types/ruleDraft" {
+  interface SelectorValidation {
+    failureReason?: SelectorFailureReason;
+  }
+}
+
 function resolveNodes(
   snapshot: ParsedGkdSnapshot,
   ids: Iterable<number>,
@@ -41,12 +57,14 @@ function uniqueNodes(nodes: NormalizedSnapshotNode[]): NormalizedSnapshotNode[] 
 function emptyValidation(
   status: SelectorValidation["status"],
   reason: string,
+  failureReason?: SelectorFailureReason,
 ): SelectorValidation {
   return {
     hitCount: 0,
     clickNodes: [],
     supportNodes: [],
     status,
+    ...(failureReason ? { failureReason } : {}),
     diagnostics: [reason],
   };
 }
@@ -60,7 +78,7 @@ export function validateAppRuleAgainstSnapshot(
   app: AppRuleDraft,
 ): SelectorValidation[] {
   if (app.groups.flatMap((group) => group.rules).length === 0) {
-    return [emptyValidation("invalid", "App 规则不包含任何规则")];
+    return [emptyValidation("invalid", "App 规则不包含任何规则", "invalid")];
   }
   if (app.id !== snapshot.appId) {
     const results = app.groups.flatMap((group) =>
@@ -68,12 +86,13 @@ export function validateAppRuleAgainstSnapshot(
         emptyValidation(
           "invalid",
           `appId 不匹配：规则为 ${app.id}，快照为 ${snapshot.appId}`,
+          "invalid",
         ),
       ),
     );
     return results.length > 0
       ? results
-      : [emptyValidation("invalid", "App 规则不包含任何规则")];
+      : [emptyValidation("invalid", "App 规则不包含任何规则", "invalid")];
   }
 
   return app.groups.flatMap((group) =>
@@ -107,6 +126,7 @@ export function validateAiCandidateAgainstSnapshot(
       : [emptyValidation(
           "invalid",
           `appId 不匹配：规则为 ${candidate.app.id}，快照为 ${snapshot.appId}`,
+          "invalid",
         )];
   const invalid = results.some((result) => result.status === "invalid");
   const partial = results.some((result) => result.status === "partial");
@@ -123,17 +143,27 @@ export function validateAiCandidateAgainstSnapshot(
     : [];
   const diagnostics = results.flatMap((result) => result.diagnostics ?? []);
   const unparsedMatches = results.flatMap((result) => result.unparsedMatches ?? []);
+  const status: SelectorValidation["status"] = invalid
+    ? "invalid"
+    : partial
+      ? "partial"
+      : canExecute
+        ? "satisfied"
+        : "unsatisfied";
+  const failureReason: SelectorFailureReason | undefined =
+    status === "invalid"
+      ? "invalid"
+      : status === "partial"
+        ? "partial"
+        : status === "unsatisfied"
+          ? results.find((result) => result.failureReason)?.failureReason
+          : undefined;
   return {
     hitCount: clickNodes.length,
     clickNodes,
     supportNodes: uniqueNodes(satisfiedResults.flatMap((result) => result.supportNodes)),
-    status: invalid
-      ? "invalid"
-      : partial
-        ? "partial"
-        : canExecute
-          ? "satisfied"
-          : "unsatisfied",
+    status,
+    ...(failureReason ? { failureReason } : {}),
     ...(diagnostics.length > 0 ? { diagnostics } : {}),
     ...(unparsedMatches.length > 0 ? { unparsedMatches } : {}),
   };
@@ -148,34 +178,49 @@ function validateRule(
     return emptyValidation(
       "unsatisfied",
       "规则或规则组 enable=false，已明确禁用",
+      "disabled",
     );
   }
   if (group.enable !== undefined && typeof group.enable !== "boolean") {
-    return emptyValidation("partial", "规则组 enable 字段类型无法验证，保留原值");
+    return emptyValidation("partial", "规则组 enable 字段类型无法验证，保留原值", "partial");
   }
   if (rule.enable !== undefined && typeof rule.enable !== "boolean") {
-    return emptyValidation("partial", "规则 enable 字段类型无法验证，保留原值");
+    return emptyValidation("partial", "规则 enable 字段类型无法验证，保留原值", "partial");
   }
   const excludeActivityIds =
     rule.excludeActivityIds === undefined
       ? group.excludeActivityIds
       : rule.excludeActivityIds;
-  if (excludeActivityIds !== undefined && activityMatches(snapshot, excludeActivityIds)) {
+  if (
+    excludeActivityIds !== undefined &&
+    !(Array.isArray(excludeActivityIds) && excludeActivityIds.length === 0) &&
+    activityMatches(snapshot, excludeActivityIds)
+  ) {
     return emptyValidation(
       "unsatisfied",
       `当前 Activity 被排除：${snapshot.activityId ?? "未知"}`,
+      "activity_mismatch",
     );
   }
   const activityIds = rule.activityIds === undefined ? group.activityIds : rule.activityIds;
-  if (activityIds !== undefined && !activityMatches(snapshot, activityIds)) {
+  if (
+    activityIds !== undefined &&
+    !(Array.isArray(activityIds) && activityIds.length === 0) &&
+    !activityMatches(snapshot, activityIds)
+  ) {
     return emptyValidation(
       "unsatisfied",
       `当前 Activity 不匹配：${snapshot.activityId ?? "未知"}`,
+      "activity_mismatch",
     );
   }
 
   if (hasUnsupportedScopeField(group, rule)) {
-    return emptyValidation("partial", "规则包含当前版本范围条件，静态快照验证不完整");
+    return emptyValidation(
+      "partial",
+      "规则包含当前版本范围条件，静态快照验证不完整",
+      "partial",
+    );
   }
 
   const excluded: string[] = [];
@@ -197,58 +242,124 @@ function validateRule(
 
   if (excluded.length > 0) {
     return {
-      ...emptyValidation("unsatisfied", `规则被排除条件否决：${excluded.join(" || ")}`),
+      ...emptyValidation(
+        "unsatisfied",
+        `规则被排除条件否决：${excluded.join(" || ")}`,
+        "excluded",
+      ),
       excludedMatches: excluded,
       ...(unparsed.length > 0 ? { unparsedMatches: unparsed } : {}),
     };
   }
   if (unparsed.length > 0) {
     return {
-      ...emptyValidation("partial", `排除条件不可完整验证：${unparsed.join("；")}`),
+      ...emptyValidation(
+        "partial",
+        `排除条件不可完整验证：${unparsed.join("；")}`,
+        "partial",
+      ),
       unparsedMatches: unparsed,
     };
   }
 
+  const matches = rule.matches ?? [];
+  const anyMatches = rule.anyMatches ?? [];
+
+  if (matches.length === 0 && anyMatches.length === 0) {
+    return emptyValidation("invalid", "规则缺少 matches 和 anyMatches", "invalid");
+  }
+
   let anySupportIds: number[] = [];
-  if ((rule.anyMatches?.length ?? 0) > 0) {
-    const anyResults = rule.anyMatches!.map((expr) => matchGkdSelectorString(snapshot, expr));
+  if (anyMatches.length > 0) {
+    const anyResults = anyMatches.map((expr) => matchGkdSelectorString(snapshot, expr));
     anySupportIds = anyResults.flatMap((result) => [
       ...result.clickIds,
       ...result.supportIds,
     ]);
     anyResults.forEach((result, index) => {
-      if (result.unparsed) unparsed.push(rule.anyMatches![index]);
+      if (result.unparsed) unparsed.push(anyMatches[index]);
     });
+
+    if (matches.length === 0) {
+      if (unparsed.length > 0) {
+        if (anyResults.every((result) => result.unparsed)) {
+          return {
+            ...emptyValidation(
+              "invalid",
+              `anyMatches 全部条件不可解析：${unparsed.join("；")}`,
+              "invalid",
+            ),
+            unparsedMatches: unparsed,
+          };
+        }
+        return {
+          ...emptyValidation(
+            "partial",
+            `可选分支不可完整验证：${unparsed.join("；")}`,
+            "partial",
+          ),
+          unparsedMatches: unparsed,
+        };
+      }
+
+      const matchedBranches = anyResults.filter((result) => result.clickIds.length > 0);
+      if (matchedBranches.length === 0) {
+        return emptyValidation(
+          "unsatisfied",
+          "anyMatches 的所有分支均未命中",
+          "any_matches_miss",
+        );
+      }
+
+      const clickNodes = uniqueNodes(
+        matchedBranches.flatMap((result) => resolveNodes(snapshot, result.clickIds)),
+      );
+      const supportNodes = uniqueNodes(
+        matchedBranches.flatMap((result) => resolveNodes(snapshot, result.supportIds)),
+      ).filter((node) => !clickNodes.some((target) => target.id === node.id));
+      return {
+        hitCount: clickNodes.length,
+        clickNodes,
+        supportNodes,
+        status: "satisfied",
+      };
+    }
+
     if (
       unparsed.length === 0 &&
       anyResults.every((result) => result.clickIds.length === 0)
     ) {
-      return emptyValidation("unsatisfied", "anyMatches 的所有分支均未命中");
+      return emptyValidation(
+        "unsatisfied",
+        "anyMatches 的所有分支均未命中",
+        "any_matches_miss",
+      );
     }
     // 合法分支可命中时也无法确认未解析分支，因此保留后续结果并标记为部分验证。
-  }
-
-  const matches = rule.matches;
-  if (matches.length === 0) {
-    return rule.anyMatches?.length
-      ? emptyValidation("partial", "规则只有 anyMatches，未声明 matches 点击目标")
-      : emptyValidation("invalid", "规则缺少 matches 和 anyMatches");
   }
 
   const results = matches.map((expr) => matchGkdSelectorString(snapshot, expr));
   const matchesUnparsed = results.flatMap((result, index) =>
     result.unparsed ? [matches[index]] : [],
   );
-  if (unparsed.length > 0) {
-    return {
-      ...emptyValidation("partial", `可选分支不可完整验证：${unparsed.join("；")}`),
-      unparsedMatches: unparsed,
-    };
-  }
   if (matchesUnparsed.length > 0) {
     return {
-      ...emptyValidation("invalid", `必需条件不可解析：${matchesUnparsed.join("；")}`),
+      ...emptyValidation(
+        "invalid",
+        `必需条件不可解析：${matchesUnparsed.join("；")}`,
+        "invalid",
+      ),
       unparsedMatches: [...unparsed, ...matchesUnparsed],
+    };
+  }
+  if (unparsed.length > 0) {
+    return {
+      ...emptyValidation(
+        "partial",
+        `可选分支不可完整验证：${unparsed.join("；")}`,
+        "partial",
+      ),
+      unparsedMatches: unparsed,
     };
   }
 
@@ -257,12 +368,16 @@ function validateRule(
     .slice(0, -1)
     .filter((_, index) => results[index].clickIds.length === 0);
   if (missing.length > 0 || last.clickIds.length === 0) {
-    const reason =
-      missing.length > 0
-        ? `必需上下文未命中：${missing.join("；")}`
-        : "末项点击目标未命中";
+    const isContextMiss = missing.length > 0;
+    const reason = isContextMiss
+      ? `必需上下文未命中：${missing.join("；")}`
+      : "末项点击目标未命中";
     return {
-      ...emptyValidation("unsatisfied", reason),
+      ...emptyValidation(
+        "unsatisfied",
+        reason,
+        isContextMiss ? "context_miss" : "target_miss",
+      ),
       supportNodes: uniqueNodes(
         results.slice(0, -1).flatMap((result) => resolveNodes(snapshot, result.clickIds)),
       ),
@@ -289,14 +404,17 @@ function activityMatches(
   snapshot: ParsedGkdSnapshot,
   value: string | string[],
 ): boolean {
-  if (typeof value === "string" && value.trim() === "") return true;
-  if (Array.isArray(value) && value.length === 0) return true;
-  const ids = (Array.isArray(value) ? value : [value]).map((id) =>
-    id.startsWith(".") ? `${snapshot.appId}${id}` : id,
-  );
-  return Boolean(
-    snapshot.activityId && ids.some((id) => snapshot.activityId!.startsWith(id)),
-  );
+  if (!snapshot.activityId) return false;
+  const rawIds = Array.isArray(value) ? value : [value];
+  if (rawIds.length === 0) return false;
+  return rawIds.some((rawId) => {
+    const trimmed = rawId.trim();
+    if (!trimmed) return false;
+    const normalizedId = trimmed.startsWith(".")
+      ? `${snapshot.appId}${trimmed}`
+      : trimmed;
+    return snapshot.activityId === normalizedId;
+  });
 }
 
 function hasUnsupportedScopeField(

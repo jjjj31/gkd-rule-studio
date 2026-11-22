@@ -153,7 +153,7 @@ describe("flow draft generation", () => {
     // 每步的元信息和点击目标保留
     expect(prompt).toContain("步骤 1：点展开");
     expect(prompt).toContain("步骤 2：点关闭");
-    expect(prompt).toContain("用户点击目标节点：");
+    expect(prompt).toContain("用户点击的目标节点：");
     // 每步场景参数保留
     expect(prompt).toContain("- 场景参数：");
     expect(prompt).toContain("- groupName:");

@@ -160,6 +160,251 @@ describe("test subscription draft", () => {
     expect(cleared.importedSelectors).toHaveLength(0);
     expect(cleared.lastImportedSummary).toBeUndefined();
   });
+
+  it("does not merge groups with different names or differing group-level runtime fields", () => {
+    const first = addAppDraftToTestSubscription(
+      createEmptyTestSubscription(),
+      appDraft("com.demo", "Demo", "开屏广告", "[vid=\"skip\"]"),
+    );
+
+    // 同 key=0 但不同组名：必须新建独立 group
+    const differentName = addAppDraftToTestSubscription(first, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "弹窗广告",
+          matchTime: 30000,
+          actionMaximum: 1,
+          resetMatch: "app",
+          rules: [{ key: 0, matches: ['[vid="close"]'] }],
+        },
+      ],
+    });
+    expect(differentName.apps[0].groups).toHaveLength(2);
+    expect(differentName.apps[0].groups.map((g) => g.key)).toEqual([0, 1]);
+    expect(differentName.apps[0].groups.map((g) => g.name)).toEqual(["开屏广告", "弹窗广告"]);
+
+    // 同组名但 group 级运行字段（matchRoot/forcedTime）不同：不能静默丢字段，应新建独立 group
+    const differentRuntime = addAppDraftToTestSubscription(first, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "开屏广告",
+          matchTime: 10000,
+          forcedTime: 10000,
+          matchRoot: true,
+          actionMaximum: 3,
+          actionCd: 1000,
+          resetMatch: "app",
+          rules: [{ key: 0, matches: ['[text^="跳过"]'], action: "clickCenter" }],
+        },
+      ],
+    });
+    expect(differentRuntime.apps[0].groups).toHaveLength(2);
+    expect(differentRuntime.apps[0].groups[1]).toMatchObject({
+      key: 1,
+      matchRoot: true,
+      forcedTime: 10000,
+      matchTime: 10000,
+    });
+  });
+
+  it("does not merge groups with preKeys/actionCdKey/actionMaximumKey and preserves original rule keys", () => {
+    const first = addAppDraftToTestSubscription(
+      createEmptyTestSubscription(),
+      appDraft("com.demo", "Demo", "开屏广告", "[vid=\"skip\"]"),
+    );
+
+    const withPreKeys = addAppDraftToTestSubscription(first, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "开屏广告",
+          matchTime: 30000,
+          actionMaximum: 1,
+          resetMatch: "app",
+          rules: [
+            { key: 10, matches: ['[text="第一步"]'] },
+            { key: 20, preKeys: [10], matches: ['[text="第二步"]'] },
+          ],
+        },
+      ],
+    });
+
+    expect(withPreKeys.apps[0].groups).toHaveLength(2);
+    expect(withPreKeys.apps[0].groups[1].rules.map((r) => r.key)).toEqual([10, 20]);
+    expect(withPreKeys.apps[0].groups[1].rules[1].preKeys).toEqual([10]);
+  });
+
+  it("distinguishes rules with identical matches but different runtime/selector fields", () => {
+    const first = addAppDraftToTestSubscription(
+      createEmptyTestSubscription(),
+      {
+        id: "com.demo",
+        name: "Demo",
+        groups: [
+          {
+            key: 0,
+            name: "开屏广告",
+            rules: [{ key: 0, matches: ['[vid="skip"]'], action: "clickNode" }],
+          },
+        ],
+      },
+    );
+    const second = addAppDraftToTestSubscription(first, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "开屏广告",
+          rules: [
+            { key: 0, matches: ['[vid="skip"]'], action: "clickCenter", actionDelay: 1500 },
+          ],
+        },
+      ],
+    });
+    const third = addAppDraftToTestSubscription(second, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "开屏广告",
+          rules: [
+            {
+              key: 0,
+              matches: ['[vid="skip"]'],
+              action: "clickNode",
+              excludeMatches: ['[text="广告详情"]'],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(third.apps[0].groups).toHaveLength(1);
+    expect(third.apps[0].groups[0].rules).toHaveLength(3);
+  });
+
+  it("does not swallow rules sharing selector when actionMaximum/actionCd/forcedTime differ", () => {
+    const base = addAppDraftToTestSubscription(createEmptyTestSubscription(), {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "开屏广告",
+          rules: [{ key: 0, matches: ['[vid="skip"]'], actionMaximum: 1 }],
+        },
+      ],
+    });
+    const withDiffMax = addAppDraftToTestSubscription(base, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "开屏广告",
+          rules: [{ key: 0, matches: ['[vid="skip"]'], actionMaximum: 3 }],
+        },
+      ],
+    });
+    const withDiffCd = addAppDraftToTestSubscription(withDiffMax, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "开屏广告",
+          rules: [
+            { key: 0, matches: ['[vid="skip"]'], actionMaximum: 1, actionCd: 1500 },
+          ],
+        },
+      ],
+    });
+    const withDiffForcedTime = addAppDraftToTestSubscription(withDiffCd, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "开屏广告",
+          rules: [
+            { key: 0, matches: ['[vid="skip"]'], actionMaximum: 1, forcedTime: 10000 },
+          ],
+        },
+      ],
+    });
+
+    expect(withDiffForcedTime.apps[0].groups).toHaveLength(1);
+    expect(withDiffForcedTime.apps[0].groups[0].rules).toHaveLength(4);
+  });
+
+  it("does not merge same-name groups when delay or versionCodes differ", () => {
+    const first = addAppDraftToTestSubscription(createEmptyTestSubscription(), {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "局部广告",
+          rules: [{ key: 0, matches: ['[vid="close_a"]'] }],
+        },
+      ],
+    });
+    const withDelay = addAppDraftToTestSubscription(first, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "局部广告",
+          delay: 800,
+          rules: [{ key: 0, matches: ['[vid="close_b"]'] }],
+        } as AppRuleDraft["groups"][number],
+      ],
+    });
+    const withVersionCodes = addAppDraftToTestSubscription(withDelay, {
+      id: "com.demo",
+      name: "Demo",
+      groups: [
+        {
+          key: 0,
+          name: "局部广告",
+          versionCodes: [100, 101],
+          rules: [{ key: 0, matches: ['[vid="close_c"]'] }],
+        },
+      ],
+    });
+
+    expect(withVersionCodes.apps[0].groups).toHaveLength(3);
+    expect((withVersionCodes.apps[0].groups[1] as Record<string, unknown>).delay).toBe(800);
+    expect(withVersionCodes.apps[0].groups[2].versionCodes).toEqual([100, 101]);
+  });
+
+  it("supports anyMatches-only rules without emitting empty matches array", () => {
+    const imported = importJson5ToTestSubscription(
+      createEmptyTestSubscription(),
+      "{ id: 'com.demo', name: 'Demo', groups: [{ key: 0, name: '开屏广告', rules: [{ key: 0, anyMatches: ['[vid=\"skip\"]', '[text^=\"跳过\"]'] }] }] }",
+    );
+
+    const raw = exportRawSubscription(imported);
+    const exportedRule = raw.apps[0].groups[0].rules[0] as unknown as Record<string, unknown>;
+    expect("matches" in exportedRule).toBe(false);
+    expect(exportedRule.anyMatches).toEqual(['[vid="skip"]', '[text^="跳过"]']);
+
+    const cleared = markImportedAndClearBuffer(imported, 456);
+    expect(cleared.importedRules).toHaveLength(1);
+    expect(cleared.importedRules[0].matches).toEqual(['[vid="skip"]', '[text^="跳过"]']);
+    expect(wasSelectorImported(cleared, ['[vid="skip"]', '[text^="跳过"]'])).toBe(true);
+  });
 });
 
 function appDraft(

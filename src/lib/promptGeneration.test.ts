@@ -1,14 +1,23 @@
 import { describe, expect, it } from "vitest";
+import JSON5 from "json5";
+import { AI_RULE_OUTPUT_CONTRACT, AI_RULE_OUTPUT_EXAMPLE } from "./aiRuleContract";
 import {
+  buildCustomScenarioPrompt,
   parseCustomScenario,
   resolveCustomScenarioSettings,
 } from "./customScenario";
-import { buildHelpPrompt } from "./helpPrompt";
+import { buildFlowHelpPrompt } from "./flowDraft";
+import { analyzeClickableTarget, buildHelpPrompt } from "./helpPrompt";
+import { validateGkdSelectorSyntax } from "./selectorAdapter";
+import { validateAppRuleAgainstSnapshot } from "./selectorMatcher";
+import { createRuleDraft, exactSelector } from "./selectorSerialize";
+import { findSafeClickableAncestor } from "./visualTarget";
 import { formatAuthoringFeedbackPrompt, classifyAuthoringFeedback } from "./authoringFeedback";
-import { pickNodeAtPoint } from "./nodePicker";
+import { pickExistingNode, pickNodeAtPoint } from "./nodePicker";
 import { normalizeSnapshot } from "./snapshotNormalize";
 import type { FewShotHit } from "./fewShotRetrieval";
 import { DEFAULT_RULE_SETTINGS } from "../data/ruleSettings";
+import type { FlowRuleStep } from "../types/flowDraft";
 import type {
   RawGkdSnapshot,
   SnapshotNode,
@@ -353,6 +362,719 @@ describe("prompt generation", () => {
     // 保锚裁剪成功保留了青少年模式提醒与目标按钮
     expect(prompt).toContain("青少年模式提醒");
     expect(prompt).toContain("我知道了");
+  });
+
+  it("publishes strict fastQuery contract and a valid two-candidate contrasting example", () => {
+    expect(AI_RULE_OUTPUT_CONTRACT).toContain("均为非负整数（其中 actionMaximum >= 1）");
+    expect(AI_RULE_OUTPUT_CONTRACT).toContain("fastQuery: true 严苛适用条件");
+    expect(AI_RULE_OUTPUT_CONTRACT).toContain("WebView");
+
+    const parsed = JSON5.parse(AI_RULE_OUTPUT_EXAMPLE) as {
+      candidates: Array<{
+        id: string;
+        title: string;
+        summary: string;
+        risk: string;
+        app: {
+          id: string;
+          name: string;
+          groups: Array<{
+            key: number;
+            name: string;
+            rules: Array<{
+              key: number;
+              matches: string[];
+              fastQuery?: boolean;
+              action?: string;
+              actionDelay?: number;
+            }>;
+          }>;
+        };
+      }>;
+    };
+    expect(parsed.candidates).toHaveLength(2);
+    expect(parsed.candidates[0].id).toBe("candidate-a");
+    expect(parsed.candidates[1].id).toBe("candidate-b");
+
+    for (const candidate of parsed.candidates) {
+      expect(candidate.app.id).toBeTruthy();
+      expect(candidate.app.groups.length).toBeGreaterThan(0);
+      for (const group of candidate.app.groups) {
+        expect(Number.isInteger(group.key)).toBe(true);
+        expect(group.rules.length).toBeGreaterThan(0);
+        for (const rule of group.rules) {
+          expect(rule.matches.length).toBeGreaterThan(0);
+          expect(rule.actionDelay).toBeUndefined();
+          for (const selector of rule.matches) {
+            expect(validateGkdSelectorSyntax(selector)).toBeNull();
+          }
+        }
+      }
+    }
+
+    expect(parsed.candidates[0].app.groups[0].rules[0].fastQuery).toBe(true);
+    expect(parsed.candidates[1].app.groups[0].rules[0].fastQuery).toBeUndefined();
+    expect(parsed.candidates[1].app.groups[0].rules[0].action).toBe("clickCenter");
+    expect(parsed.candidates[1].app.groups[0].rules[0].matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("supports builtin audience trimming, removes coordinate attributes from allowlist, and keeps deep hierarchy metadata", () => {
+    const nodes: SnapshotNode[] = [];
+    for (let d = 0; d <= 14; d += 1) {
+      nodes.push(
+        node(
+          d,
+          d === 0 ? -1 : d - 1,
+          attr({
+            name: d === 14 ? "android.widget.ImageView" : "android.widget.FrameLayout",
+            clickable: d === 14,
+            depth: d,
+            index: d === 14 ? 2 : 0,
+            left: d === 14 ? 920 : 0,
+            top: d === 14 ? 100 : 0,
+            right: d === 14 ? 1000 : 1080,
+            bottom: d === 14 ? 180 : 1920,
+            childCount: d === 14 ? 0 : 1,
+            desc: d === 14 ? "关闭弹窗" : null,
+          }),
+        ),
+      );
+    }
+    const snapshot = normalizeSnapshot(
+      {
+        id: 10,
+        appId: "com.deep.demo",
+        activityId: "com.deep.demo.MainActivity",
+        screenWidth: 1080,
+        screenHeight: 1920,
+        isLandscape: false,
+        nodes,
+      },
+      "",
+      "deep",
+    );
+    const pick = pickExistingNode(snapshot, snapshot.nodeById.get(14)!);
+
+    const builtinPrompt = buildHelpPrompt({
+      snapshot,
+      pickResult: pick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      audience: "builtin",
+    });
+
+    expect(builtinPrompt).not.toContain("字段类型硬约束");
+    expect(builtinPrompt).not.toContain("完整 JSON5 示例");
+    expect(builtinPrompt).not.toContain("测试反馈格式");
+    expect(builtinPrompt).toContain("5 步规则排查思路");
+    expect(builtinPrompt).toContain("d=14 p=#13 idx=2 80x80");
+    // 属性白名单不再列出 left/top/right/bottom
+    expect(builtinPrompt).not.toContain("index、depth、left、top、right、bottom");
+    expect(builtinPrompt).toContain("width、height（width/height 仅作次级尺寸过滤）");
+  });
+
+  it("warns against lifting to oversized/hot-area clickable ancestors and emits desc hint without fastQuery", () => {
+    // 场景 A：外层可点击容器是全屏广告热区，严禁 @ 抬升，要求 clickCenter
+    const hotAreaSnapshot = normalizeSnapshot(
+      {
+        id: 11,
+        appId: "com.ad.demo",
+        activityId: "com.ad.demo.SplashActivity",
+        screenWidth: 1080,
+        screenHeight: 1920,
+        isLandscape: false,
+        nodes: [
+          node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 1 })),
+          node(
+            1,
+            0,
+            attr({
+              name: "android.widget.FrameLayout",
+              vid: "ad_click_hotArea",
+              clickable: true,
+              left: 0,
+              top: 0,
+              right: 1080,
+              bottom: 1920,
+              childCount: 1,
+              depth: 1,
+            }),
+          ),
+          node(
+            2,
+            1,
+            attr({
+              name: "android.widget.TextView",
+              text: "跳过 3s",
+              clickable: false,
+              left: 900,
+              top: 100,
+              right: 1040,
+              bottom: 160,
+              depth: 2,
+            }),
+          ),
+        ],
+      },
+      "",
+      "hot-area",
+    );
+    const hotPick = pickExistingNode(hotAreaSnapshot, hotAreaSnapshot.nodeById.get(2)!);
+    const hotPrompt = buildHelpPrompt({
+      snapshot: hotAreaSnapshot,
+      pickResult: hotPick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+    });
+    expect(hotPrompt).toContain("严禁使用 @ 抬升点击该外层容器");
+    expect(hotPrompt).toContain('action: "clickCenter"');
+    expect(hotPrompt).toContain("同屏属性冲突与全屏遮罩告警：");
+    expect(hotPrompt).toContain("全屏遮罩/热区层：#1 FrameLayout");
+
+    // 场景 B：安全可点击父容器 + 无 text 仅有 desc 的不可点击子节点
+    const descSnapshot = normalizeSnapshot(
+      {
+        id: 12,
+        appId: "com.desc.demo",
+        activityId: "com.desc.demo.MainActivity",
+        screenWidth: 1080,
+        screenHeight: 1920,
+        isLandscape: false,
+        nodes: [
+          node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 2 })),
+          node(
+            1,
+            0,
+            attr({
+              name: "android.widget.LinearLayout",
+              clickable: true,
+              left: 900,
+              top: 120,
+              right: 1020,
+              bottom: 200,
+              childCount: 1,
+              depth: 1,
+            }),
+          ),
+          node(
+            2,
+            1,
+            attr({
+              name: "android.widget.ImageView",
+              text: null,
+              desc: "关闭广告",
+              clickable: false,
+              left: 920,
+              top: 130,
+              right: 1000,
+              bottom: 190,
+              depth: 2,
+            }),
+          ),
+          node(
+            3,
+            0,
+            attr({
+              name: "android.widget.ImageView",
+              text: null,
+              desc: "关闭广告",
+              clickable: true,
+              left: 920,
+              top: 800,
+              right: 1000,
+              bottom: 860,
+              depth: 1,
+            }),
+          ),
+        ],
+      },
+      "",
+      "desc-only",
+    );
+    const descPick = pickExistingNode(descSnapshot, descSnapshot.nodeById.get(2)!);
+    const descPrompt = buildHelpPrompt({
+      snapshot: descSnapshot,
+      pickResult: descPick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+    });
+    expect(descPrompt).toContain('[desc="关闭广告"]');
+    expect(descPrompt).toContain("禁止开启 fastQuery: true");
+    expect(descPrompt).toContain("同屏属性冲突：[desc=\"关闭广告\"]");
+    expect(descPrompt).toContain("#3 ImageView");
+  });
+
+  it("prioritizes same-popup business text anchors over bottom navigation labels", () => {
+    const raw: RawGkdSnapshot = {
+      id: 13,
+      appId: "com.popup.demo",
+      activityId: "com.popup.demo.MainActivity",
+      screenWidth: 1080,
+      screenHeight: 2400,
+      isLandscape: false,
+      nodes: [
+        node(0, -1, attr({ name: "android.widget.FrameLayout", bottom: 2400, childCount: 2 })),
+        node(
+          1,
+          0,
+          attr({
+            name: "android.widget.LinearLayout",
+            left: 0,
+            top: 2220,
+            right: 1080,
+            bottom: 2400,
+            depth: 1,
+            childCount: 2,
+          }),
+        ),
+        node(
+          2,
+          1,
+          attr({
+            name: "android.widget.TextView",
+            text: "首页推荐",
+            left: 40,
+            top: 2240,
+            right: 200,
+            bottom: 2360,
+            depth: 2,
+          }),
+        ),
+        node(
+          3,
+          1,
+          attr({
+            name: "android.widget.TextView",
+            text: "我的空间",
+            left: 840,
+            top: 2240,
+            right: 1020,
+            bottom: 2360,
+            depth: 2,
+          }),
+        ),
+        node(
+          4,
+          0,
+          attr({
+            name: "android.widget.FrameLayout",
+            left: 100,
+            top: 600,
+            right: 980,
+            bottom: 1400,
+            depth: 1,
+            childCount: 2,
+          }),
+        ),
+        node(
+          5,
+          4,
+          attr({
+            name: "android.widget.TextView",
+            text: "升级会员立享免广告",
+            left: 200,
+            top: 700,
+            right: 880,
+            bottom: 780,
+            depth: 2,
+          }),
+        ),
+        node(
+          6,
+          4,
+          attr({
+            name: "android.widget.ImageView",
+            clickable: true,
+            left: 900,
+            top: 620,
+            right: 960,
+            bottom: 680,
+            depth: 2,
+          }),
+        ),
+      ],
+    };
+    const snapshot = normalizeSnapshot(raw, "", "popup");
+    const pick = pickExistingNode(snapshot, snapshot.nodeById.get(6)!);
+    const prompt = buildHelpPrompt({
+      snapshot,
+      pickResult: pick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+    });
+    const anchorSection = prompt.split("同屏业务文案锚点参考")[1]?.split("\n\n")[0] ?? "";
+    const popupIdx = anchorSection.indexOf("升级会员立享免广告");
+    const navIdx = anchorSection.indexOf("首页推荐");
+    expect(popupIdx).toBeGreaterThan(-1);
+    expect(navIdx === -1 || popupIdx < navIdx).toBe(true);
+  });
+
+  it("fixes flowDraft tree pruning, builtin audience rules, dynamic activity warning, and clickCenter fallback", () => {
+    const nodes: SnapshotNode[] = [
+      node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 160 })),
+    ];
+    for (let i = 1; i <= 150; i += 1) {
+      nodes.push(
+        node(
+          i,
+          0,
+          attr({
+            name: "android.view.View",
+            left: 0,
+            top: i * 8,
+            right: 100,
+            bottom: i * 8 + 6,
+            depth: 1,
+            index: i - 1,
+          }),
+        ),
+      );
+    }
+    // 目标在后段节点中，其父节点 #151 有叔节点 #155
+    nodes.push(
+      node(
+        151,
+        0,
+        attr({
+          name: "android.widget.LinearLayout",
+          vid: "popup_box",
+          left: 100,
+          top: 300,
+          right: 900,
+          bottom: 700,
+          depth: 1,
+          index: 150,
+          childCount: 2,
+        }),
+      ),
+      node(
+        152,
+        151,
+        attr({
+          name: "android.widget.TextView",
+          text: "关闭按钮",
+          clickable: false,
+          left: 800,
+          top: 320,
+          right: 880,
+          bottom: 380,
+          depth: 2,
+          index: 0,
+        }),
+      ),
+      node(
+        153,
+        151,
+        attr({
+          name: "android.widget.TextView",
+          text: "广告弹窗标题",
+          clickable: false,
+          left: 140,
+          top: 320,
+          right: 500,
+          bottom: 380,
+          depth: 2,
+          index: 1,
+        }),
+      ),
+    );
+
+    const snapshot = normalizeSnapshot(
+      {
+        id: 20,
+        appId: "com.flow.demo",
+        activityId: "com.flow.demo.InterstitialView_4012003",
+        screenWidth: 1080,
+        screenHeight: 1920,
+        isLandscape: false,
+        nodes,
+      },
+      "",
+      "flow-large",
+    );
+    const pick = pickExistingNode(snapshot, snapshot.nodeById.get(152)!);
+    const step: FlowRuleStep = {
+      id: "step-1",
+      title: "关广告",
+      note: "",
+      delayNote: "",
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      scenarioId: "fullscreen",
+      snapshot,
+      pickResult: pick,
+      candidates: [],
+      selectedCandidate: null,
+    };
+
+    const prompt = buildFlowHelpPrompt({
+      flowName: "大树多步测试",
+      steps: [step],
+      audience: "builtin",
+    });
+
+    expect(prompt).not.toContain("先向用户追问");
+    expect(prompt).not.toContain("测试反馈格式");
+    expect(prompt).toContain("带动态数字/匿名后缀，严禁写死进 activityIds");
+    expect(prompt).toContain('action: "clickCenter"');
+    expect(prompt).toContain('本步真实 vid 白名单: vid="popup_box"');
+    expect(prompt).toContain("fastQuery: true 严苛约束");
+    expect(prompt).toContain("严禁默认添加 actionDelay");
+    // 关键：树裁剪后不能因为全树灌入把目标 #152 挤掉
+    expect(prompt).toContain("#152 TextView");
+    expect(prompt).toContain("#153 TextView");
+    expect(prompt).toContain("已省略");
+  });
+
+  it("updates customScenario prompt defaults, rejects dynamic current activity, and validates action/fences/array activityIds", () => {
+    const dynamicSnapshot = buildSnapshot("com.demo.InterstitialView_4012003");
+    const prompt = buildCustomScenarioPrompt(dynamicSnapshot);
+    expect(prompt).toContain("actionDelay: null");
+    expect(prompt).toContain("forcedTime: null");
+    expect(prompt).toContain("matchRoot: null");
+    expect(prompt).not.toContain("actionDelay: 2500");
+    expect(prompt).toContain("带有动态后缀");
+
+    const parsed = parseCustomScenario(
+      `\`\`\`javascript
+      {
+        name: '动态页弹窗',
+        groupName: '全屏广告',
+        activityIds: ['current'],
+        action: 'notARealAction',
+        actionDelay: null,
+        forcedTime: null,
+        matchRoot: null,
+      }
+      \`\`\``,
+      dynamicSnapshot,
+      "",
+    );
+    expect(parsed.activityIdsMode).toBe("current");
+    expect(parsed.settings.action).toBeUndefined();
+
+    const resolvedDynamic = resolveCustomScenarioSettings(parsed, dynamicSnapshot);
+    expect(resolvedDynamic.activityIds).toBe("");
+
+    const parsedArrayLiteral = parseCustomScenario(
+      `\`\`\`js
+      {
+        name: '多页面弹窗',
+        groupName: '局部广告',
+        activityIds: ['com.demo.PageA', 'com.demo.PageB'],
+        action: 'clickCenter',
+      }
+      \`\`\``,
+      null,
+      "",
+    );
+    expect(parsedArrayLiteral.activityIdsMode).toBe("literal");
+    expect(parsedArrayLiteral.settings.activityIds).toBe(
+      "com.demo.PageA, com.demo.PageB",
+    );
+    expect(parsedArrayLiteral.settings.action).toBe("clickCenter");
+  });
+
+  it("publishes first-block fastQuery rule across contract, single prompt, and external flow prompt with full contract/self-check", () => {
+    const fastQueryClause = "位于最右侧节点首个独立 [...] 中，不与其它属性用 && 混写";
+    expect(AI_RULE_OUTPUT_CONTRACT).toContain(fastQueryClause);
+
+    const snapshot = buildSnapshot("com.demo.MainActivity");
+    const pick = pickNodeAtPoint(snapshot, { x: 150, y: 340 })!;
+
+    const singlePrompt = buildHelpPrompt({
+      snapshot,
+      pickResult: pick,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+    });
+    expect(singlePrompt).toContain(fastQueryClause);
+
+    const step: FlowRuleStep = {
+      id: "step-1",
+      title: "点取消",
+      note: "",
+      delayNote: "",
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+      scenarioId: "function",
+      snapshot,
+      pickResult: pick,
+      candidates: [],
+      selectedCandidate: null,
+    };
+    const externalFlowPrompt = buildFlowHelpPrompt({
+      flowName: "外部多步流程",
+      steps: [step],
+      audience: "external",
+    });
+    expect(externalFlowPrompt).toContain(fastQueryClause);
+    expect(externalFlowPrompt).toContain("- 用户点击的目标节点：");
+    expect(externalFlowPrompt).toContain(AI_RULE_OUTPUT_CONTRACT);
+    expect(externalFlowPrompt).toContain(AI_RULE_OUTPUT_EXAMPLE);
+    expect(externalFlowPrompt).toContain("输出前自检");
+  });
+
+  it("keeps analyzeClickableTarget and findSafeClickableAncestor aligned on 11% generic and 6% multi-action containers", () => {
+    // 场景 1：11% 无信号容器（1080 * 1920 = 2,073,600; 570 * 400 = 228,000 ≈ 11.0%）
+    const elevenPercentSnap = normalizeSnapshot(
+      {
+        id: 30,
+        appId: "com.demo",
+        activityId: "com.demo.MainActivity",
+        screenWidth: 1080,
+        screenHeight: 1920,
+        isLandscape: false,
+        nodes: [
+          node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 1 })),
+          node(
+            1,
+            0,
+            attr({
+              name: "android.widget.LinearLayout",
+              clickable: true,
+              left: 0,
+              top: 0,
+              right: 570,
+              bottom: 400,
+              childCount: 1,
+              depth: 1,
+            }),
+          ),
+          node(
+            2,
+            1,
+            attr({
+              name: "android.widget.TextView",
+              text: "关闭",
+              clickable: false,
+              left: 100,
+              top: 100,
+              right: 200,
+              bottom: 160,
+              depth: 2,
+            }),
+          ),
+        ],
+      },
+      "",
+      "eleven-percent",
+    );
+    const pick1 = pickExistingNode(elevenPercentSnap, elevenPercentSnap.nodeById.get(2)!);
+    expect(findSafeClickableAncestor(elevenPercentSnap, pick1.pickedNode)).toBeNull();
+    const analysis1 = analyzeClickableTarget(elevenPercentSnap, pick1);
+    expect(analysis1.safeClickableTarget).toBeNull();
+    expect(analysis1.unsafeClickableCandidate?.node.id).toBe(1);
+    const prompt1 = buildHelpPrompt({
+      snapshot: elevenPercentSnap,
+      pickResult: pick1,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+    });
+    expect(prompt1).toContain("严禁使用 @ 抬升点击该外层容器");
+    expect(prompt1).toContain('action: "clickCenter"');
+
+    // 场景 2：6% 多动作按钮栏（“取消”+“立即下载”，620 * 200 = 124,000 ≈ 6.0%）
+    const multiActionSnap = normalizeSnapshot(
+      {
+        id: 31,
+        appId: "com.demo",
+        activityId: "com.demo.MainActivity",
+        screenWidth: 1080,
+        screenHeight: 1920,
+        isLandscape: false,
+        nodes: [
+          node(0, -1, attr({ name: "android.widget.FrameLayout", childCount: 1 })),
+          node(
+            1,
+            0,
+            attr({
+              name: "android.widget.LinearLayout",
+              clickable: true,
+              left: 100,
+              top: 500,
+              right: 720,
+              bottom: 700,
+              childCount: 2,
+              depth: 1,
+            }),
+          ),
+          node(
+            2,
+            1,
+            attr({
+              name: "android.widget.TextView",
+              text: "取消",
+              clickable: false,
+              left: 120,
+              top: 540,
+              right: 300,
+              bottom: 660,
+              index: 0,
+              depth: 2,
+            }),
+          ),
+          node(
+            3,
+            1,
+            attr({
+              name: "android.widget.TextView",
+              text: "立即下载",
+              clickable: false,
+              left: 400,
+              top: 540,
+              right: 700,
+              bottom: 660,
+              index: 1,
+              depth: 2,
+            }),
+          ),
+        ],
+      },
+      "",
+      "multi-action-bar",
+    );
+    const pick2 = pickExistingNode(multiActionSnap, multiActionSnap.nodeById.get(2)!);
+    expect(findSafeClickableAncestor(multiActionSnap, pick2.pickedNode)).toBeNull();
+    const analysis2 = analyzeClickableTarget(multiActionSnap, pick2);
+    expect(analysis2.safeClickableTarget).toBeNull();
+    expect(analysis2.unsafeClickableCandidate?.node.id).toBe(1);
+    const prompt2 = buildHelpPrompt({
+      snapshot: multiActionSnap,
+      pickResult: pick2,
+      ruleSettings: DEFAULT_RULE_SETTINGS,
+    });
+    expect(prompt2).toContain("严禁使用 @ 抬升点击该外层容器");
+    expect(prompt2).toContain('action: "clickCenter"');
+  });
+
+  it("flows multi-activity custom scenario through createRuleDraft into validateAppRuleAgainstSnapshot", () => {
+    const scenario = parseCustomScenario(
+      `{
+        name: '多页面弹窗',
+        groupName: '局部广告',
+        activityIds: ['com.demo.PageA', 'com.demo.PageB'],
+      }`,
+      null,
+      "",
+    );
+    const settings = resolveCustomScenarioSettings(scenario, null);
+    const rule = createRuleDraft(
+      { kind: "simple", selector: exactSelector("vid", "cancel") },
+      settings,
+    );
+    expect(rule.activityIds).toEqual(["com.demo.PageA", "com.demo.PageB"]);
+
+    const app = {
+      id: "com.demo",
+      name: "Demo",
+      groups: [{ key: 0, name: settings.groupName, rules: [rule] }],
+    };
+
+    const [hitB] = validateAppRuleAgainstSnapshot(buildSnapshot("com.demo.PageB"), app);
+    expect(hitB).toMatchObject({ status: "satisfied", hitCount: 1 });
+
+    const [missOther] = validateAppRuleAgainstSnapshot(
+      buildSnapshot("com.demo.OtherActivity"),
+      app,
+    );
+    expect(missOther).toMatchObject({
+      status: "unsatisfied",
+      hitCount: 0,
+      failureReason: "activity_mismatch",
+    });
   });
 });
 
