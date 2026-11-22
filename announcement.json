@@ -1,9 +1,11 @@
 {
-  "id": "ann-20261122-0.2.5",
-  "enabled": false,
-  "title": "🎉 GKD Rule Studio 0.2.5 版本更新公告",
-  "content": "欢迎更新 GKD Rule Studio v0.2.5！\n\n【本次核心更新】\n1. 全链路 fastQuery: true 实机兼容性封堵：\n   - 接入 @gkd-kit/selector 官方 fastQueryList 校验，修复纯 desc、纯结构、兄弟反序及 WebView 节点误开 fastQuery 导致真机 0 命中的问题。\n2. 内置 AI 与外部复制 Prompt 双路径对齐升级：\n   - 清洗 Few-Shot 示例库至 181 条全合法样本（清除非法顶层逗号与污染案例）；\n   - 新增 5 步排查脚手架、同屏同名/全屏遮罩冲突告警、大树保底与完整契约自检；\n   - 统一安全可点击祖先单一事实源（过滤大面积热区与多动作按钮栏），修复流程树裁剪与 JSON5 注释重复解析。\n3. 本地验靶、返修闭环与测试订阅加固：\n   - 支持 anyMatches-only 规则、精确 Activity 匹配与多元素 activityIds 拆分；\n   - 全量遍历多 rule 候选、支持显式延迟放行（allowActionDelay）及最多 2 轮自动返修；\n   - 修复测试订阅合并多候选丢字段、吞测试版 C 及异步状态竞态。",
+  "id": "ann-20261122-025",
+  "enabled": true,
+  "title": "🎉 GKD Rule Studio v0.2.5 已发布",
+  "content": "v0.2.5 现已发布！\n\n本次重点修复了 fastQuery 误开、开屏盲加延迟、提示词截断与跨框架防遮罩问题，大幅提升了内置 AI 与外部复制 Prompt 的一次成规则率，欢迎前往更新体验。",
   "type": "notice",
   "forced": false,
-  "updatedAt": "2026-11-22 07:40:00"
+  "actionUrl": "https://github.com/jjjj31/gkd-rule-studio/releases/tag/v0.2.5",
+  "actionText": "查看 v0.2.5 更新",
+  "updatedAt": "2026-11-22 15:50:00"
 }
