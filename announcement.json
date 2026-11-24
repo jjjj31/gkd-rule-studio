@@ -1,11 +1,11 @@
 {
-  "id": "ann-20261122-025",
+  "id": "ann-20261124-026",
   "enabled": true,
-  "title": "🎉 GKD Rule Studio v0.2.5 已发布",
-  "content": "v0.2.5 现已发布！\n\n本次重点修复了 fastQuery 误开、开屏盲加延迟、提示词截断与跨框架防遮罩问题，大幅提升了内置 AI 与外部复制 Prompt 的一次成规则率，欢迎前往更新体验。",
+  "title": "🎉 GKD Rule Studio v0.2.6 已发布",
+  "content": "v0.2.6 现已发布！\n\n本次重点修复了 Android 13 等旧版系统 WebView 启动黑屏问题（不支持 Wasm 正则时自动降级为 JS RegExp），并升级了当前测试管理、AI Session 多轮反馈交互、页面卡片排版及状态栏安全区适配，欢迎更新体验。",
   "type": "notice",
   "forced": false,
-  "actionUrl": "https://github.com/jjjj31/gkd-rule-studio/releases/tag/v0.2.5",
-  "actionText": "查看 v0.2.5 更新",
-  "updatedAt": "2026-11-22 15:50:00"
+  "actionUrl": "https://github.com/jjjj31/gkd-rule-studio/releases/tag/v0.2.6",
+  "actionText": "查看 v0.2.6 更新",
+  "updatedAt": "2026-11-24 13:20:00"
 }

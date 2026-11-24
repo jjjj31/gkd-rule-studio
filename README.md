@@ -8,7 +8,7 @@
 
 连接 GKD HTTP 服务，在截图上把放大镜拖到「跳过 / ×」松手，本地离线自动生成候选规则、一键推送 GKD 实测，并支持外部 / 内置 AI 闭环修复疑难广告。
 
-[![Version](https://img.shields.io/badge/Version-v0.2.5-86bfff?style=flat-square)](https://github.com/jjjj31/gkd-rule-studio/releases)
+[![Version](https://img.shields.io/badge/Version-v0.2.6-86bfff?style=flat-square)](https://github.com/jjjj31/gkd-rule-studio/releases)
 [![Android](https://img.shields.io/badge/Android-6.0%2B%20(API%2023)-3ddc84?style=flat-square)](android/README.md)
 [![GKD](https://img.shields.io/badge/GKD-1.13%2B-00a6a6?style=flat-square)](#详细功能清单与兼容性按需展开)
 [![Offline](https://img.shields.io/badge/%E5%9F%BA%E7%A1%80%E6%B5%81%E7%A8%8B-%E7%BA%AF%E6%9C%AC%E5%9C%B0%E7%A6%BB%E7%BA%BF%20%C2%B7%200%20API%20Key-91ddb1?style=flat-square)](#离线网络与隐私)
@@ -118,7 +118,7 @@ flowchart TD
 
 ## 适用人群与坦诚说明
 
-为了让预期清晰，这里如实说明当前版本（`v0.2.5`）的能力边界：
+为了让预期清晰，这里如实说明当前版本（`v0.2.6`）的能力边界：
 
 - **最拿手的场景**：单步关闭/跳过各类开屏广告、入页弹窗、插屏广告、局部关闭按钮。
 - **关于多步骤规则（诚实声明）**：虽然工作区已提供「多步模式」来编排多张快照和前置依赖，但**目前对复杂多步骤连续操作（例如“先点红包 → 返回 → 再关弹窗”）的自动生成能力还不强**。这类复杂规则建议先单步验证，或结合外部 / 内置 AI 多轮迭代。
