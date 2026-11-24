@@ -137,11 +137,25 @@ export interface AiCandidateFeedback {
   knownLimitations?: string[];
 }
 
+export interface AiFeedbackHistoryRound {
+  at: number;
+  note: string;
+  generation?: number;
+  items?: Array<{
+    candidateId: string;
+    title: string;
+    result: string;
+    note: string;
+    selectors?: string[];
+  }>;
+}
+
 export interface BuildAiBatchFeedbackMessagesInput {
   mode: AiMode;
   originalPrompt: string;
   feedbacks: AiCandidateFeedback[];
   imageUrl?: string;
+  feedbackHistory?: AiFeedbackHistoryRound[];
 }
 
 export interface RequestAiCandidatesInput {
@@ -640,7 +654,9 @@ export function buildAiBatchFeedbackMessages({
   originalPrompt,
   feedbacks,
   imageUrl,
+  feedbackHistory,
 }: BuildAiBatchFeedbackMessagesInput): AiChatMessage[] {
+  const historyLines = formatFeedbackHistoryForPrompt(feedbackHistory);
   const userText = [
     mode === "flow"
       ? "用户批量测试了多个流程规则候选，请根据所有反馈修正并重新给出 1-3 个候选。"
@@ -649,10 +665,11 @@ export function buildAiBatchFeedbackMessages({
     "",
     "原始上下文：",
     compactPromptForAi(originalPrompt),
+    ...(historyLines ? ["", historyLines] : []),
     "",
-    "重要：只返回一个单一 JSON5 对象，将修正后的所有候选放入同一个 candidates 数组：{ candidates: [...] }。不要返回 Markdown 解释或测试反馈格式。",
+    "重要：只返回一个单一 JSON5 对象，将修正后的所有候选放入同一个 candidates 数组：{ candidates: [...] }。不要返回 Markdown 解释或测试反馈格式。本轮返回的每个候选都必须是针对最新反馈修正后的新方案，严禁原样返回上一轮或历史轮次已被反馈失败的 selector。",
     "",
-    "批量测试反馈：",
+    "本轮批量测试反馈：",
     JSON5.stringify(
       feedbacks.map((feedback) => ({
         candidateId: feedback.candidate.id,
@@ -681,6 +698,33 @@ export function buildAiBatchFeedbackMessages({
       content: buildUserContent(userText, imageUrl),
     },
   ];
+}
+
+function formatFeedbackHistoryForPrompt(
+  feedbackHistory: AiFeedbackHistoryRound[] | undefined,
+): string {
+  if (!feedbackHistory || feedbackHistory.length === 0) return "";
+  const lines = feedbackHistory.map((round, index) => {
+    const roundNum = round.generation ?? index + 1;
+    if (round.items && round.items.length > 0) {
+      const details = round.items
+        .map((item) => {
+          const selectors =
+            item.selectors && item.selectors.length > 0
+              ? `（已失败 selector: ${item.selectors.join(" && ")}）`
+              : "";
+          const noteText = item.note?.trim() ? `，备注：${item.note.trim()}` : "";
+          return `  - ${item.title}: ${item.result}${selectors}${noteText}`;
+        })
+        .join("\n");
+      return `第 ${roundNum} 轮历史反馈：\n${details}`;
+    }
+    return `第 ${roundNum} 轮历史反馈：${round.note}`;
+  });
+  return [
+    "历史轮次失败记录（严禁重复以下已被真机测试证实失败的 selector 或方案）：",
+    ...lines,
+  ].join("\n");
 }
 
 export function compactPromptForAi(prompt: string): string {
@@ -1472,7 +1516,9 @@ function hasImageContent(content: AiChatMessageContent): boolean {
 export function buildExternalFeedbackPrompt(
   feedbacks: AiCandidateFeedback[],
   flowMode: boolean,
+  feedbackHistory?: AiFeedbackHistoryRound[],
 ): string {
+  const historyLines = formatFeedbackHistoryForPrompt(feedbackHistory);
   const lines = feedbacks.map((feedback) => {
     const description = classifyAuthoringFeedback(feedback);
     const label = feedback.result === "flow-note" ? "流程备注" : description.label;
@@ -1508,9 +1554,10 @@ export function buildExternalFeedbackPrompt(
       ? "以上流程测试版的测试结果如下（每步是否触发、停在哪、是否误触见备注）："
       : "以上各测试版的测试结果如下：",
     ...lines,
+    ...(historyLines ? ["", historyLines] : []),
     "",
     "证据规则：user-observation 只代表用户观察而非已确认根因；静态验证结果单独列出；修正版必须重新验证测试。",
-    "请基于本对话上面已经给出的测试版规则修正，只返回修正后的 JSON5 代码块，所有修正版必须放在唯一一个 ```json5 代码块中，作为一个 candidates 数组统一输出。格式：{ candidates: [...] }。不要复述节点树或原始 prompt。",
+    "请基于本对话上面已经给出的测试版规则修正，只返回修正后的 JSON5 代码块，所有修正版必须放在唯一一个 ```json5 代码块中，作为一个 candidates 数组统一输出。格式：{ candidates: [...] }。本轮候选严禁重复前面轮次已被证实失败的 selector，不要复述节点树或原始 prompt。",
   ].join("\n");
 }
 

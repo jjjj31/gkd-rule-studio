@@ -43,7 +43,26 @@ export interface InlineRuleTestItem {
   createdAt: number;
   updatedAt: number;
   aiSessionId?: string;
+  /** AI 候选所属的生成轮次（第 1 轮、第 2 轮…），用于区分同一 session 内跨轮次候选。 */
+  generation?: number;
+  /** 已导入到 GKD 本地规则的时间戳；非空时避免非幂等重复导入。 */
+  importedAt?: number;
   note?: string;
+}
+
+export interface InlineAiFeedbackHistoryItem {
+  candidateId: string;
+  title: string;
+  result: string;
+  note: string;
+  selectors?: string[];
+}
+
+export interface InlineAiFeedbackHistoryEntry {
+  at: number;
+  note: string;
+  generation?: number;
+  items?: InlineAiFeedbackHistoryItem[];
 }
 
 export interface InlineAiSession {
@@ -64,10 +83,7 @@ export interface InlineAiSession {
   generation: number;
   candidateIds: string[];
   candidates: AiRuleCandidate[];
-  feedbackHistory: Array<{
-    at: number;
-    note: string;
-  }>;
+  feedbackHistory: InlineAiFeedbackHistoryEntry[];
   createdAt: number;
   updatedAt: number;
 }
@@ -128,6 +144,7 @@ export function startOfflineCandidateTest(
     input.controlKey,
     input.sourceKey,
   );
+  const existing = findItem(state, id);
   const item: InlineRuleTestItem = {
     id,
     source: "offline-selector",
@@ -144,8 +161,9 @@ export function startOfflineCandidateTest(
     app: input.app,
     status: "testing",
     canImport: false,
-    createdAt: findItem(state, id)?.createdAt ?? now,
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
+    ...(existing?.importedAt !== undefined ? { importedAt: existing.importedAt } : {}),
   };
 
   return upsertInlineTestItem(state, item, now);
@@ -169,6 +187,7 @@ export function startAiCandidateTest(
     session.controlKey,
     sourceKey,
   );
+  const existing = findItem(state, id);
   const item: InlineRuleTestItem = {
     id,
     source: "ai-candidate",
@@ -185,9 +204,11 @@ export function startAiCandidateTest(
     app: candidate.app,
     status: "testing",
     canImport: false,
-    createdAt: findItem(state, id)?.createdAt ?? now,
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     aiSessionId,
+    generation: session.generation,
+    ...(existing?.importedAt !== undefined ? { importedAt: existing.importedAt } : {}),
   };
 
   const next = upsertInlineTestItem(state, item, now);
@@ -206,7 +227,7 @@ export function startAiCandidateTest(
   };
 }
 
-/** 移除测试项（从 items 中彻底删除）。 */
+/** 结束单条正在进行的测试（将状态置为 tested 并允许导入，从活跃内存订阅移除）。 */
 export function removeInlineTestItem(
   state: InlineRuleTestingState,
   itemId: string,
@@ -289,6 +310,53 @@ export function setAiSessionCandidates(
   aiSessionId: string,
   candidates: AiRuleCandidate[],
   now = Date.now(),
+  feedbackEntry?: InlineAiFeedbackHistoryEntry,
+): InlineRuleTestingState {
+  const targetSession = state.aiSessions.find((session) => session.id === aiSessionId);
+  if (!targetSession) return state;
+
+  const nextGeneration = targetSession.generation + 1;
+  // 当会话进入新一轮候选（generation > 1）时，自动结束上一轮仍在 testing 的旧候选，
+  // 避免第一轮仍在 GKD 内存订阅里运行并与第二轮候选混在一起。
+  const items =
+    targetSession.generation > 0
+      ? state.items.map((item) =>
+          item.aiSessionId === aiSessionId && item.status === "testing"
+            ? {
+                ...item,
+                status: "ended" as const,
+                canImport: false,
+                updatedAt: now,
+              }
+            : item,
+        )
+      : state.items;
+
+  return {
+    ...state,
+    items,
+    aiSessions: state.aiSessions.map((session) =>
+      session.id === aiSessionId
+        ? {
+            ...session,
+            candidates,
+            generation: nextGeneration,
+            feedbackHistory: feedbackEntry
+              ? [...session.feedbackHistory, feedbackEntry]
+              : session.feedbackHistory,
+            updatedAt: now,
+          }
+        : session,
+    ),
+    updatedAt: now,
+  };
+}
+
+export function appendAiSessionFeedback(
+  state: InlineRuleTestingState,
+  aiSessionId: string,
+  entry: InlineAiFeedbackHistoryEntry,
+  now = Date.now(),
 ): InlineRuleTestingState {
   return {
     ...state,
@@ -296,12 +364,82 @@ export function setAiSessionCandidates(
       session.id === aiSessionId
         ? {
             ...session,
-            candidates,
-            generation: session.generation + 1,
+            feedbackHistory: [...session.feedbackHistory, entry],
             updatedAt: now,
           }
         : session,
     ),
+    updatedAt: now,
+  };
+}
+
+export function restartInlineTestItem(
+  state: InlineRuleTestingState,
+  itemId: string,
+  now = Date.now(),
+): InlineRuleTestingState {
+  const existing = findItem(state, itemId);
+  if (!existing) return state;
+  const restarted: InlineRuleTestItem = {
+    ...existing,
+    status: "testing",
+    canImport: false,
+    updatedAt: now,
+  };
+  return upsertInlineTestItem(state, restarted, now);
+}
+
+export function markInlineTestItemImported(
+  state: InlineRuleTestingState,
+  itemId: string,
+  now = Date.now(),
+): InlineRuleTestingState {
+  if (!state.items.some((item) => item.id === itemId)) return state;
+  return {
+    ...state,
+    items: state.items.map((item) =>
+      item.id === itemId
+        ? {
+            ...item,
+            importedAt: now,
+            updatedAt: now,
+          }
+        : item,
+    ),
+    updatedAt: now,
+  };
+}
+
+export function endAllInlineTests(
+  state: InlineRuleTestingState,
+  now = Date.now(),
+): InlineRuleTestingState {
+  if (!state.items.some((item) => item.status === "testing")) return state;
+  return {
+    ...state,
+    items: state.items.map((item) =>
+      item.status === "testing"
+        ? {
+            ...item,
+            status: "tested" as const,
+            canImport: true,
+            updatedAt: now,
+          }
+        : item,
+    ),
+    updatedAt: now,
+  };
+}
+
+export function clearFinishedInlineTestItems(
+  state: InlineRuleTestingState,
+  now = Date.now(),
+): InlineRuleTestingState {
+  const remaining = state.items.filter((item) => item.status === "testing");
+  if (remaining.length === state.items.length) return state;
+  return {
+    ...state,
+    items: remaining,
     updatedAt: now,
   };
 }

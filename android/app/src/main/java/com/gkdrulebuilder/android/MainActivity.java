@@ -29,6 +29,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
+import android.view.WindowInsets;
+import android.widget.FrameLayout;
 import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -75,8 +77,41 @@ public class MainActivity extends Activity {
         window.setNavigationBarColor(Color.rgb(14, 19, 26));
 
         webView = new WebView(this);
-        webView.setBackgroundColor(Color.rgb(14, 19, 26));
-        setContentView(webView);
+        webView.setBackgroundColor(Color.rgb(7, 10, 16));
+
+        // Android WebView 在部分设备/edge-to-edge 下 env(safe-area-inset-*) 为 0，
+        // 在容器层消费系统栏、挖孔屏与输入法 insets，避免顶部状态栏压住操作栏或弹窗。
+        FrameLayout rootContainer = new FrameLayout(this);
+        rootContainer.setBackgroundColor(Color.rgb(7, 10, 16));
+        rootContainer.addView(
+            webView,
+            new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        );
+        if (Build.VERSION.SDK_INT >= 30) {
+            rootContainer.setOnApplyWindowInsetsListener((view, insets) -> {
+                android.graphics.Insets bars = insets.getInsets(
+                    WindowInsets.Type.systemBars()
+                        | WindowInsets.Type.displayCutout()
+                        | WindowInsets.Type.ime()
+                );
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return WindowInsets.CONSUMED;
+            });
+        } else {
+            rootContainer.setOnApplyWindowInsetsListener((view, insets) -> {
+                view.setPadding(
+                    insets.getSystemWindowInsetLeft(),
+                    insets.getSystemWindowInsetTop(),
+                    insets.getSystemWindowInsetRight(),
+                    insets.getSystemWindowInsetBottom()
+                );
+                return insets.consumeSystemWindowInsets();
+            });
+        }
+        setContentView(rootContainer);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);

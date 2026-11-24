@@ -4,14 +4,19 @@ import type { AiRuleCandidate } from "./aiModel";
 import {
   addAiSession,
   aiCandidateSourceKey,
+  appendAiSessionFeedback,
   buildActiveTestSubscription,
+  clearFinishedInlineTestItems,
   createEmptyInlineRuleTestingState,
   deleteAiSession,
   deleteInlineTestItem,
+  endAllInlineTests,
   filterAiSessionsByMode,
+  markInlineTestItemImported,
   markInlineTestItemResult,
   prunePersistentInlineRuleTestingState,
   removeInlineTestItem,
+  restartInlineTestItem,
   setAiSessionCandidates,
   startAiCandidateTest,
   startOfflineCandidateTest,
@@ -485,6 +490,149 @@ describe("inline rule testing state", () => {
     expect(ended.items[0].status).toBe("tested");
     expect(ended.items[0].canImport).toBe(true);
     expect(restarted.items[0].status).toBe("testing");
+  });
+
+  it("automatically ends round 1 active testing items and records feedback history when round 2 arrives", () => {
+    const withSession = addAiSession(
+      createEmptyInlineRuleTestingState(),
+      {
+        mode: "single",
+        snapshotId: 1,
+        controlKey: "snapshot-1-node-20",
+        title: "AI session",
+        originalPrompt: "prompt",
+        contextSummary: "node 20",
+      },
+      100,
+    );
+    const sessionId = withSession.aiSessions[0].id;
+
+    // 第一轮候选加入测试但用户未手动点结束就直接发了第二轮反馈
+    const round1 = setAiSessionCandidates(
+      withSession,
+      sessionId,
+      [aiCandidate("candidate-a", "[vid=\"skip_round1\"]")],
+      200,
+    );
+    const round1Testing = startAiCandidateTest(
+      round1,
+      sessionId,
+      round1.aiSessions[0].candidates[0],
+      300,
+    );
+    expect(round1Testing.items[0].status).toBe("testing");
+    expect(round1Testing.items[0].generation).toBe(1);
+
+    // 第二轮反馈返回同名 candidate-a
+    const round2 = setAiSessionCandidates(
+      round1Testing,
+      sessionId,
+      [aiCandidate("candidate-a", "[vid=\"skip_round2\"]")],
+      400,
+      {
+        at: 400,
+        generation: 1,
+        note: "测试版 A: 未触发",
+        items: [
+          {
+            candidateId: "candidate-a",
+            title: "AI 候选",
+            result: "not-triggered",
+            note: "未触发",
+            selectors: ["[vid=\"skip_round1\"]"],
+          },
+        ],
+      },
+    );
+
+    // 第一轮仍在 testing 的项必须自动结束，不再留在 GKD 活跃测试订阅里与第二轮混淆
+    expect(round2.items[0].status).toBe("ended");
+    expect(round2.items[0].canImport).toBe(false);
+    expect(buildActiveTestSubscription(round2).apps).toHaveLength(0);
+    expect(round2.aiSessions[0].generation).toBe(2);
+    expect(round2.aiSessions[0].feedbackHistory).toHaveLength(1);
+    expect(round2.aiSessions[0].feedbackHistory[0].generation).toBe(1);
+
+    // 第二轮加入测试后，活跃订阅只包含第二轮规则
+    const round2Testing = startAiCandidateTest(
+      round2,
+      sessionId,
+      round2.aiSessions[0].candidates[0],
+      500,
+    );
+    expect(round2Testing.items[1].generation).toBe(2);
+    expect(
+      buildActiveTestSubscription(round2Testing).apps[0].groups[0].rules[0].matches,
+    ).toEqual(["[vid=\"skip_round2\"]"]);
+  });
+
+  it("supports restarting, marking imported, ending all active tests, and clearing finished items", () => {
+    const first = startOfflineCandidateTest(
+      createEmptyInlineRuleTestingState(),
+      {
+        mode: "single",
+        snapshotId: 1,
+        controlKey: "snapshot-1-node-20",
+        sourceKey: "selector-a",
+        title: "资源 A",
+        summary: "",
+        app: appDraft("[vid=\"skip_a\"]"),
+      },
+      100,
+    );
+    const second = startOfflineCandidateTest(
+      first,
+      {
+        mode: "single",
+        snapshotId: 2,
+        controlKey: "snapshot-2-node-30",
+        sourceKey: "selector-b",
+        title: "资源 B",
+        summary: "",
+        app: appDraft("[vid=\"skip_b\"]"),
+      },
+      200,
+    );
+
+    const endedAll = endAllInlineTests(second, 300);
+    expect(endedAll.items.map((item) => item.status)).toEqual(["tested", "tested"]);
+    expect(buildActiveTestSubscription(endedAll).apps).toHaveLength(0);
+
+    const importedFirst = markInlineTestItemImported(endedAll, endedAll.items[0].id, 350);
+    expect(importedFirst.items[0].importedAt).toBe(350);
+
+    const restartedSecond = restartInlineTestItem(
+      importedFirst,
+      importedFirst.items[1].id,
+      400,
+    );
+    expect(restartedSecond.items[1].status).toBe("testing");
+
+    const clearedFinished = clearFinishedInlineTestItems(restartedSecond, 500);
+    expect(clearedFinished.items).toHaveLength(1);
+    expect(clearedFinished.items[0].sourceKey).toBe("selector-b");
+
+    const withSession = addAiSession(
+      clearedFinished,
+      {
+        mode: "single",
+        snapshotId: 1,
+        controlKey: "snapshot-1-node-20",
+        title: "外部 AI",
+        originalPrompt: "p",
+        contextSummary: "c",
+      },
+      600,
+    );
+    const withAppendedFeedback = appendAiSessionFeedback(
+      withSession,
+      withSession.aiSessions[0].id,
+      { at: 650, generation: 1, note: "外部反馈记录" },
+      650,
+    );
+    expect(withAppendedFeedback.aiSessions[0].feedbackHistory).toEqual([
+      { at: 650, generation: 1, note: "外部反馈记录" },
+    ]);
   });
 });
 

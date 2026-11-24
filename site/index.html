@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>GKD Rule Studio — 指哪，跳哪。</title>
+    <meta
+      name="description"
+      content="GKD Rule Studio：在手机上拖动放大镜，对准「跳过」松手，本地离线秒出 GKD 跳广告规则。免费开源，无需 Root，无需 API Key。"
+    />
+    <meta name="theme-color" content="#000000" />
+    <meta property="og:title" content="GKD Rule Studio — 指哪，跳哪。" />
+    <meta
+      property="og:description"
+      content="拖动放大镜，对准「跳过」松手。GKD 跳广告规则，从此在手机上离线秒出。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="./assets/hero.png" />
+    <link rel="icon" type="image/png" href="./assets/logo.png" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script>
+      document.documentElement.classList.add("js");
+    </script>
+  </head>
+  <body>
+    <!-- ============ 导航 ============ -->
+    <header class="nav" id="nav">
+      <div class="nav-inner">
+        <a class="nav-brand" href="#top" aria-label="GKD Rule Studio 首页">
+          <img src="./assets/logo.png" width="26" height="26" alt="" />
+          <span>GKD Rule Studio</span>
+        </a>
+
+        <nav class="nav-links" aria-label="主导航">
+          <a href="#overview">概览</a>
+          <a href="#demo">在线体验</a>
+          <a href="#features">功能</a>
+          <a href="#workflow">上手</a>
+          <a href="#benchmark">数据</a>
+          <a href="#faq">常见问题</a>
+        </nav>
+
+        <div class="nav-actions">
+          <a
+            class="nav-text-link"
+            href="https://github.com/jjjj31/gkd-rule-studio"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub</a
+          >
+          <a
+            class="btn btn-primary btn-sm"
+            href="https://github.com/jjjj31/gkd-rule-studio/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            >下载</a
+          >
+          <button
+            class="nav-toggle"
+            id="navToggle"
+            type="button"
+            aria-label="打开导航菜单"
+            aria-expanded="false"
+            aria-controls="navDrawer"
+          >
+            <span></span><span></span>
+          </button>
+        </div>
+      </div>
+
+      <div class="nav-drawer" id="navDrawer" hidden>
+        <a href="#overview">概览</a>
+        <a href="#demo">在线体验</a>
+        <a href="#features">功能</a>
+        <a href="#workflow">上手</a>
+        <a href="#benchmark">数据</a>
+        <a href="#faq">常见问题</a>
+        <a href="https://github.com/jjjj31/gkd-rule-studio" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+    </header>
+
+    <main id="top">
+      <!-- ============ Hero ============ -->
+      <section class="hero">
+        <div class="hero-aurora" aria-hidden="true">
+          <span class="aurora a1"></span>
+          <span class="aurora a2"></span>
+          <span class="aurora a3"></span>
+        </div>
+        <div class="hero-grid-bg" aria-hidden="true"></div>
+
+        <div class="container hero-copy">
+          <a
+            class="hero-tag hero-in"
+            style="--d: 0ms"
+            href="https://github.com/jjjj31/gkd-rule-studio/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="tag-new">NEW</span>
+            <span>v0.2.5 已发布 · 统一适配 GKD 1.13+ · 双路 AI 闭环</span>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
+          </a>
+
+          <h1 class="hero-title hero-in" style="--d: 60ms">
+            <span>指哪，</span><span class="text-gradient">跳哪。</span>
+          </h1>
+
+          <p class="hero-sub hero-in" style="--d: 120ms">
+            拖动放大镜，对准「跳过」松手。<br />
+            GKD 跳广告规则，从此在手机上离线秒出。
+          </p>
+
+          <div class="hero-cta hero-in" style="--d: 180ms">
+            <a
+              class="btn btn-primary btn-lg"
+              href="https://github.com/jjjj31/gkd-rule-studio/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v12m0 0l-5-5m5 5l5-5M4 19h16" />
+              </svg>
+              免费下载 Android 版
+            </a>
+            <a class="btn-link" href="#demo">
+              在线体验
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5" /></svg>
+            </a>
+          </div>
+
+          <p class="hero-meta hero-in" style="--d: 240ms">免费开源 · 无需 Root · 无需 API Key · Android 6.0 及以上</p>
+        </div>
+
+        <div class="hero-stage" id="heroStage">
+          <div class="hero-glow" aria-hidden="true"></div>
+
+          <figure class="device device-left">
+            <div class="device-screen">
+              <img src="./assets/home.png" alt="首页：连接 GKD HTTP 服务" />
+            </div>
+          </figure>
+
+          <figure class="device device-main">
+            <div class="device-screen">
+              <img src="./assets/workspace.png" alt="工作区：在截图上选中「跳过」按钮并生成候选规则" />
+              <span class="device-target-ring" aria-hidden="true"></span>
+            </div>
+          </figure>
+
+          <figure class="device device-right">
+            <div class="device-screen">
+              <img src="./assets/library.png" alt="订阅规则库：按应用搜索现成规则组" />
+            </div>
+          </figure>
+
+          <div class="float-chip chip-a" aria-hidden="true">
+            <span class="chip-dot green"></span>已锁定可点击节点
+          </div>
+          <div class="float-chip chip-b" aria-hidden="true">
+            <span class="chip-dot blue"></span>候选规则 · 唯一命中 1/1
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 关键数字 ============ -->
+      <section class="stats" id="overview" aria-label="关键数字">
+        <div class="container stats-grid">
+          <div class="stat reveal">
+            <span class="stat-num" data-count="98.5" data-decimals="1" data-suffix="%">98.5%</span>
+            <span class="stat-label">跨应用未见样本<br />首选规则命中率</span>
+          </div>
+          <div class="stat reveal">
+            <span class="stat-num" data-count="17" data-suffix=" 类">17 类</span>
+            <span class="stat-label">本地启发式<br />选择器生成策略</span>
+          </div>
+          <div class="stat reveal">
+            <span class="stat-num" data-count="9" data-suffix=" 种">9 种</span>
+            <span class="stat-label">广告场景<br />参数一键预设</span>
+          </div>
+          <div class="stat reveal">
+            <span class="stat-num" data-count="4566" data-group="true">4,566</span>
+            <span class="stat-label">条跨应用<br />真实规则案例库</span>
+          </div>
+          <div class="stat reveal">
+            <span class="stat-num">0</span>
+            <span class="stat-label">API Key<br />与账号注册</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 宣言 ============ -->
+      <section class="statement" aria-label="产品理念">
+        <div class="container narrow">
+          <p class="statement-text" id="statementText">写一条规则，最难的从来不是那一行选择器。而是导出快照、翻几十层节点树、向 AI 解释“右上角那个小叉叉”、在两个 App 之间来回粘贴测试。现在，这些都不需要了。</p>
+        </div>
+      </section>
+
+      <!-- ============ 在线体验 ============ -->
+      <section class="section demo" id="demo">
+        <div class="container">
+          <header class="section-head reveal">
+            <p class="eyebrow">在线体验</p>
+            <h2>不如，亲手试一下。</h2>
+            <p class="section-sub">
+              拖动放大镜，对准广告上的关闭按钮后松手。<br class="br-md" />这就是在 App 里制作一条规则的全部操作。
+            </p>
+          </header>
+
+          <div class="segmented reveal" role="tablist" aria-label="切换模拟广告场景">
+            <button class="seg-btn active" role="tab" aria-selected="true" data-scene="splash" type="button">开屏跳过</button>
+            <button class="seg-btn" role="tab" aria-selected="false" data-scene="popup" type="button">入页弹窗</button>
+            <button class="seg-btn" role="tab" aria-selected="false" data-scene="feed" type="button">信息流</button>
+            <span class="seg-indicator" aria-hidden="true"></span>
+          </div>
+
+          <div class="demo-stage reveal">
+            <!-- 模拟手机 -->
+            <div class="demo-device">
+              <div class="demo-device-inner">
+                <div class="phone-status">
+                  <span>22:58</span>
+                  <span class="phone-island"></span>
+                  <span class="phone-sys">5G ▮▮▮</span>
+                </div>
+
+                <div class="phone-canvas" id="demoCanvas" aria-label="模拟广告截图画布">
+                  <!-- 场景 1：开屏 -->
+                  <div class="mock-scene active" data-scene-panel="splash">
+                    <div class="mock-splash">
+                      <span class="mock-ad-tag">广告</span>
+                      <div class="mock-splash-art">
+                        <span class="art-orb"></span>
+                        <span class="art-title">夏日焕新</span>
+                        <span class="art-sub">好物直降 · 先到先得</span>
+                      </div>
+                      <div class="mock-splash-cta">立即查看</div>
+                      <span class="mock-splash-foot">摇一摇或点击跳转第三方应用</span>
+                    </div>
+                    <div
+                      class="demo-target"
+                      data-target="splash-skip"
+                      style="top: 14px; right: 14px"
+                      tabindex="0"
+                      role="button"
+                      aria-label="开屏跳过按钮"
+                    >
+                      <span class="target-ring" aria-hidden="true"></span>
+                      <span class="skip-chip">跳过 3</span>
+                    </div>
+                  </div>
+
+                  <!-- 场景 2：弹窗 -->
+                  <div class="mock-scene" data-scene-panel="popup">
+                    <div class="mock-app-behind">
+                      <div class="sk-bar w-60"></div>
+                      <div class="sk-card"></div>
+                      <div class="sk-card"></div>
+                    </div>
+                    <div class="mock-modal-mask">
+                      <div class="mock-modal">
+                        <span class="modal-ribbon">新人专享</span>
+                        <h4>88 元大礼包</h4>
+                        <p>开通连续包月，立享免广告特权</p>
+                        <div class="modal-cta">立即领取</div>
+                      </div>
+                      <div
+                        class="demo-target"
+                        data-target="popup-close"
+                        style="bottom: 70px; left: 50%; transform: translateX(-50%)"
+                        tabindex="0"
+                        role="button"
+                        aria-label="弹窗底部关闭按钮"
+                      >
+                        <span class="target-ring round" aria-hidden="true"></span>
+                        <span class="close-circle">×</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 场景 3：信息流 -->
+                  <div class="mock-scene" data-scene-panel="feed">
+                    <div class="mock-feed">
+                      <div class="feed-item">
+                        <div class="sk-bar w-80"></div>
+                        <div class="sk-bar w-50"></div>
+                      </div>
+                      <div class="feed-ad">
+                        <div class="feed-ad-head">
+                          <span class="feed-ad-badge">广告</span>
+                          <span class="feed-ad-title">限时推广 · 高收益理财</span>
+                        </div>
+                        <div class="feed-ad-img"></div>
+                        <div class="feed-ad-foot">
+                          <span>推广 · 点击查看详情</span>
+                          <div
+                            class="demo-target"
+                            data-target="feed-close"
+                            style="position: relative"
+                            tabindex="0"
+                            role="button"
+                            aria-label="信息流关闭按钮"
+                          >
+                            <span class="target-ring" aria-hidden="true"></span>
+                            <span class="feed-close">✕</span>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="feed-item">
+                        <div class="sk-bar w-70"></div>
+                        <div class="sk-bar w-40"></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 放大镜 -->
+                  <div
+                    class="magnifier"
+                    id="magnifier"
+                    role="slider"
+                    aria-label="可拖动选点放大镜"
+                    aria-valuetext="拖动放大镜到目标关闭按钮"
+                    tabindex="0"
+                  >
+                    <div class="magnifier-lens">
+                      <span class="cross-h"></span>
+                      <span class="cross-v"></span>
+                    </div>
+                    <span class="magnifier-badge" id="magnifierBadge">拖我</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 检查器 -->
+            <div class="inspector">
+              <div class="inspector-head">
+                <div>
+                  <span class="status-pill" id="inspectorStatus"><i></i>已锁定目标控件</span>
+                  <h3 id="inspectorTitle">开屏广告 · 跳过按钮</h3>
+                </div>
+                <span class="scene-pill" id="inspectorPreset">开屏广告</span>
+              </div>
+
+              <div class="meta-grid">
+                <div class="meta">
+                  <span class="meta-label">实际可点击祖先</span>
+                  <code id="metaNode">LinearLayout[clickable=true]</code>
+                </div>
+                <div class="meta">
+                  <span class="meta-label">风险与命中校验</span>
+                  <span class="meta-ok" id="metaCheck">唯一命中 1/1</span>
+                </div>
+              </div>
+
+              <div class="cand">
+                <div class="cand-head">
+                  <span>候选规则</span>
+                  <span class="muted">按稳定性自动排序 · 点击切换</span>
+                </div>
+                <div class="cand-list" id="candidateList"></div>
+              </div>
+
+              <div class="code">
+                <div class="code-head">
+                  <span class="code-dots"><i></i><i></i><i></i></span>
+                  <span class="code-name">rule.json5</span>
+                  <div class="code-actions">
+                    <button class="code-btn" id="btnSimulateTest" type="button">推入内存测试</button>
+                    <button class="code-btn primary" id="btnCopyRule" type="button">复制</button>
+                  </div>
+                </div>
+                <pre><code id="ruleCodeOutput"></code></pre>
+              </div>
+
+              <p class="demo-note" id="demoHint">网页演示仅模拟交互流程，规则为示例数据。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 功能 Bento ============ -->
+      <section class="section" id="features">
+        <div class="container">
+          <header class="section-head reveal">
+            <p class="eyebrow">功能</p>
+            <h2>一部手机，<br />完成规则制作全流程。</h2>
+          </header>
+
+          <div class="bento">
+            <!-- 放大镜选点 -->
+            <article class="tile tile-mag reveal">
+              <div class="tile-copy">
+                <p class="tile-kicker">放大镜选点</p>
+                <h3>拖一下，<br />就选中了。</h3>
+                <p>
+                  在截图上把放大镜对准「跳过 / ×」松手，自动向上识别真正可点击的祖先节点，避开文字层与广告跳转热区。17 类策略按稳定性自动排序。
+                </p>
+              </div>
+              <div class="tile-shot">
+                <div class="shot-frame">
+                  <div class="shot-inner">
+                    <img src="./assets/workspace.png" alt="工作区截图：选中跳过按钮" loading="lazy" />
+                    <span class="shot-ring" aria-hidden="true"></span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- 98.5 -->
+            <article class="tile tile-stat reveal">
+              <p class="tile-kicker">命中率</p>
+              <div class="big-num text-gradient">98.5<span>%</span></div>
+              <p>在 101 个从未见过的应用上，首选规则命中官方标注目标。</p>
+            </article>
+
+            <!-- 离线 -->
+            <article class="tile tile-offline reveal">
+              <div class="offline-icon" aria-hidden="true">
+                <svg viewBox="0 0 48 48">
+                  <rect x="13" y="4" width="22" height="40" rx="5" />
+                  <path d="M21 9h6" />
+                  <path d="M18 26l4 4 8-8" />
+                </svg>
+              </div>
+              <h3>100% 本地运行</h3>
+              <p>选点、生成、校验全在手机上完成。无需 API Key、无需注册，断网也能用。</p>
+            </article>
+
+            <!-- 场景 -->
+            <article class="tile tile-scenes reveal">
+              <p class="tile-kicker">场景预设</p>
+              <h3>9 种场景，一键套用。</h3>
+              <p>自动填入 <code>matchTime</code>、<code>actionCd</code>、<code>resetMatch</code> 等参数，也支持用一句话自定义场景。</p>
+              <div class="chip-cloud">
+                <span>开屏广告</span><span>进入页面弹窗</span><span>视频播放弹窗</span><span>随机插屏</span
+                ><span>后台返回广告</span><span>信息流广告</span><span>更新弹窗</span
+                ><span>权限 / 通知 / 评价</span><span>通用功能</span>
+              </div>
+            </article>
+
+            <!-- AI -->
+            <article class="tile tile-ai reveal">
+              <p class="tile-kicker">AI 兜底</p>
+              <h3>疑难广告，交给 AI。</h3>
+              <div class="ai-routes">
+                <div class="ai-route">
+                  <span class="ai-tag free">外部 AI · 免费</span>
+                  <p>复制强语法约束 Prompt，发给豆包 / DeepSeek / ChatGPT，粘回即解析。</p>
+                </div>
+                <div class="ai-route">
+                  <span class="ai-tag auto">内置 AI · 全自动</span>
+                  <p>任意 OpenAI 兼容接口，支持截图多模态，不支持时自动回退纯文本。</p>
+                </div>
+              </div>
+              <div class="ai-loop">
+                <span class="muted">没生效？三选一，自动返修</span>
+                <div class="loop-chips">
+                  <span>未触发</span><span>触发未关闭</span><span>误触</span>
+                </div>
+              </div>
+            </article>
+
+            <!-- 内存测试 -->
+            <article class="tile tile-test reveal">
+              <p class="tile-kicker">一键实测</p>
+              <h3>推送即测试。</h3>
+              <p>多条候选一次推入 GKD 内存订阅，触发一次对比效果，不污染正式规则。</p>
+              <div class="channel-switch" aria-hidden="true">
+                <span class="on">正式版 1.12.x</span>
+                <span>Beta 1.13.0</span>
+              </div>
+            </article>
+
+            <!-- 规则库 -->
+            <article class="tile tile-lib reveal">
+              <p class="tile-kicker">订阅规则库</p>
+              <h3>先搜，再写。</h3>
+              <p>多订阅源本地缓存，按应用名或包名搜现成规则组，能抄作业就不从零开始。</p>
+              <div class="lib-shot">
+                <img src="./assets/library.png" alt="订阅规则库截图" loading="lazy" />
+              </div>
+            </article>
+
+            <!-- 隐私 -->
+            <article class="tile tile-privacy reveal">
+              <p class="tile-kicker">隐私</p>
+              <h3>默认保护。</h3>
+              <p>API Key 只存本机。反馈默认不附截图与节点树，支持框选打码与敏感词自动替换。</p>
+              <div class="privacy-lock" aria-hidden="true">
+                <svg viewBox="0 0 48 48">
+                  <path d="M24 4l16 6v12c0 10-7 18-16 22C15 40 8 32 8 22V10z" />
+                  <path d="M17 24l5 5 9-10" />
+                </svg>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 四步上手 ============ -->
+      <section class="section" id="workflow">
+        <div class="container">
+          <header class="section-head reveal">
+            <p class="eyebrow">上手</p>
+            <h2>四步，从广告到规则。</h2>
+            <p class="section-sub">不需要电脑，不需要 Root，不需要写一行代码。</p>
+          </header>
+
+          <ol class="steps">
+            <li class="step reveal">
+              <span class="step-no">01</span>
+              <h3>保存快照</h3>
+              <p>遇到广告时，在 GKD 里保存一张快照，并在侧边栏开启 HTTP 服务。</p>
+            </li>
+            <li class="step reveal">
+              <span class="step-no">02</span>
+              <h3>一键连接</h3>
+              <p>打开 Rule Studio 连接 <code>127.0.0.1:8888</code>，自动拉取快照列表。</p>
+            </li>
+            <li class="step reveal">
+              <span class="step-no">03</span>
+              <h3>拖动选点</h3>
+              <p>放大镜对准「跳过 / ×」松手，选择最接近的广告场景。</p>
+            </li>
+            <li class="step reveal">
+              <span class="step-no">04</span>
+              <h3>实测保存</h3>
+              <p>推入内存订阅实测，生效后复制到 GKD，Beta 可直接写入。</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ============ 对比 ============ -->
+      <section class="section" id="compare">
+        <div class="container">
+          <header class="section-head reveal">
+            <p class="eyebrow">对比</p>
+            <h2>以前折腾半小时，<br />现在只要几次点击。</h2>
+          </header>
+
+          <div class="compare">
+            <div class="compare-col before reveal">
+              <p class="compare-title">手搓 / 直接问聊天 AI</p>
+              <ul>
+                <li><span>拿快照</span>导出压缩包，在文件管理器里翻半天再上传</li>
+                <li><span>指位置</span>翻几十层节点树，或打字描述“右上角小叉叉”</li>
+                <li><span>写规则</span>先学 selector 语法；AI 常编出非法语法</li>
+                <li><span>测效果</span>复制、切 App、粘贴、试完再手动删</li>
+                <li><span>没生效</span>重新截图、写长文描述症状、反复返工</li>
+              </ul>
+            </div>
+            <div class="compare-col after reveal">
+              <p class="compare-title">GKD Rule Studio</p>
+              <ul>
+                <li><span>拿快照</span>直连 GKD HTTP 服务，自动拉取列表</li>
+                <li><span>指位置</span>拖动放大镜松手，自动锁定可点击节点</li>
+                <li><span>写规则</span>本地引擎离线秒出，并做静态校验</li>
+                <li><span>测效果</span>一键推入内存订阅，多条候选同测</li>
+                <li><span>没生效</span>三选一勾选现象，自动打包上下文返修</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 数据 ============ -->
+      <section class="section bench" id="benchmark">
+        <div class="container">
+          <header class="section-head reveal">
+            <p class="eyebrow">数据</p>
+            <h2>不靠感觉，靠数据。</h2>
+            <p class="section-sub">
+              基于 5,539 条真机标注样本，按应用严格隔离切分。<br class="br-md" />测试集中的 101 个应用，引擎此前从未见过。
+            </p>
+          </header>
+
+          <div class="bench-nums">
+            <div class="bench-num reveal">
+              <span class="stat-num text-gradient" data-count="98.5" data-decimals="1" data-suffix="%">98.5%</span>
+              <p>610 条跨应用未见样本<br />首选规则 Top-1 命中率</p>
+            </div>
+            <div class="bench-num reveal">
+              <span class="stat-num text-gradient" data-count="98.4" data-decimals="1" data-suffix="%">98.4%</span>
+              <p>4,566 条案例库<br />跨应用同类型检索 Top-1</p>
+            </div>
+            <div class="bench-num reveal">
+              <span class="stat-num text-gradient" data-count="70.2" data-decimals="1" data-suffix="%">70.2%</span>
+              <p>2,230 对跨版本快照<br />首选规则稳定率</p>
+            </div>
+          </div>
+
+          <figure class="chart reveal" id="benchChart">
+            <figcaption>
+              <span class="chart-title">首选规则命中率 · 迭代历程</span>
+              <span class="muted">测试集 610 条 / 101 个应用</span>
+            </figcaption>
+            <div class="chart-bars">
+              <div class="bar" style="--v: 66.4"><span class="bar-val">66.4</span><i></i><span class="bar-label">基线</span></div>
+              <div class="bar" style="--v: 69.8"><span class="bar-val">69.8</span><i></i><span class="bar-label">新引擎</span></div>
+              <div class="bar" style="--v: 77.5"><span class="bar-val">77.5</span><i></i><span class="bar-label">偏离降权</span></div>
+              <div class="bar" style="--v: 80.3"><span class="bar-val">80.3</span><i></i><span class="bar-label">全策略降权</span></div>
+              <div class="bar" style="--v: 81.0"><span class="bar-val">81.0</span><i></i><span class="bar-label">文字锚点</span></div>
+              <div class="bar" style="--v: 86.7"><span class="bar-val">86.7</span><i></i><span class="bar-label">视觉摞合并</span></div>
+              <div class="bar" style="--v: 88.4"><span class="bar-val">88.4</span><i></i><span class="bar-label">多命中收窄</span></div>
+              <div class="bar" style="--v: 93.0"><span class="bar-val">93.0</span><i></i><span class="bar-label">层级收窄</span></div>
+              <div class="bar" style="--v: 95.9"><span class="bar-val">95.9</span><i></i><span class="bar-label">匿名兜底</span></div>
+              <div class="bar hi" style="--v: 98.5"><span class="bar-val">98.5</span><i></i><span class="bar-label">当前版本</span></div>
+            </div>
+            <p class="chart-foot">数据来源：仓库内 <code>bench/SUMMARY.md</code>，可在本地复现。</p>
+          </figure>
+        </div>
+      </section>
+
+      <!-- ============ 界面 ============ -->
+      <section class="section" id="gallery">
+        <div class="container">
+          <header class="section-head reveal">
+            <p class="eyebrow">界面</p>
+            <h2>为单手操作而生。</h2>
+            <p class="section-sub">点击查看大图。</p>
+          </header>
+
+          <div class="gallery">
+            <figure class="g-item reveal">
+              <button class="g-device" type="button" data-lightbox="./assets/home.png" data-caption="首页：直连 GKD HTTP 服务，支持正式版 / Beta 渠道校验">
+                <img src="./assets/home.png" alt="首页截图" loading="lazy" />
+              </button>
+              <figcaption><strong>连接</strong><span>直连本机 GKD，自动拉取快照</span></figcaption>
+            </figure>
+            <figure class="g-item g-mid reveal">
+              <button class="g-device" type="button" data-lightbox="./assets/workspace.png" data-caption="工作区：截图选点、候选规则与命中框高亮">
+                <img src="./assets/workspace.png" alt="工作区截图" loading="lazy" />
+              </button>
+              <figcaption><strong>选点</strong><span>高亮选中框与实际命中框</span></figcaption>
+            </figure>
+            <figure class="g-item reveal">
+              <button class="g-device" type="button" data-lightbox="./assets/library.png" data-caption="订阅规则库：多源离线缓存，先实测再导入">
+                <img src="./assets/library.png" alt="订阅规则库截图" loading="lazy" />
+              </button>
+              <figcaption><strong>规则库</strong><span>先实测，再复制或导入</span></figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FAQ ============ -->
+      <section class="section" id="faq">
+        <div class="container narrow">
+          <header class="section-head reveal">
+            <p class="eyebrow">常见问题</p>
+            <h2>下载之前，<br />先把话说清楚。</h2>
+          </header>
+
+          <div class="faq reveal">
+            <details>
+              <summary>需要 Root 或电脑吗？</summary>
+              <p>不需要。在同一部手机上安装 GKD 与 Rule Studio，开启 GKD 的 HTTP 服务即可开始。</p>
+            </details>
+            <details>
+              <summary>必须有 AI 的 API Key 吗？</summary>
+              <p>不需要。基础流程完全在本地离线完成。只有使用内置 AI、刷新订阅、查看公告、检查更新与提交反馈时才会联网。</p>
+            </details>
+            <details>
+              <summary>支持哪些 GKD 版本？</summary>
+              <p>
+                官方正式版 1.12.x（默认）与 1.13.0 Beta。连接时按包名与版本号共同校验，防止渠道误操作。正式版需复制规则后手动添加；Beta 支持通过 <code>/api/appendRules</code> 直接追加（追加而非覆盖，请勿重复点击）。
+              </p>
+            </details>
+            <details>
+              <summary>复杂的多步骤广告能做吗？</summary>
+              <p>
+                坦白说，目前还不够强。工作区已提供多步编排模式，但「先点红包 → 返回 → 再关弹窗」这类连续操作的自动生成能力仍有限，建议先单步验证，或结合外部 / 内置 AI 多轮迭代。
+              </p>
+            </details>
+            <details>
+              <summary>和直接把快照发给 ChatGPT 有什么区别？</summary>
+              <p>
+                聊天 AI 看不到真实节点结构，容易编出不合法的 GKD 语法。Rule Studio 直接基于快照中的真实节点生成规则并做静态校验；确实需要 AI 时，会附带精简节点树、跨应用相似案例与严格语法约束。
+              </p>
+            </details>
+            <details>
+              <summary>我的数据安全吗？</summary>
+              <p>
+                选点与生成全部在本地完成。API Key 存在本机 WebView 存储中，不会上传，请勿在共用设备保存长期密钥。GKD HTTP 服务使用明文协议，仅建议在本机或可信局域网使用。
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ 终极 CTA ============ -->
+      <section class="final" id="download">
+        <div class="final-glow" aria-hidden="true"></div>
+        <div class="container final-inner">
+          <img class="final-logo reveal" src="./assets/logo.png" width="88" height="88" alt="GKD Rule Studio 图标" />
+          <h2 class="final-title reveal">让广告，<br /><span class="text-gradient">到此为止。</span></h2>
+          <p class="final-sub reveal">免费下载，三分钟写出你的第一条规则。</p>
+          <div class="hero-cta reveal">
+            <a
+              class="btn btn-primary btn-lg"
+              href="https://pan.xunlei.com/s/VP71Fa-cUdDG5-IhKmqe7LElA1?pwd=22i7"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v12m0 0l-5-5m5 5l5-5M4 19h16" />
+              </svg>
+              迅雷云盘下载（提取码 22i7）
+            </a>
+            <a
+              class="btn btn-glass btn-lg"
+              href="https://drive.google.com/drive/folders/12t463XaDMecTM4XjX7RaoyVIIk9GU3lG?usp=sharing"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Google 云盘下载
+            </a>
+            <a
+              class="btn btn-glass btn-lg"
+              href="https://github.com/jjjj31/gkd-rule-studio/releases/tag/v0.2.5"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              GitHub Release v0.2.5
+            </a>
+          </div>
+          <p class="final-meta reveal">
+            SATA 协议开源 · 应用内更新 SHA256 双端校验 ·
+            <a href="./download.html" style="color: inherit; text-decoration: underline;">独立分流下载页</a>
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============ 页脚 ============ -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-top">
+          <div class="footer-brand">
+            <img src="./assets/logo.png" width="32" height="32" alt="" />
+            <div>
+              <strong>GKD Rule Studio</strong>
+              <span>在手机上可视化制作 GKD 规则</span>
+            </div>
+          </div>
+          <div class="footer-cols">
+            <div>
+              <p>产品</p>
+              <a href="#features">功能</a>
+              <a href="#demo">在线体验</a>
+              <a href="#benchmark">数据</a>
+              <a href="#faq">常见问题</a>
+            </div>
+            <div>
+              <p>资源</p>
+              <a href="https://github.com/jjjj31/gkd-rule-studio" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
+              <a href="https://github.com/jjjj31/gkd-rule-studio/releases" target="_blank" rel="noopener noreferrer">版本发布</a>
+              <a href="https://github.com/jjjj31/gkd-rule-studio#readme" target="_blank" rel="noopener noreferrer">使用文档</a>
+            </div>
+            <div>
+              <p>生态</p>
+              <a href="https://github.com/gkd-kit/gkd" target="_blank" rel="noopener noreferrer">GKD</a>
+              <a href="https://github.com/gkd-kit/subscription" target="_blank" rel="noopener noreferrer">订阅模板</a>
+              <a href="https://github.com/orgs/gkd-kit/discussions" target="_blank" rel="noopener noreferrer">GKD Discussions</a>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <span>© 2026 GKD Rule Studio · SATA License</span>
+          <span>GKD 为 gkd-kit 开源项目，本工具为独立的第三方工具。</span>
+        </div>
+      </div>
+    </footer>
+
+    <!-- 灯箱 -->
+    <div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="界面截图预览">
+      <button class="lightbox-close" id="lightboxClose" type="button" aria-label="关闭预览">×</button>
+      <img id="lightboxImg" src="" alt="" />
+      <p class="lightbox-caption" id="lightboxCaption"></p>
+    </div>
+
+    <!-- 可关闭的浮动气泡 -->
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

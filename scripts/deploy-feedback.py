@@ -27,7 +27,7 @@ NGINX = "/etc/nginx/sites-available/ai-review-ip"
 PRIVATE = Path(os.environ["USERPROFILE"]) / ".config" / "gkd-rule-studio"
 ACCESS = PRIVATE / "feedback-admin.local"
 STAMP = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-BACKUP = Path(os.environ["USERPROFILE"]) / "skill-backups" / f"gkd-feedback-{STAMP}"
+BACKUP = Path("D:/skill-backups") / f"gkd-feedback-{STAMP}"
 
 
 def run(args: list[str], *, script: str | None = None, capture: bool = False, check: bool = True) -> subprocess.CompletedProcess:

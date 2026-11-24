@@ -315,7 +315,7 @@ export function UserFeedbackPanel({
       requestMaskClose();
       return;
     }
-    if (sending.current) return;
+    if (sending.current || busy) return;
     if (!receipt && !preview && (description || contact || rects.length || sensitive
       || rulesFileName || diagnosticFile)
       && !window.confirm("尚未预览保存的修改会丢失，确定关闭吗？")) return;
@@ -484,15 +484,15 @@ export function UserFeedbackPanel({
           {saved && <div className="user-feedback-draft"><strong>有一份已脱敏草稿</strong><span>{new Date(saved.savedAt).toLocaleString()}</span>
             <button className="android-button" type="button" disabled={busy} onClick={() => { setPreview(saved.payload); setConfirmed(false); setNotice(""); }}>继续草稿</button>
             <button className="android-button" type="button" disabled={busy} onClick={() => void removeDraft()}><Trash2 size={15} />删除草稿</button></div>}
-          <label>问题类型<select value={category} onChange={(event) => setCategory(event.target.value as FeedbackCategory)}>
+          <label>问题类型<select disabled={busy} value={category} onChange={(event) => setCategory(event.target.value as FeedbackCategory)}>
             <option value="tool">工具故障</option><option value="rule">规则效果问题</option><option value="feature">希望有的功能</option></select></label>
           <label>问题描述（必填）
-            <textarea ref={descriptionInput} aria-label="问题描述" required aria-invalid={descriptionInvalid}
+            <textarea ref={descriptionInput} aria-label="问题描述" disabled={busy} required aria-invalid={descriptionInvalid}
               aria-describedby={descriptionInvalid ? "user-feedback-description-error" : undefined}
               maxLength={4000} rows={4} value={description} onChange={(event) => setDescription(event.target.value)} />
             {descriptionInvalid && <span id="user-feedback-description-error" className="user-feedback-field-error" role="alert">请填写问题描述，说明遇到的问题或希望增加的功能。</span>}
           </label>
-          <label>联系方式（选填）<input aria-label="反馈联系方式" maxLength={200} value={contact} onChange={(event) => setContact(event.target.value)} autoComplete="off" /></label>
+          <label>联系方式（选填）<input aria-label="反馈联系方式" disabled={busy} maxLength={200} value={contact} onChange={(event) => setContact(event.target.value)} autoComplete="off" /></label>
           <details className="user-feedback-section" open={materialsOpen} onToggle={(event) => setMaterialsOpen(event.currentTarget.open)}>
             <summary>附带材料{materialCount > 0 && <span className="user-feedback-summary-value">已选 {materialCount} 项</span>}</summary>
             {(snapshotOptions.length > 0 || snapshotLoading || snapshotError) && <div className="user-feedback-snapshot-picker">

@@ -177,18 +177,24 @@ import {
 import {
   addAiSession,
   aiCandidateSourceKey,
+  appendAiSessionFeedback,
   buildActiveTestSubscription,
+  clearFinishedInlineTestItems,
   createEmptyInlineRuleTestingState,
   deleteAiSession,
   deleteInlineTestItem,
+  endAllInlineTests,
   filterAiSessionsByMode,
   findInlineTestItem,
+  markInlineTestItemImported,
   markInlineTestItemResult,
   prunePersistentInlineRuleTestingState,
   removeInlineTestItem,
+  restartInlineTestItem,
   setAiSessionCandidates,
   startAiCandidateTest,
   startOfflineCandidateTest,
+  type InlineAiFeedbackHistoryEntry,
   type InlineAiSession,
   type InlineRuleTestItem,
   type InlineRuleTestingState,
@@ -204,6 +210,7 @@ import type {
 } from "../types/gkdSnapshot";
 import type { FlowRuleStep } from "../types/flowDraft";
 import type {
+  AppRuleDraft,
   PromptScenarioInfo,
   RuleSettings,
   SelectorCandidate,
@@ -363,6 +370,25 @@ export function AndroidLiteApp() {
   const [aiSessionManagerOpen, setAiSessionManagerOpen] = useState(false);
   const [logPageOpen, setLogPageOpen] = useState(false);
   const [testPageOpen, setTestPageOpen] = useState(false);
+  const [inlineSyncError, setInlineSyncError] = useState<string | null>(null);
+  const [importingItemIds, setImportingItemIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const importingItemIdsRef = useRef<Set<string>>(new Set());
+  const loadingCountRef = useRef(0);
+  const aiRequestSeqRef = useRef(0);
+
+  function beginLoading(): void {
+    loadingCountRef.current += 1;
+    setLoading(true);
+  }
+
+  function endLoading(): void {
+    loadingCountRef.current = Math.max(0, loadingCountRef.current - 1);
+    if (loadingCountRef.current === 0) {
+      setLoading(false);
+    }
+  }
   const [updatePanelOpen, setUpdatePanelOpen] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
@@ -479,13 +505,12 @@ export function AndroidLiteApp() {
     [snapshots, selectedSnapshotIds],
   );
   const feedbackSnapshotOptions = useMemo(
-    () => view === "home"
-      ? snapshots.map((item) => ({
-          id: item.id,
-          label: snapshotOptionLabel(item, snapshotNames[String(item.id)] ?? null),
-        }))
-      : [],
-    [view, snapshots, snapshotNames],
+    () =>
+      snapshots.map((item) => ({
+        id: item.id,
+        label: snapshotOptionLabel(item, snapshotNames[String(item.id)] ?? null),
+      })),
+    [snapshots, snapshotNames],
   );
   const flowCanvasSnapshots = useMemo(
     () =>
@@ -512,32 +537,53 @@ export function AndroidLiteApp() {
         ? `flow:${flowSteps.map((step) => step.snapshot.id).join(",")}`
         : ""
       : controlKeyForPick(snapshot, pickResult);
-  const visibleAiSessions = filterAiSessionsByMode(inlineTesting, workspaceMode).filter(
+  const currentAiSessionNodeId =
+    workspaceMode === "flow"
+      ? activeFlowStep?.pickResult?.pickedNode.id
+      : pickResult?.pickedNode.id;
+  const allModeAiSessions = filterAiSessionsByMode(inlineTesting, workspaceMode);
+  const visibleAiSessions = allModeAiSessions.filter(
     (session) => session.source !== "external",
   );
   const externalAiSession =
-    externalAiSessionId
-      ? inlineTesting.aiSessions.find((session) => session.id === externalAiSessionId) ??
-        null
-      : null;
-  const activeAiSession =
-    visibleAiSessions.find(
+    (externalAiSessionId
+      ? inlineTesting.aiSessions.find((session) => session.id === externalAiSessionId)
+      : undefined) ??
+    allModeAiSessions.find(
       (session) =>
-        session.id === activeAiSessionId &&
+        session.source === "external" &&
         sessionMatchesCurrentAiContext(
           session,
           currentAiSessionSnapshotId,
           currentAiSessionControlKey,
+          currentAiSessionNodeId,
         ),
+    ) ??
+    null;
+  const activeAiSession =
+    visibleAiSessions.find(
+      (session) =>
+        session.id === activeAiSessionId &&
+        (!currentAiSessionSnapshotId ||
+          sessionMatchesCurrentAiContext(
+            session,
+            currentAiSessionSnapshotId,
+            currentAiSessionControlKey,
+            currentAiSessionNodeId,
+          )),
     ) ??
     visibleAiSessions.find((session) =>
       sessionMatchesCurrentAiContext(
         session,
         currentAiSessionSnapshotId,
         currentAiSessionControlKey,
+        currentAiSessionNodeId,
       ),
     ) ??
     null;
+  const activeTestingCount = inlineTesting.items.filter(
+    (item) => item.status === "testing",
+  ).length;
   const activeAiSessionHasTestingItem = activeAiSession
     ? inlineTesting.items.some(
         (item) =>
@@ -621,13 +667,31 @@ export function AndroidLiteApp() {
   }, [view]);
 
   useEffect(() => {
-    window.GkdAndroidBridge?.setBackVisible?.(view !== "home");
+    const hasOverlay = Boolean(
+      userFeedback ||
+        testPageOpen ||
+        aiSessionManagerOpen ||
+        logPageOpen ||
+        aiConfigOpen ||
+        updatePanelOpen ||
+        supportOpen,
+    );
+    window.GkdAndroidBridge?.setBackVisible?.(view !== "home" || hasOverlay);
     window.__GkdAndroidBack = () => backHome();
     return () => {
       window.__GkdAndroidBack = undefined;
       window.GkdAndroidBridge?.setBackVisible?.(false);
     };
-  }, [view]);
+  }, [
+    view,
+    userFeedback,
+    testPageOpen,
+    aiSessionManagerOpen,
+    logPageOpen,
+    aiConfigOpen,
+    updatePanelOpen,
+    supportOpen,
+  ]);
 
   useEffect(() => {
     inlineTestingRef.current = inlineTesting;
@@ -642,11 +706,23 @@ export function AndroidLiteApp() {
     if (!activeAiSession) {
       setAiCandidates([]);
       setAiGeneratedMode(null);
+      setSelectedAiCandidateId(null);
       return;
     }
     setAiCandidates(activeAiSession.candidates ?? []);
     setAiGeneratedMode(activeAiSession.mode);
-  }, [activeAiSession?.id]);
+  }, [activeAiSession?.id, activeAiSession?.generation]);
+
+  useEffect(() => {
+    if (!externalAiSession) {
+      setExternalAiCandidates([]);
+      setExternalAiMode(null);
+      return;
+    }
+    setExternalAiSessionId(externalAiSession.id);
+    setExternalAiCandidates(externalAiSession.candidates ?? []);
+    setExternalAiMode(externalAiSession.mode);
+  }, [externalAiSession?.id, externalAiSession?.generation]);
 
   useEffect(() => {
     if (workspaceMode !== "flow" && activeTab === "steps") {
@@ -693,7 +769,7 @@ export function AndroidLiteApp() {
 
   async function connect(): Promise<void> {
     const attempt = ++connectionAttemptRef.current;
-    setLoading(true);
+    beginLoading();
     setMessage(null);
     clientRef.current = null;
     setClient(null);
@@ -715,14 +791,20 @@ export function AndroidLiteApp() {
         serverInfo: nextClient.serverInfo,
         snapshotCount: nextSnapshots.length,
       });
-      if (libraryTestRef.current) void syncInlineTestsToGkd(inlineTestingRef.current);
+      if (
+        libraryTestRef.current ||
+        inlineTestingRef.current.items.some((item) => item.status === "testing") ||
+        inlineSyncError !== null
+      ) {
+        void syncInlineTestsToGkd(inlineTestingRef.current);
+      }
     } catch (cause) {
       if (attempt !== connectionAttemptRef.current) return;
       const msg = cause instanceof Error ? cause.message : "连接设备失败";
       debugLog("error", "connect:fail", msg);
       setMessage(msg);
     } finally {
-      if (attempt === connectionAttemptRef.current) setLoading(false);
+      endLoading();
     }
   }
 
@@ -732,7 +814,7 @@ export function AndroidLiteApp() {
       return;
     }
 
-    setLoading(true);
+    beginLoading();
     setMessage(null);
     try {
       const nextSnapshots = await client.getSnapshots();
@@ -755,7 +837,7 @@ export function AndroidLiteApp() {
       debugLog("error", "refresh:fail", msg);
       setMessage(msg);
     } finally {
-      setLoading(false);
+      endLoading();
     }
   }
 
@@ -923,6 +1005,24 @@ export function AndroidLiteApp() {
       if (kept) nextSelectedCandidate = kept;
     }
     setSelectedCandidateId(nextSelectedCandidate?.id ?? null);
+    setSelectedAiCandidateId(null);
+    if (workspaceMode === "single") {
+      const nextControlKey = controlKeyForPick(snapshot, nextPick);
+      const matchingSession =
+        filterAiSessionsByMode(inlineTestingRef.current, "single")
+          .filter((item) => item.source !== "external")
+          .find((item) =>
+            sessionMatchesCurrentAiContext(
+              item,
+              snapshot.id,
+              nextControlKey,
+              nextPick.pickedNode.id,
+            ),
+          ) ?? null;
+      setActiveAiSessionId(matchingSession?.id ?? null);
+      setAiCandidates(matchingSession?.candidates ?? []);
+      setAiGeneratedMode(matchingSession?.mode ?? null);
+    }
     setSnapshotMemory((current) => ({
       ...current,
       [String(snapshot.id)]: {
@@ -1502,7 +1602,9 @@ export function AndroidLiteApp() {
     const device = clientRef.current;
     const libraryAtStart = libraryTestRef.current;
     if (!device || !isSupportedGkdApp(device.serverInfo.gkdAppInfo)) {
-      setMessage("请先连接 GKD 1.13+ HTTP 服务");
+      const offlineMsg = "未连接 GKD 1.13+ HTTP 服务，测试变更尚未同步到 GKD";
+      setMessage(offlineMsg);
+      setInlineSyncError(offlineMsg);
       if (libraryAtStart && libraryTestRef.current === libraryAtStart) {
         commitLibraryTest({ ...libraryAtStart, error: "未连接 GKD，测试变更尚未同步；请连接后同步。" });
       }
@@ -1522,11 +1624,12 @@ export function AndroidLiteApp() {
       // Still send empty subscription to clear GKD's in-memory rules.
     }
 
-    setLoading(true);
+    beginLoading();
     setMessage(null);
     try {
       await device.updateSubscription(payload);
       const stillCurrent = device === clientRef.current && libraryTestRef.current === libraryAtStart;
+      setInlineSyncError(null);
       if (libraryAtStart && stillCurrent) {
         commitLibraryTest({ ...libraryAtStart, error: undefined,
           status: ["syncing", "failed"].includes(libraryAtStart.status) ? "testing" : libraryAtStart.status });
@@ -1545,6 +1648,7 @@ export function AndroidLiteApp() {
       const msg = cause instanceof Error ? cause.message : "导入到 GKD 失败";
       debugLog("error", "gkd:fail", msg);
       setMessage(msg);
+      setInlineSyncError(`同步到 GKD 失败：${msg}。GKD 可能仍在运行上一次测试，请重试同步。`);
       if (libraryAtStart && libraryTestRef.current === libraryAtStart) {
         commitLibraryTest({ ...libraryAtStart,
           status: ["syncing", "testing"].includes(libraryAtStart.status) ? "failed" : libraryAtStart.status,
@@ -1552,7 +1656,7 @@ export function AndroidLiteApp() {
       }
       return false;
     } finally {
-      setLoading(false);
+      endLoading();
     }
   }
 
@@ -1588,10 +1692,35 @@ export function AndroidLiteApp() {
     void syncInlineTestsToGkd(nextState, "已结束这条测试并同步 GKD");
   }
 
+  function restartInlineTest(itemId: string): void {
+    const nextState = restartInlineTestItem(inlineTestingRef.current, itemId);
+    commitInlineTestingState(nextState);
+    void syncInlineTestsToGkd(nextState, "已重新加入当前测试集合并同步 GKD");
+  }
+
+  function endAllActiveInlineTests(): void {
+    const nextState = endAllInlineTests(inlineTestingRef.current);
+    commitInlineTestingState(nextState);
+    void syncInlineTestsToGkd(nextState, "已结束全部当前测试并同步 GKD");
+  }
+
+  function clearFinishedInlineTests(): void {
+    const nextState = clearFinishedInlineTestItems(inlineTestingRef.current);
+    commitInlineTestingState(nextState);
+    showMainTransient("已清理已完成/无效的测试记录");
+  }
+
   function deleteInlineTestRecord(itemId: string): void {
+    const wasTesting = inlineTestingRef.current.items.some(
+      (item) => item.id === itemId && item.status === "testing",
+    );
     const nextState = deleteInlineTestItem(inlineTestingRef.current, itemId);
     commitInlineTestingState(nextState);
-    void syncInlineTestsToGkd(nextState, "已删除测试记录并同步 GKD");
+    if (wasTesting) {
+      void syncInlineTestsToGkd(nextState, "已删除测试记录并同步 GKD");
+    } else {
+      showMainTransient("已删除测试记录");
+    }
   }
 
   function markInlineTestResult(
@@ -1599,6 +1728,9 @@ export function AndroidLiteApp() {
     status: Exclude<InlineTestStatus, "idle" | "testing">,
     note?: string,
   ): void {
+    const wasTesting = inlineTestingRef.current.items.some(
+      (item) => item.id === itemId && item.status === "testing",
+    );
     const nextState = markInlineTestItemResult(
       inlineTestingRef.current,
       itemId,
@@ -1607,12 +1739,20 @@ export function AndroidLiteApp() {
       note,
     );
     commitInlineTestingState(nextState);
-    void syncInlineTestsToGkd(nextState, "已记录测试结果并同步 GKD");
+    if (wasTesting) {
+      void syncInlineTestsToGkd(nextState, "已记录测试结果并同步 GKD");
+    } else {
+      showMainTransient(`已标记为${inlineStatusLabel(status)}`);
+    }
   }
 
   async function importInlineItem(item: InlineRuleTestItem): Promise<void> {
     if (!item.canImport) {
       setMessage("请先把这条规则标记为有效");
+      return;
+    }
+    if (isInlineItemImported(testSubscription, item)) {
+      showMainTransient("该规则已导入过 GKD 本地规则，无需重复导入");
       return;
     }
     await saveInlineItemToLocalRules(item);
@@ -1629,13 +1769,24 @@ export function AndroidLiteApp() {
       return;
     }
 
-    setLoading(true);
+    if (importingItemIdsRef.current.has(item.id)) {
+      return;
+    }
+
+    importingItemIdsRef.current.add(item.id);
+    setImportingItemIds(new Set(importingItemIdsRef.current));
+    beginLoading();
     setMessage(null);
     try {
       const result = await client.appendLocalRules(item.app);
       setTestSubscription((current) =>
         markImportedAndClearBuffer(addAppDraftToTestSubscription(current, item.app)),
       );
+      const nextTestingState = markInlineTestItemImported(
+        inlineTestingRef.current,
+        item.id,
+      );
+      commitInlineTestingState(nextTestingState);
       showMainTransient(
         `已保存到 GKD 本地规则：新增 ${result.addedRules} 条`,
       );
@@ -1643,7 +1794,9 @@ export function AndroidLiteApp() {
       const detail = cause instanceof Error ? cause.message : "保存到 GKD 本地规则失败";
       setMessage(`${detail}。请先在 GKD 核对是否已写入，勿直接重复导入`);
     } finally {
-      setLoading(false);
+      importingItemIdsRef.current.delete(item.id);
+      setImportingItemIds(new Set(importingItemIdsRef.current));
+      endLoading();
     }
   }
 
@@ -1739,6 +1892,7 @@ export function AndroidLiteApp() {
       return;
     }
 
+    const requestSeq = ++aiRequestSeqRef.current;
     startAiOperation("generate");
     setAiMessage(null);
     debugLog("ai", "generate:start", `mode=${mode}`, {
@@ -1849,11 +2003,20 @@ export function AndroidLiteApp() {
       const reusableSession =
         latestActiveSession &&
         latestActiveSession.mode === sessionInput.mode &&
-        latestActiveSession.snapshotId === sessionInput.snapshotId &&
+        String(latestActiveSession.snapshotId ?? "") === String(sessionInput.snapshotId ?? "") &&
         latestActiveSession.controlKey === sessionInput.controlKey &&
         latestActiveSession.candidates.length === 0
           ? latestActiveSession
-          : null;
+          : latestTestingState.aiSessions.find(
+              (s) =>
+                s.source !== "external" &&
+                s.mode === sessionInput.mode &&
+                String(s.snapshotId ?? "") === String(sessionInput.snapshotId ?? "") &&
+                s.controlKey === sessionInput.controlKey &&
+                s.candidates.length === 0 &&
+                s.candidateIds.length === 0 &&
+                s.feedbackHistory.length === 0,
+            ) ?? null;
       const withSession = reusableSession
         ? latestTestingState
         : addAiSession(latestTestingState, sessionInput);
@@ -1862,24 +2025,31 @@ export function AndroidLiteApp() {
         ? setAiSessionCandidates(withSession, sessionId, finalCandidates)
         : withSession;
       commitInlineTestingState(withCandidates);
-      setActiveAiSessionId(sessionId);
-      setAiCandidates(finalCandidates);
-      setAiGeneratedMode(mode);
-      showAiTransient(
-        autoRepaired
-          ? `AI 返回 ${finalCandidates.length} 个候选（已自动验靶返修并重排）`
-          : `AI 返回 ${finalCandidates.length} 个候选（已按静态置信度排序）`,
-      );
+      if (requestSeq === aiRequestSeqRef.current) {
+        setActiveAiSessionId(sessionId);
+        setAiCandidates(finalCandidates);
+        setSelectedAiCandidateId(finalCandidates[0]?.id ?? null);
+        setAiGeneratedMode(mode);
+        setActiveTab("ai");
+        showAiTransient(
+          autoRepaired
+            ? `AI 返回 ${finalCandidates.length} 个候选（已自动验靶返修并重排）`
+            : `AI 返回 ${finalCandidates.length} 个候选（已按静态置信度排序）`,
+        );
+      } else {
+        showAiTransient(`后台 AI 生成已完成（${finalCandidates.length} 个候选已写入原 session）`);
+      }
       appendAiDebugLog(`generate:done candidates=${finalCandidates.length}`);
       debugLog("ai", "generate:ok", `${nextCandidates.length} candidates`, {
         mode,
         candidateCount: nextCandidates.length,
         sessionId,
       });
-      setActiveTab("ai");
     } catch (cause) {
       const errMsg = formatAiError(cause, aiConfig.apiKey);
-      setAiMessage(errMsg);
+      if (requestSeq === aiRequestSeqRef.current) {
+        setAiMessage(errMsg);
+      }
       appendAiDebugLog(`generate:error ${errMsg}`);
       debugLog("error", "ai:generate:fail", errMsg, { mode });
     } finally {
@@ -1888,59 +2058,142 @@ export function AndroidLiteApp() {
   }
 
   async function createNewAiSession(): Promise<void> {
+    if (aiLoading) {
+      setAiMessage("正在等待 AI 响应，请稍候再开启新 session");
+      return;
+    }
     const input = createCurrentAiSessionInput(
       true,
       await createSessionThumbnailForMode(workspaceMode).catch(() => undefined),
     );
     if (!input) return;
 
+    // 若当前已有同快照同控件的空白新 session，直接复用，避免连续点击产生多条 0 候选空会话
+    const existingEmptySession = inlineTestingRef.current.aiSessions.find(
+      (session) =>
+        session.source !== "external" &&
+        session.mode === input.mode &&
+        String(session.snapshotId ?? "") === String(input.snapshotId ?? "") &&
+        session.controlKey === input.controlKey &&
+        session.candidates.length === 0 &&
+        session.candidateIds.length === 0 &&
+        session.feedbackHistory.length === 0,
+    );
+    if (existingEmptySession) {
+      setActiveAiSessionId(existingEmptySession.id);
+      setAiCandidates([]);
+      setSelectedAiCandidateId(null);
+      setAiGeneratedMode(input.mode);
+      setActiveTab("ai");
+      showAiTransient("已切换到空白新 session，可直接点击生成");
+      return;
+    }
+
     const nextState = addAiSession(inlineTestingRef.current, input);
     const sessionId = nextState.aiSessions[0]?.id ?? null;
     commitInlineTestingState(nextState);
     setActiveAiSessionId(sessionId);
     setAiCandidates([]);
+    setSelectedAiCandidateId(null);
     setAiGeneratedMode(input.mode);
     setActiveTab("ai");
     showAiTransient("已开启新的 AI session");
   }
 
   async function selectAiSession(sessionId: string): Promise<void> {
+    if (aiLoading) {
+      setAiMessage("正在等待 AI 响应，请稍候切换 session");
+      return;
+    }
     const session = inlineTestingRef.current.aiSessions.find((item) => item.id === sessionId);
     if (!session) return;
 
-    setActiveAiSessionId(session.id);
-    setAiCandidates(session.candidates);
-    setAiGeneratedMode(session.mode);
+    const isExternal = session.source === "external";
+    if (isExternal) {
+      setExternalAiSessionId(session.id);
+      setExternalAiCandidates(session.candidates);
+      setExternalAiMode(session.mode);
+    } else {
+      setActiveAiSessionId(session.id);
+      setAiCandidates(session.candidates);
+      setAiGeneratedMode(session.mode);
+    }
+    setSelectedAiCandidateId(session.candidates[0]?.id ?? null);
     setWorkspaceMode(session.mode);
     if (session.mode === "single" && session.snapshotId && client) {
       await loadSnapshotForAiSession(session, client);
     } else if (session.mode === "flow" && session.snapshotId && client) {
       await loadFlowCanvasSnapshot(session.snapshotId, client);
     }
-    // 加载快照会经 openSnapshot → clearAiCandidateState 清空候选与 activeAiSessionId，
-    // 这里必须恢复回该 session 的候选，否则用户选中 session 后看到空候选、
-    // 生成按钮被禁用（activeAiSession 靠兜底 find 解析到同一 session，id 未变，
-    // 依赖 [activeAiSession?.id] 的 effect 不会重跑）。
-    setActiveAiSessionId(session.id);
-    setAiCandidates(session.candidates);
-    setAiGeneratedMode(session.mode);
-    setWorkspaceMode(session.mode);
-    setActiveTab("ai");
+    if (isExternal) {
+      setExternalAiSessionId(session.id);
+      setExternalAiCandidates(session.candidates);
+      setExternalAiMode(session.mode);
+      setSelectedAiCandidateId(session.candidates[0]?.id ?? null);
+      setWorkspaceMode(session.mode);
+      setActiveTab("prompt");
+    } else {
+      // 加载快照会经 openSnapshot → clearAiCandidateState 清空候选与 activeAiSessionId，
+      // 这里必须恢复回该 session 的候选，否则用户选中 session 后看到空候选、
+      // 生成按钮被禁用。
+      setActiveAiSessionId(session.id);
+      setAiCandidates(session.candidates);
+      setSelectedAiCandidateId(session.candidates[0]?.id ?? null);
+      setAiGeneratedMode(session.mode);
+      setWorkspaceMode(session.mode);
+      setActiveTab("ai");
+    }
   }
 
   function removeAiSession(sessionId: string): void {
+    const targetSession = inlineTestingRef.current.aiSessions.find(
+      (item) => item.id === sessionId,
+    );
+    const linkedItems = inlineTestingRef.current.items.filter(
+      (item) => item.aiSessionId === sessionId,
+    );
+    if (
+      targetSession &&
+      (targetSession.candidates.length > 0 || linkedItems.length > 0) &&
+      typeof window !== "undefined" &&
+      typeof window.confirm === "function" &&
+      !window.confirm(
+        `确定删除该 AI session 吗？\n将同时移除 ${targetSession.candidates.length} 个候选及 ${linkedItems.length} 条关联测试记录。`,
+      )
+    ) {
+      return;
+    }
+    const hadTestingItems = linkedItems.some((item) => item.status === "testing");
     const nextState = deleteAiSession(inlineTestingRef.current, sessionId);
     commitInlineTestingState(nextState);
-    if (activeAiSessionId === sessionId) {
+    if (externalAiSessionId === sessionId || externalAiSession?.id === sessionId) {
+      setExternalAiSessionId(null);
+      setExternalAiCandidates([]);
+      setExternalAiMode(null);
+      setSelectedAiCandidateId(null);
+    }
+    if (activeAiSessionId === sessionId || activeAiSession?.id === sessionId) {
       const nextSession =
-        filterAiSessionsByMode(nextState, workspaceMode).filter(
-          (session) => session.source !== "external",
-        )[0] ?? null;
+        filterAiSessionsByMode(nextState, workspaceMode)
+          .filter((session) => session.source !== "external")
+          .find((session) =>
+            sessionMatchesCurrentAiContext(
+              session,
+              currentAiSessionSnapshotId,
+              currentAiSessionControlKey,
+              currentAiSessionNodeId,
+            ),
+          ) ?? null;
       setActiveAiSessionId(nextSession?.id ?? null);
       setAiCandidates(nextSession?.candidates ?? []);
+      setSelectedAiCandidateId(nextSession?.candidates[0]?.id ?? null);
       setAiGeneratedMode(nextSession?.mode ?? null);
     }
-    showAiTransient("已删除 AI session");
+    if (hadTestingItems) {
+      void syncInlineTestsToGkd(nextState, "已删除 AI session 并同步 GKD");
+    } else {
+      showAiTransient("已删除 AI session");
+    }
   }
 
   function formatCurrentAiSessionTitle(): string {
@@ -2012,7 +2265,15 @@ export function AndroidLiteApp() {
         snapshot?.id === numericId ? snapshot : await targetClient.loadSnapshot(numericId);
       openSnapshot(nextSnapshot);
       const point = pointFromControlKey(session.controlKey);
-      const nextPick = point ? pickNodeAtPoint(nextSnapshot, point) : null;
+      const exactNode = resolveSnapshotNodeById(nextSnapshot, session.nodeId);
+      const nextPick = exactNode
+        ? {
+            ...pickExistingNode(nextSnapshot, exactNode),
+            ...(point ? { point } : {}),
+          }
+        : point
+          ? pickNodeAtPoint(nextSnapshot, point)
+          : null;
       setWorkspaceMode("single");
       setSelectedSnapshotId(String(numericId));
       setPickResult(nextPick);
@@ -2116,10 +2377,17 @@ export function AndroidLiteApp() {
               (session) =>
                 session.id === externalAiSessionId &&
                 session.mode === input.mode &&
-                session.snapshotId === input.snapshotId &&
+                String(session.snapshotId ?? "") === String(input.snapshotId ?? "") &&
                 session.controlKey === input.controlKey,
             ) ?? null
           : null;
+      const hadActiveTestsInSession = reusableExternalSession
+        ? inlineTestingRef.current.items.some(
+            (item) =>
+              item.aiSessionId === reusableExternalSession.id &&
+              item.status === "testing",
+          )
+        : false;
       const withSession = reusableExternalSession
         ? inlineTestingRef.current
         : addAiSession(inlineTestingRef.current, {
@@ -2132,8 +2400,12 @@ export function AndroidLiteApp() {
         ? setAiSessionCandidates(withSession, sessionId, nextCandidates)
         : withSession;
       commitInlineTestingState(nextState);
+      if (hadActiveTestsInSession) {
+        void syncInlineTestsToGkd(nextState, "已替换外部 AI 新一轮候选并停止上一轮测试");
+      }
       setExternalAiSessionId(sessionId);
       setExternalAiCandidates(nextCandidates);
+      setSelectedAiCandidateId(nextCandidates[0]?.id ?? null);
       setExternalAiMode(input.mode);
       setAiPasteText("");
     } catch (cause) {
@@ -2303,7 +2575,30 @@ export function AndroidLiteApp() {
     const mode = modeOverride ?? aiGeneratedMode ?? workspaceMode;
     setPersistentExternalAiMessage(null);
     try {
-      await copyTextToClipboard(buildExternalFeedbackPrompt(enrichCurrentFeedback(feedbacks), mode === "flow"));
+      const session = externalAiSession;
+      const enriched = enrichCurrentFeedback(feedbacks);
+      await copyTextToClipboard(
+        buildExternalFeedbackPrompt(enriched, mode === "flow", session?.feedbackHistory),
+      );
+      if (session) {
+        const feedbackEntry: InlineAiFeedbackHistoryEntry = {
+          at: Date.now(),
+          generation: session.generation > 0 ? session.generation : 1,
+          note: feedbacks
+            .map((f) => `${f.candidate.title}: ${f.result}${f.note.trim() ? ` (${f.note.trim()})` : ""}`)
+            .join("；"),
+          items: feedbacks.map((f) => ({
+            candidateId: f.candidate.id,
+            title: f.candidate.title,
+            result: String(f.category ?? f.result),
+            note: f.note.trim(),
+            selectors: collectAiCandidateSelectors(f.candidate).slice(0, 4),
+          })),
+        };
+        commitInlineTestingState(
+          appendAiSessionFeedback(inlineTestingRef.current, session.id, feedbackEntry),
+        );
+      }
       showExternalAiTransient("已复制测试反馈 prompt，可粘贴给外部 AI 修正规则");
       appendAiDebugLog(`feedback:copied mode=${mode} count=${feedbacks.length}`);
     } catch (cause) {
@@ -2317,8 +2612,22 @@ export function AndroidLiteApp() {
       setAiMessage("请先填写至少一条测试反馈");
       return;
     }
+    const requestSeq = ++aiRequestSeqRef.current;
     const mode = aiGeneratedMode ?? workspaceMode;
-    const session = activeAiSession;
+    let session = activeAiSession;
+    if (!session) {
+      const fallbackInput = createCurrentAiSessionInput(false);
+      if (fallbackInput) {
+        const createdState = addAiSession(inlineTestingRef.current, fallbackInput);
+        commitInlineTestingState(createdState);
+        session = createdState.aiSessions[0] ?? null;
+        if (session) {
+          setActiveAiSessionId(session.id);
+        }
+      }
+    }
+    const originSessionId = session?.id ?? null;
+    const originRound = session?.generation && session.generation > 0 ? session.generation : 1;
     const snapshotMatchesSession = Boolean(
       snapshot &&
         (session?.snapshotId === undefined ||
@@ -2335,14 +2644,16 @@ export function AndroidLiteApp() {
       const imageUrl = canAttachImage
         ? await createAiImageForMode(mode, session?.nodeId ?? null).catch(() => undefined)
         : undefined;
+      const enrichedFeedbacks = enrichCurrentFeedback(feedbacks);
       const messages = buildAiBatchFeedbackMessages({
         mode,
         originalPrompt,
-        feedbacks: enrichCurrentFeedback(feedbacks),
+        feedbacks: enrichedFeedbacks,
         imageUrl,
+        feedbackHistory: session?.feedbackHistory,
       });
       appendAiDebugLog(
-        `feedback:start mode=${mode} count=${feedbacks.length} multimodal=${Boolean(imageUrl)} snapshotMatch=${snapshotMatchesSession}`,
+        `feedback:start mode=${mode} round=${originRound} count=${feedbacks.length} multimodal=${Boolean(imageUrl)} snapshotMatch=${snapshotMatchesSession}`,
       );
       const nextCandidates = await requestAiCandidatesWithTextFallback({
         config: requestConfig,
@@ -2416,26 +2727,89 @@ export function AndroidLiteApp() {
       } else if (mode === "single" && !snapshotMatchesSession) {
         appendAiDebugLog("feedback:skip-rerank reason=snapshot-mismatch");
       }
-      if (session) {
+
+      const feedbackEntry: InlineAiFeedbackHistoryEntry = {
+        at: Date.now(),
+        generation: originRound,
+        note: feedbacks
+          .map((f) => `${f.candidate.title}: ${f.result}${f.note.trim() ? ` (${f.note.trim()})` : ""}`)
+          .join("；"),
+        items: feedbacks.map((f) => ({
+          candidateId: f.candidate.id,
+          title: f.candidate.title,
+          result: String(f.category ?? f.result),
+          note: f.note.trim(),
+          selectors: collectAiCandidateSelectors(f.candidate).slice(0, 4),
+        })),
+      };
+
+      let hadActiveTestsInSession = false;
+      if (originSessionId) {
+        let stateBeforeNextRound = inlineTestingRef.current;
+        hadActiveTestsInSession = stateBeforeNextRound.items.some(
+          (item) =>
+            item.aiSessionId === originSessionId && item.status === "testing",
+        );
+        // 把本轮已提交失败反馈的候选对应测试项标记为 invalid / mistouch，避免旧轮次测试状态仍停留在 testing/tested
+        for (const fb of feedbacks) {
+          const itemKey = aiCandidateSourceKey(
+            originSessionId,
+            fb.candidate.id,
+            session?.generation ?? 0,
+          );
+          const matchedItem = stateBeforeNextRound.items.find(
+            (item) =>
+              item.aiSessionId === originSessionId && item.sourceKey === itemKey,
+          );
+          if (matchedItem && matchedItem.status !== "valid") {
+            const failureStatus: Exclude<InlineTestStatus, "idle" | "testing"> =
+              fb.result === "mistouch" ? "mistouch" : "invalid";
+            stateBeforeNextRound = markInlineTestItemResult(
+              stateBeforeNextRound,
+              matchedItem.id,
+              failureStatus,
+              Date.now(),
+              fb.note.trim() || undefined,
+            );
+          }
+        }
         const nextState = setAiSessionCandidates(
-          inlineTestingRef.current,
-          session.id,
+          stateBeforeNextRound,
+          originSessionId,
           finalCandidates,
+          Date.now(),
+          feedbackEntry,
         );
         commitInlineTestingState(nextState);
+        if (hadActiveTestsInSession) {
+          void syncInlineTestsToGkd(
+            nextState,
+            `已进入第 ${originRound + 1} 轮候选并停止上一轮测试`,
+          );
+        }
       }
-      setAiCandidates(finalCandidates);
-      setAiGeneratedMode(mode);
-      setActiveTab("ai");
-      showAiTransient(
-        autoRepaired
-          ? `反馈已返回 ${finalCandidates.length} 个候选（已自动验靶返修并重排）`
-          : `反馈已返回 ${finalCandidates.length} 个候选`,
-      );
-      appendAiDebugLog(`feedback:done candidates=${finalCandidates.length}`);
+      if (requestSeq === aiRequestSeqRef.current) {
+        setAiCandidates(finalCandidates);
+        setSelectedAiCandidateId(finalCandidates[0]?.id ?? null);
+        setAiGeneratedMode(mode);
+        setActiveTab("ai");
+        showAiTransient(
+          autoRepaired
+            ? `第 ${originRound + 1} 轮反馈已返回 ${finalCandidates.length} 个候选（已自动验靶返修并重排）`
+            : `第 ${originRound + 1} 轮反馈已返回 ${finalCandidates.length} 个候选`,
+        );
+      } else {
+        showAiTransient(
+          `后台第 ${originRound + 1} 轮反馈已完成（${finalCandidates.length} 个候选已写入原 session）`,
+        );
+      }
+      appendAiDebugLog(`feedback:done round=${originRound + 1} candidates=${finalCandidates.length}`);
     } catch (cause) {
-      setAiMessage(formatAiError(cause, aiConfig.apiKey));
-      appendAiDebugLog(`feedback:error ${formatAiError(cause, aiConfig.apiKey)}`);
+      const errMsg = formatAiError(cause, aiConfig.apiKey);
+      if (requestSeq === aiRequestSeqRef.current) {
+        setAiMessage(errMsg);
+      }
+      appendAiDebugLog(`feedback:error ${errMsg}`);
     } finally {
       finishAiOperation();
     }
@@ -2575,6 +2949,35 @@ export function AndroidLiteApp() {
   }
 
   function backHome(): void {
+    if (userFeedback) {
+      closeUserFeedback();
+      return;
+    }
+    if (testPageOpen) {
+      setTestPageOpen(false);
+      return;
+    }
+    if (aiSessionManagerOpen) {
+      setAiSessionManagerOpen(false);
+      return;
+    }
+    if (logPageOpen) {
+      setLogPageOpen(false);
+      return;
+    }
+    if (aiConfigOpen) {
+      setAiConfigOpen(false);
+      return;
+    }
+    if (updatePanelOpen) {
+      setUpdatePanelOpen(false);
+      return;
+    }
+    if (supportOpen) {
+      setSupportOpen(false);
+      return;
+    }
+
     if (pushedWorkspaceHistoryRef.current) {
       window.history.back();
       return;
@@ -2644,9 +3047,15 @@ export function AndroidLiteApp() {
     const feedbackSnapshot = item
       ? (String(item.snapshotId) === String(snapshot?.id) ? snapshot : null)
       : (view === "workspace" ? snapshot : null);
+    const itemNumericSnapshotId =
+      item?.snapshotId !== undefined && Number.isFinite(Number(item.snapshotId))
+        ? Number(item.snapshotId)
+        : null;
     const selectedHomeSnapshotId = !item && view === "home" && selectedSnapshotIds.size === 1
       ? selectedSnapshotIds.values().next().value ?? null
       : null;
+    const targetSnapshotId =
+      feedbackSnapshot?.id ?? itemNumericSnapshotId ?? selectedHomeSnapshotId;
     const currentRule = item ? JSON.stringify(item.app, null, 2)
       : view === "workspace" ? (workspaceMode === "flow" ? flowPreview : activeRuleDraft ? JSON.stringify(activeRuleDraft, null, 2) : "") : "";
     const recentErrors = getDebugEntries().filter((entry) => entry.category === "error" || /fail|error/i.test(entry.action))
@@ -2654,12 +3063,12 @@ export function AndroidLiteApp() {
     feedbackSnapshotRequestRef.current += 1;
     releaseFeedbackSnapshotUrl();
     setUserFeedback({ snapshot: feedbackSnapshot,
-      snapshotId: feedbackSnapshot?.id ?? selectedHomeSnapshotId,
+      snapshotId: targetSnapshotId,
       snapshotLoading: false, snapshotError: "", ruleText: currentRule,
       errors: item ? `测试状态：${inlineStatusLabel(item.status)}\n${item.note ?? ""}\n${recentErrors}` : recentErrors,
       page: item ? "测试结果" : view === "workspace" ? (workspaceMode === "flow" ? "工作区（多步骤，仅当前快照）" : "规则工作区") : "首页" });
-    if (!feedbackSnapshot && selectedHomeSnapshotId !== null) {
-      void selectFeedbackSnapshot(selectedHomeSnapshotId);
+    if (!feedbackSnapshot && targetSnapshotId !== null) {
+      void selectFeedbackSnapshot(targetSnapshotId);
     }
   }
 
@@ -2793,6 +3202,25 @@ export function AndroidLiteApp() {
             </span>
             <ChevronRight size={18} />
           </button>
+          {inlineTesting.items.length > 0 && (
+            <button
+              className="android-card library-entry"
+              type="button"
+              onClick={() => setTestPageOpen(true)}
+            >
+              <ListChecks size={22} strokeWidth={1.5} />
+              <span>
+                <strong>
+                  当前测试管理
+                  {activeTestingCount > 0 ? `（测试中 ${activeTestingCount} 条）` : ""}
+                </strong>
+                <small>
+                  共 {inlineTesting.items.length} 条测试记录，可随时标记有效/无效、导入或结束测试
+                </small>
+              </span>
+              <ChevronRight size={18} />
+            </button>
+          )}
           <div className="android-card android-connect-card">
             <div className="android-section-title">
               <h2>HTTP 服务</h2>
@@ -2865,15 +3293,29 @@ export function AndroidLiteApp() {
           </div>
           <button
             aria-label="当前测试"
-            className="android-icon-button"
+            className={[
+              "android-button",
+              "android-test-manager-button",
+              activeTestingCount > 0 ? "android-button-primary" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             type="button"
             onClick={() => setTestPageOpen(true)}
           >
-            <ListChecks size={16} />
+            <ListChecks size={15} />
+            <span>
+              {activeTestingCount > 0
+                ? `测试中 ${activeTestingCount}`
+                : inlineTesting.items.length > 0
+                  ? `测试 (${inlineTesting.items.length})`
+                  : "当前测试"}
+            </span>
           </button>
           <div className="mode-switch android-workspace-mode-switch">
             <button
               className={workspaceMode === "single" ? "mode-switch-active" : ""}
+              disabled={aiLoading}
               type="button"
               onClick={() => setWorkspaceMode("single")}
             >
@@ -2881,7 +3323,7 @@ export function AndroidLiteApp() {
             </button>
             <button
               className={workspaceMode === "flow" ? "mode-switch-active" : ""}
-              disabled={flowPreparing}
+              disabled={flowPreparing || aiLoading}
               type="button"
               onClick={() => void switchToFlowMode()}
             >
@@ -3002,6 +3444,7 @@ export function AndroidLiteApp() {
             <CandidateSummary
               candidates={candidates}
               importedSelectorKeys={new Set(testSubscription.importedSelectors)}
+              importingItemIds={importingItemIds}
               inlineTesting={inlineTesting}
               mode={workspaceMode}
               snapshot={snapshot}
@@ -3028,6 +3471,7 @@ export function AndroidLiteApp() {
             externalAiCandidates={externalAiCandidates}
             externalAiMode={externalAiMode}
             externalAiSession={externalAiSession}
+            importingItemIds={importingItemIds}
             inlineTesting={inlineTesting}
             loading={aiLoading}
             message={externalAiMessage}
@@ -3065,13 +3509,21 @@ export function AndroidLiteApp() {
             copied={copied}
             customScenarios={customScenarios}
             flowDesc={flowDesc}
+            flowDraft={flowDraft}
             flowName={flowName}
             flowPreview={flowPreview}
+            importingItemIds={importingItemIds}
+            inlineTesting={inlineTesting}
+            snapshot={snapshot}
             steps={flowSteps}
+            testSubscription={testSubscription}
             onAddFlowToTestZone={() => void startFlowInlineTest()}
             onCopyFlowDraft={() => void copyFlowDraft()}
+            onEndFlowTest={endInlineTest}
             onFlowDescChange={setFlowDesc}
             onFlowNameChange={setFlowName}
+            onImportFlowTest={(item) => void importInlineItem(item)}
+            onMarkFlowTest={markInlineTestResult}
             onRemoveStep={removeFlowStep}
             onSelectStep={selectFlowStep}
             onStepScenarioChange={handleStepScenarioChange}
@@ -3085,12 +3537,14 @@ export function AndroidLiteApp() {
             generatedMode={aiGeneratedMode}
             elapsedSeconds={aiElapsedSeconds}
             canGenerate={canGenerateAiRules}
+            importingItemIds={importingItemIds}
             inlineTesting={inlineTesting}
             loading={aiLoading}
             message={aiMessage}
             operation={aiOperation}
             selectedAiCandidateId={selectedAiCandidateId}
             session={activeAiSession}
+            sessionCount={visibleAiSessions.length}
             snapshot={snapshot}
             testSubscription={testSubscription}
             workspaceMode={workspaceMode}
@@ -3132,11 +3586,12 @@ export function AndroidLiteApp() {
       )}
       {view === "workspace" && aiSessionManagerOpen && (
         <AndroidAiSessionManagerPage
-          activeSessionId={activeAiSession?.id ?? null}
-          sessions={visibleAiSessions}
+          activeSessionId={activeAiSession?.id ?? externalAiSession?.id ?? null}
+          inlineTesting={inlineTesting}
+          sessions={allModeAiSessions}
           onClose={() => setAiSessionManagerOpen(false)}
           onNewSession={() => {
-            createNewAiSession();
+            void createNewAiSession();
             setAiSessionManagerOpen(false);
           }}
           onSelectSession={(sessionId) => {
@@ -3171,12 +3626,21 @@ export function AndroidLiteApp() {
       )}
       {testPageOpen && (
         <AndroidTestPage
+          aiSessions={inlineTesting.aiSessions}
+          importingItemIds={importingItemIds}
           items={inlineTesting.items}
           loading={loading}
+          syncError={inlineSyncError}
+          testSubscription={testSubscription}
+          onClearFinished={clearFinishedInlineTests}
           onClose={() => setTestPageOpen(false)}
           onDelete={deleteInlineTestRecord}
           onEnd={endInlineTest}
+          onEndAll={endAllActiveInlineTests}
           onImport={(item) => void importInlineItem(item)}
+          onMark={markInlineTestResult}
+          onRestart={restartInlineTest}
+          onRetrySync={() => void syncInlineTestsToGkd(inlineTestingRef.current, "已重新同步当前测试集合到 GKD")}
           onFeedback={openUserFeedback}
         />
       )}
@@ -3463,12 +3927,21 @@ function sessionMatchesCurrentAiContext(
   session: InlineAiSession,
   snapshotId: number | string | undefined,
   controlKey: string,
+  nodeId?: number | string,
 ): boolean {
-  if (!snapshotId || !controlKey) return false;
-  return (
-    String(session.snapshotId ?? "") === String(snapshotId) &&
-    session.controlKey === controlKey
-  );
+  if (!snapshotId) return false;
+  if (String(session.snapshotId ?? "") !== String(snapshotId)) return false;
+  if (controlKey && session.controlKey === controlKey) return true;
+  if (
+    nodeId !== undefined &&
+    nodeId !== "" &&
+    session.nodeId !== undefined &&
+    session.nodeId !== "" &&
+    String(session.nodeId) === String(nodeId)
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function pointFromControlKey(controlKey: string | undefined): NodePoint | null {
@@ -3483,12 +3956,41 @@ function pointFromControlKey(controlKey: string | undefined): NodePoint | null {
   };
 }
 
+function rulePrimarySelectorsForCheck(rule: {
+  matches?: string[];
+  anyMatches?: string[];
+}): string[] {
+  if (Array.isArray(rule.matches) && rule.matches.length > 0) return rule.matches;
+  if (Array.isArray(rule.anyMatches) && rule.anyMatches.length > 0) return rule.anyMatches;
+  return [];
+}
+
 function isAiCandidateImported(
   draft: TestSubscriptionDraft,
   candidate: AiRuleCandidate,
 ): boolean {
   const rules = candidate.app.groups.flatMap((group) => group.rules);
-  return rules.length > 0 && rules.some((rule) => wasSelectorImported(draft, rule.matches));
+  return (
+    rules.length > 0 &&
+    rules.some((rule) =>
+      wasSelectorImported(draft, rulePrimarySelectorsForCheck(rule)),
+    )
+  );
+}
+
+function isInlineItemImported(
+  draft: TestSubscriptionDraft,
+  item: InlineRuleTestItem | null | undefined,
+): boolean {
+  if (!item) return false;
+  if (item.importedAt !== undefined) return true;
+  const rules = item.app.groups.flatMap((group) => group.rules);
+  return (
+    rules.length > 0 &&
+    rules.some((rule) =>
+      wasSelectorImported(draft, rulePrimarySelectorsForCheck(rule)),
+    )
+  );
 }
 
 function formatAiError(cause: unknown, apiKey: string): string {
@@ -3615,45 +4117,147 @@ function AndroidLogPage({
 }
 
 function AndroidTestPage({
+  aiSessions,
+  importingItemIds,
   items,
   loading,
+  syncError,
+  testSubscription,
+  onClearFinished,
   onClose,
   onDelete,
   onEnd,
+  onEndAll,
   onImport,
+  onMark,
+  onRestart,
+  onRetrySync,
   onFeedback,
 }: {
+  aiSessions: InlineAiSession[];
+  importingItemIds: Set<string>;
   items: InlineRuleTestItem[];
   loading: boolean;
+  syncError: string | null;
+  testSubscription: TestSubscriptionDraft;
+  onClearFinished: () => void;
   onClose: () => void;
   onDelete: (itemId: string) => void;
   onEnd: (itemId: string) => void;
+  onEndAll: () => void;
   onImport: (item: InlineRuleTestItem) => void;
+  onMark: (
+    itemId: string,
+    status: Exclude<InlineTestStatus, "idle" | "testing">,
+  ) => void;
+  onRestart: (itemId: string) => void;
+  onRetrySync: () => void;
   onFeedback: (item: InlineRuleTestItem) => void;
 }) {
+  const sessionMap = useMemo(
+    () => new Map(aiSessions.map((session) => [session.id, session])),
+    [aiSessions],
+  );
   const activeItems = items.filter((item) => item.status === "testing");
-  const validCount = items.filter((item) => item.status === "valid").length;
   const finishedCount = items.length - activeItems.length;
+  const importableCount = items.filter(
+    (item) => item.canImport && !isInlineItemImported(testSubscription, item),
+  ).length;
 
   return (
-    <section className="android-manager-page" aria-label="当前测试">
+    <section
+      aria-label="当前测试"
+      aria-modal="true"
+      className="android-manager-page"
+      role="dialog"
+    >
       <div className="android-manager-head">
         <div>
           <h2>当前测试</h2>
           <span>
-            正在测试 {activeItems.length} 条 / 已测试 {finishedCount} 条 / 可导入 {validCount} 条
+            正在测试 {activeItems.length} 条 / 已完成 {finishedCount} 条 / 可导入 {importableCount} 条
           </span>
         </div>
-        <button className="android-icon-button" type="button" onClick={onClose}>
+        <button
+          aria-label="关闭当前测试"
+          className="android-icon-button"
+          type="button"
+          onClick={onClose}
+        >
           ×
         </button>
       </div>
-      {items.length > 0 ? (
-        <div className="inline-test-list manager">
+      <div className="android-manager-body android-test-manager-body">
+        {syncError && (
+          <div className="android-ai-warning inline-test-sync-error" role="alert">
+            <span>{syncError}</span>
+            <button
+              className="android-button android-button-primary"
+              disabled={loading}
+              type="button"
+              onClick={onRetrySync}
+            >
+              <RefreshCw size={14} />
+              重试同步 GKD
+            </button>
+          </div>
+        )}
+        {items.length > 0 && (
+          <div className="android-manager-actions">
+            <button
+              className="android-button"
+              disabled={loading || activeItems.length === 0}
+              type="button"
+              onClick={onEndAll}
+            >
+              全部结束测试 ({activeItems.length})
+            </button>
+            <button
+              className="android-button android-button-danger"
+              disabled={loading || finishedCount === 0}
+              type="button"
+              onClick={onClearFinished}
+            >
+              清理已完成/无效 ({finishedCount})
+            </button>
+          </div>
+        )}
+        {items.length > 0 ? (
+          <div className="inline-test-list manager">
           {items.map((item) => {
             const context = formatCompactContext(item);
+            const session = item.aiSessionId ? sessionMap.get(item.aiSessionId) : undefined;
+            const roundNumber = item.generation ?? session?.generation;
+            const isOutdatedRound = Boolean(
+              session &&
+                item.generation !== undefined &&
+                session.generation > item.generation,
+            );
+            const imported = isInlineItemImported(testSubscription, item);
+            const isImporting = importingItemIds.has(item.id);
+            const selectors = item.app.groups.flatMap((group) =>
+              group.rules.flatMap((rule) => rulePrimarySelectorsForCheck(rule)),
+            );
+            const sourceBadge =
+              item.source === "ai-candidate"
+                ? `${session?.source === "external" ? "外部 AI" : "内置 AI"}${
+                    roundNumber && roundNumber > 0 ? ` · 第 ${roundNumber} 轮` : ""
+                  }`
+                : item.mode === "flow"
+                  ? "多步流程"
+                  : `本地候选${item.selectorIndex !== undefined ? ` #${item.selectorIndex}` : ""}`;
+
             return (
-              <div key={item.id} className="inline-test-item manager">
+              <div
+                key={item.id}
+                className={[
+                  "inline-test-item",
+                  "manager",
+                  isOutdatedRound ? "inline-test-item-outdated" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
                 <span className="android-session-row-thumb">
                   {item.thumbnailUrl ? (
                     <img alt="" src={item.thumbnailUrl} />
@@ -3662,34 +4266,109 @@ function AndroidTestPage({
                   )}
                 </span>
                 <span className="inline-test-main">
-                  <strong>{context.appName}</strong>
+                  <span className="inline-test-title-row">
+                    <strong>{context.appName}</strong>
+                    <span className="status-badge neutral">{sourceBadge}</span>
+                    {isOutdatedRound && (
+                      <span className="status-badge medium">旧轮次</span>
+                    )}
+                    {syncError && item.status === "testing" && (
+                      <span className="status-badge high">待同步 GKD</span>
+                    )}
+                    {imported && (
+                      <span className="status-badge success">已导入</span>
+                    )}
+                  </span>
                   <small>
-                    {context.nodeLabel}
-                    {item.selectorIndex !== undefined
-                      ? ` / 候选 #${item.selectorIndex}`
-                      : ""}
+                    {item.title} · {context.nodeLabel}
+                    {item.summary ? ` · ${item.summary}` : ""}
                   </small>
+                  {selectors[0] && (
+                    <code className="inline-test-selector-preview">
+                      {selectors[0]}
+                    </code>
+                  )}
                 </span>
                 <span className={`inline-test-status status-${item.status}`}>
                   {inlineStatusLabel(item.status)}
                 </span>
                 <div className="inline-test-actions">
-                  <button type="button" onClick={() => onFeedback(item)}>反馈</button>
                   {item.status === "testing" ? (
-                    <button type="button" onClick={() => onEnd(item.id)}>
-                      结束测试
-                    </button>
+                    <>
+                      <button
+                        className="primary"
+                        disabled={loading}
+                        type="button"
+                        onClick={() => onMark(item.id, "valid")}
+                      >
+                        有效
+                      </button>
+                      <button
+                        disabled={loading}
+                        type="button"
+                        onClick={() => onMark(item.id, "invalid")}
+                      >
+                        无效
+                      </button>
+                      <button
+                        disabled={loading}
+                        type="button"
+                        onClick={() => onEnd(item.id)}
+                      >
+                        结束测试
+                      </button>
+                    </>
                   ) : (
-                    <button
-                      disabled={!item.canImport || loading}
-                      type="button"
-                      onClick={() => onImport(item)}
-                    >
-                      导入
-                    </button>
+                    <>
+                      <button
+                        disabled={loading}
+                        type="button"
+                        onClick={() => onRestart(item.id)}
+                      >
+                        重新测试
+                      </button>
+                      {item.status !== "valid" && (
+                        <button
+                          disabled={loading}
+                          type="button"
+                          onClick={() => onMark(item.id, "valid")}
+                        >
+                          标为有效
+                        </button>
+                      )}
+                      {item.status !== "invalid" && item.status !== "mistouch" && (
+                        <button
+                          disabled={loading}
+                          type="button"
+                          onClick={() => onMark(item.id, "invalid")}
+                        >
+                          标为无效
+                        </button>
+                      )}
+                      <button
+                        disabled={!item.canImport || imported || isImporting || loading || Boolean(syncError)}
+                        title={
+                          syncError
+                            ? "测试状态尚未同步到 GKD，请先点击上方重试同步 GKD"
+                            : undefined
+                        }
+                        type="button"
+                        onClick={() => onImport(item)}
+                      >
+                        {imported ? "已导入" : isImporting ? "导入中…" : "导入"}
+                      </button>
+                    </>
                   )}
                   <button
+                    disabled={loading}
+                    type="button"
+                    onClick={() => onFeedback(item)}
+                  >
+                    反馈
+                  </button>
+                  <button
                     className="danger"
+                    disabled={loading}
                     type="button"
                     onClick={() => onDelete(item.id)}
                   >
@@ -3699,10 +4378,11 @@ function AndroidTestPage({
               </div>
             );
           })}
-        </div>
-      ) : (
-        <p className="android-muted">暂无测试记录</p>
-      )}
+          </div>
+        ) : (
+          <p className="android-muted">暂无测试记录</p>
+        )}
+      </div>
     </section>
   );
 }
@@ -4218,6 +4898,7 @@ function AndroidScenePanel({
 function AndroidAiSessionManagerPage({
   sessions,
   activeSessionId,
+  inlineTesting,
   onClose,
   onNewSession,
   onSelectSession,
@@ -4225,18 +4906,30 @@ function AndroidAiSessionManagerPage({
 }: {
   sessions: InlineAiSession[];
   activeSessionId: string | null;
+  inlineTesting: InlineRuleTestingState;
   onClose: () => void;
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
 }) {
   return (
-    <section className="android-manager-page" aria-label="AI session 管理">
+    <section
+      aria-label="AI session 管理"
+      aria-modal="true"
+      className="android-manager-page"
+      role="dialog"
+    >
       <div className="android-manager-head">
         <div>
           <h2>AI Sessions</h2>
+          <span>每个 Session 独立冻结快照选点与多轮反馈，互不干扰</span>
         </div>
-        <button className="android-icon-button" type="button" onClick={onClose}>
+        <button
+          aria-label="关闭 AI session 管理"
+          className="android-icon-button"
+          type="button"
+          onClick={onClose}
+        >
           ×
         </button>
       </div>
@@ -4249,49 +4942,79 @@ function AndroidAiSessionManagerPage({
           <Plus size={18} />
           <span>
             <strong>新 session</strong>
-            <small>使用当前快照和控件重新开始</small>
+            <small>使用当前快照和控件开启全新第 1 轮生成</small>
           </span>
         </button>
         {sessions.length > 0 ? (
           <div className="android-session-list-page">
             {sessions.map((item) => {
               const context = formatCompactContext(item);
+              const sessionItems = inlineTesting.items.filter(
+                (testItem) => testItem.aiSessionId === item.id,
+              );
+              const testingCount = sessionItems.filter(
+                (testItem) => testItem.status === "testing",
+              ).length;
+              const validCount = sessionItems.filter(
+                (testItem) => testItem.status === "valid",
+              ).length;
+              const roundLabel =
+                item.generation > 0 ? `第 ${item.generation} 轮` : "待生成";
+              const sourceLabel = item.source === "external" ? "外部 AI" : "内置 AI";
+              const timeLabel = new Date(item.updatedAt).toLocaleTimeString(
+                "zh-CN",
+                { hour: "2-digit", minute: "2-digit", hour12: false },
+              );
               return (
-              <div
-                key={item.id}
-                className={[
-                  "android-session-row-page",
-                  item.id === activeSessionId ? "android-session-row-active" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-              >
-                <button
-                  className="android-session-row-open"
-                  type="button"
-                  onClick={() => onSelectSession(item.id)}
+                <div
+                  key={item.id}
+                  className={[
+                    "android-session-row-page",
+                    item.id === activeSessionId ? "android-session-row-active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                 >
-                  <span className="android-session-row-thumb">
-                    {item.thumbnailUrl ? (
-                      <img alt="" src={item.thumbnailUrl} />
-                    ) : (
-                      <Bot size={17} />
-                    )}
-                  </span>
-                  <span className="android-session-row-main">
-                    <strong>{context.appName}</strong>
-                    <small>{context.nodeLabel}</small>
-                  </span>
-                </button>
-                <button
-                  aria-label={`删除 ${context.appName} ${context.nodeLabel}`}
-                  className="android-session-delete"
-                  type="button"
-                  onClick={() => onDeleteSession(item.id)}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </div>
+                  <button
+                    className="android-session-row-open"
+                    type="button"
+                    onClick={() => onSelectSession(item.id)}
+                  >
+                    <span className="android-session-row-thumb">
+                      {item.thumbnailUrl ? (
+                        <img alt="" src={item.thumbnailUrl} />
+                      ) : (
+                        <Bot size={17} />
+                      )}
+                    </span>
+                    <span className="android-session-row-main">
+                      <strong>
+                        {context.appName} · {sourceLabel} · {roundLabel}
+                        {item.id === activeSessionId ? "（当前）" : ""}
+                      </strong>
+                      <small>
+                        {context.nodeLabel} · {item.title || item.contextSummary}
+                      </small>
+                      <em>
+                        {item.candidates.length} 个候选
+                        {item.feedbackHistory.length > 0
+                          ? ` · 已反馈 ${item.feedbackHistory.length} 次`
+                          : ""}
+                        {testingCount > 0 ? ` · 测试中 ${testingCount}` : ""}
+                        {validCount > 0 ? ` · 有效 ${validCount}` : ""}
+                        {` · ${timeLabel}`}
+                      </em>
+                    </span>
+                  </button>
+                  <button
+                    aria-label={`删除 ${context.appName} ${context.nodeLabel}`}
+                    className="android-session-delete"
+                    type="button"
+                    onClick={() => onDeleteSession(item.id)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -4309,9 +5032,11 @@ function AndroidAiPanel({
   candidates,
   workspaceMode,
   generatedMode,
+  importingItemIds,
   inlineTesting,
   selectedAiCandidateId,
   session,
+  sessionCount,
   snapshot,
   elapsedSeconds,
   loading,
@@ -4333,9 +5058,11 @@ function AndroidAiPanel({
   candidates: AiRuleCandidate[];
   workspaceMode: "single" | "flow";
   generatedMode: "single" | "flow" | null;
+  importingItemIds: Set<string>;
   inlineTesting: InlineRuleTestingState;
   selectedAiCandidateId: string | null;
   session: InlineAiSession | null;
+  sessionCount: number;
   snapshot: ParsedGkdSnapshot | null;
   elapsedSeconds: number;
   loading: boolean;
@@ -4359,27 +5086,108 @@ function AndroidAiPanel({
     config.baseURL.trim() && config.apiKey.trim() && config.model.trim(),
   );
   const feedbackMode = (generatedMode ?? workspaceMode) === "flow" ? "flow" : "single";
+  const currentGeneration = session?.generation ?? (candidates.length > 0 ? 1 : 0);
+  const sessionKey = `${session?.id ?? "no-session"}:${currentGeneration}`;
+  const candidateTestStatuses = useMemo(() => {
+    const map: Record<string, InlineTestStatus> = {};
+    if (!session) return map;
+    for (const candidate of candidates) {
+      const item = findInlineTestItem(
+        inlineTesting,
+        "ai-candidate",
+        session.mode,
+        session.snapshotId,
+        session.controlKey,
+        aiCandidateSourceKey(session.id, candidate.id, session.generation),
+      );
+      if (item) {
+        map[candidate.id] = item.status;
+      }
+    }
+    return map;
+  }, [candidates, inlineTesting, session]);
+
+  const primaryButtonLabel = loading
+    ? operation === "feedback"
+      ? "反馈修正中"
+      : "生成中"
+    : !canGenerate
+      ? "新 session 后生成"
+      : workspaceMode === "flow"
+        ? "生成流程规则"
+        : "生成 AI 规则";
 
   return (
     <div className="android-tab-content android-ai-panel">
       <div className="android-ai-heading">
         <div className="android-section-title">
           <h2>AI 规则候选</h2>
-          <span>当前模型：{config.model}</span>
+          <span>
+            当前模型：{config.model || "未配置"}
+            {session
+              ? ` · 当前会话：${
+                  currentGeneration > 0 ? `第 ${currentGeneration} 轮` : "新会话（待生成）"
+                }`
+              : ""}
+          </span>
         </div>
         <button
           aria-label="管理 AI sessions"
-          className="android-icon-button android-ai-session-trigger"
+          className="android-button android-ai-session-trigger"
+          disabled={loading}
           type="button"
           onClick={onOpenSessions}
         >
-          <ListChecks size={17} />
+          <ListChecks size={15} />
+          <span>会话 ({sessionCount})</span>
         </button>
       </div>
+
+      {session && (
+        <div className="android-target-summary android-ai-session-banner">
+          <strong>
+            {session.appName ? `${session.appName} · ` : ""}
+            {session.nodeId !== undefined ? `节点 #${session.nodeId} · ` : ""}
+            {currentGeneration > 0
+              ? `第 ${currentGeneration} 轮候选（共 ${candidates.length} 条）`
+              : "空白新会话（点击下方按钮开始生成）"}
+          </strong>
+          <span>
+            {session.contextSummary || session.title}
+            {session.feedbackHistory.length > 0
+              ? ` · 已完成 ${session.feedbackHistory.length} 轮反馈迭代（本轮已自动屏蔽旧轮次候选）`
+              : ""}
+          </span>
+          {session.feedbackHistory.length > 0 && (
+            <details className="android-ai-history-details">
+              <summary>
+                查看前 {session.feedbackHistory.length} 轮反馈记录（已与当前第 {currentGeneration} 轮隔离）
+              </summary>
+              <div className="inline-test-feedback-list">
+                {session.feedbackHistory.map((entry, idx) => (
+                  <div
+                    key={`${entry.at}-${idx}`}
+                    className="inline-test-feedback-entry"
+                  >
+                    <small>
+                      第 {entry.generation ?? idx + 1} 轮反馈 ·{" "}
+                      {new Date(entry.at).toLocaleTimeString("zh-CN", {
+                        hour12: false,
+                      })}
+                    </small>
+                    <span>{entry.note}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
 
       <div className="android-ai-actions">
         <button
           className="android-button"
+          disabled={loading}
           type="button"
           onClick={onNewSession}
         >
@@ -4393,13 +5201,7 @@ function AndroidAiPanel({
           onClick={onGenerate}
         >
           {loading ? <RefreshCw className="spin" size={16} /> : <Bot size={16} />}
-          {loading
-            ? "生成中"
-            : workspaceMode === "flow"
-              ? "生成流程规则"
-              : canGenerate
-                ? "生成 AI 规则"
-                : "新 session 后生成"}
+          {primaryButtonLabel}
         </button>
       </div>
 
@@ -4420,8 +5222,9 @@ function AndroidAiPanel({
         <div className="android-ai-candidate-list">
           {candidates.map((candidate) => (
             <AndroidAiCandidateCard
-              key={candidate.id}
+              key={`${sessionKey}:${candidate.id}`}
               candidate={candidate}
+              importingItemIds={importingItemIds}
               inlineTesting={inlineTesting}
               imported={isAiCandidateImported(testSubscription, candidate)}
               isSelected={candidate.id === selectedAiCandidateId}
@@ -4435,10 +5238,14 @@ function AndroidAiPanel({
             />
           ))}
           <AndroidAiBatchFeedbackPanel
-            actionLabel="发送反馈给内置 AI"
+            key={sessionKey}
+            actionLabel={`发送第 ${currentGeneration || 1} 轮反馈并生成第 ${(currentGeneration || 1) + 1} 轮候选`}
+            candidateTestStatuses={candidateTestStatuses}
             candidates={candidates}
             flowMode={feedbackMode === "flow"}
+            generation={currentGeneration || 1}
             loading={loading}
+            sessionKey={sessionKey}
             onSubmit={onSendFeedback}
           />
         </div>
@@ -4450,6 +5257,7 @@ function AndroidAiPanel({
 function AndroidAiCandidateCard({
   candidate,
   imported,
+  importingItemIds,
   inlineTesting,
   isSelected,
   session,
@@ -4462,6 +5270,7 @@ function AndroidAiCandidateCard({
 }: {
   candidate: AiRuleCandidate;
   imported: boolean;
+  importingItemIds?: Set<string>;
   inlineTesting: InlineRuleTestingState;
   isSelected: boolean;
   session: InlineAiSession | null;
@@ -4487,6 +5296,7 @@ function AndroidAiCandidateCard({
         aiCandidateSourceKey(session.id, candidate.id, session.generation),
       )
     : null;
+  const isImported = imported || Boolean(testItem?.importedAt);
 
   const candidateValidation = useMemo(() => {
     if (!snapshot) return null;
@@ -4510,7 +5320,10 @@ function AndroidAiCandidateCard({
     candidateVerification?.status === "pass" &&
     candidateVerification.allRulesPass;
 
-  async function copyCandidateJson5(): Promise<void> {
+  async function copyCandidateJson5(
+    event: MouseEvent<HTMLButtonElement>,
+  ): Promise<void> {
+    event.stopPropagation();
     await copyTextToClipboard(stringifyRuleDraft(candidate.app));
     setCopiedJson5(true);
     window.setTimeout(() => setCopiedJson5(false), 1300);
@@ -4530,10 +5343,15 @@ function AndroidAiCandidateCard({
     >
       <div className="android-ai-candidate-head">
         <div>
-          <strong>{candidate.title}</strong>
+          <strong>
+            {candidate.title}
+            {session && session.generation > 1
+              ? `（第 ${session.generation} 轮）`
+              : ""}
+          </strong>
           <span>{candidate.summary || "AI 未提供验证说明"}</span>
         </div>
-        {imported && <em>导入过</em>}
+        {isImported && <em>已导入</em>}
       </div>
       {candidate.risk && <p className="android-ai-risk">{candidate.risk}</p>}
       {unparsed.length > 0 ? (
@@ -4570,12 +5388,14 @@ function AndroidAiCandidateCard({
         <button
           className="android-candidate-detail"
           type="button"
-          onClick={() => void copyCandidateJson5()}
+          onClick={(event) => void copyCandidateJson5(event)}
         >
           {copiedJson5 ? "已复制 JSON5" : "复制 JSON5"}
         </button>
         {renderInlineCandidateActions({
           item: testItem,
+          imported: isImported,
+          importing: Boolean(testItem && importingItemIds?.has(testItem.id)),
           feedbackActions: true,
           targetLabel: "测试",
           onStart: () => onAddCandidate(candidate),
@@ -4630,31 +5450,60 @@ type AiFeedbackDraft = Record<
 function AndroidAiBatchFeedbackPanel({
   actionLabel,
   candidates,
+  candidateTestStatuses,
   flowMode,
+  generation,
   loading,
+  sessionKey,
   onSubmit,
 }: {
   actionLabel: string;
   candidates: AiRuleCandidate[];
+  candidateTestStatuses?: Record<string, InlineTestStatus>;
   flowMode: boolean;
+  generation?: number;
   loading: boolean;
+  sessionKey: string;
   onSubmit: (feedbacks: AiCandidateFeedback[]) => void;
 }) {
   const [drafts, setDrafts] = useState<AiFeedbackDraft>({});
+  const manualUncheckedRef = useRef<Set<string>>(new Set());
+  const lastSessionKeyRef = useRef<string>(sessionKey);
 
   useEffect(() => {
+    const sessionKeyChanged = lastSessionKeyRef.current !== sessionKey;
+    if (sessionKeyChanged) {
+      lastSessionKeyRef.current = sessionKey;
+      manualUncheckedRef.current.clear();
+    }
     setDrafts((current) => {
+      const base = sessionKeyChanged ? {} : current;
       const next: AiFeedbackDraft = {};
       for (const candidate of candidates) {
-        next[candidate.id] = current[candidate.id] ?? {
-          enabled: false,
-          result: "not-triggered",
-          note: "",
+        const existing = base[candidate.id];
+        const cardStatus = candidateTestStatuses?.[candidate.id];
+        const cardMarkedFailed =
+          cardStatus === "invalid" ||
+          cardStatus === "mistouch" ||
+          cardStatus === "other";
+        const cardMarkedValid = cardStatus === "valid";
+        const autoEnable =
+          cardMarkedFailed && !manualUncheckedRef.current.has(candidate.id);
+        next[candidate.id] = {
+          enabled: cardMarkedValid
+            ? false
+            : existing
+              ? existing.enabled || autoEnable
+              : autoEnable,
+          result:
+            existing?.result ??
+            (cardStatus === "mistouch" ? "mistouch" : "not-triggered"),
+          note: existing?.note ?? "",
         };
       }
       return next;
     });
-  }, [candidates]);
+  }, [candidates, candidateTestStatuses, sessionKey]);
 
   const selectedFeedbacks = candidates
     .map((candidate) => {
@@ -4671,8 +5520,13 @@ function AndroidAiBatchFeedbackPanel({
   return (
     <section className="android-ai-feedback-summary">
       <div className="android-section-title">
-        <h2>测试反馈汇总</h2>
-        <span>测完多个候选后再一次性发给模型；成功的候选通常直接导入，不需要反馈。</span>
+        <h2>
+          测试反馈汇总
+          {generation && generation > 0 ? `（当前第 ${generation} 轮）` : ""}
+        </h2>
+        <span>
+          在上方候选点「无效」会自动勾选此项；勾选未生效的候选并选好现象后发送，即可进入下一轮修正。
+        </span>
       </div>
       <div className="android-ai-feedback-list">
         {candidates.map((candidate) => {
@@ -4682,26 +5536,33 @@ function AndroidAiBatchFeedbackPanel({
             note: "",
           };
           return (
-            <div key={candidate.id} className="android-ai-feedback-row">
+            <div key={`${sessionKey}:${candidate.id}`} className="android-ai-feedback-row">
               <label className="android-ai-feedback-check">
                 <input
                   checked={draft.enabled}
+                  disabled={loading}
                   type="checkbox"
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    if (!checked) {
+                      manualUncheckedRef.current.add(candidate.id);
+                    } else {
+                      manualUncheckedRef.current.delete(candidate.id);
+                    }
                     setDrafts((current) => ({
                       ...current,
                       [candidate.id]: {
                         ...draft,
-                        enabled: event.target.checked,
+                        enabled: checked,
                       },
-                    }))
-                  }
+                    }));
+                  }}
                 />
                 <strong>{candidate.title}</strong>
               </label>
               {!flowMode && (
                 <select
-                  disabled={!draft.enabled}
+                  disabled={!draft.enabled || loading}
                   value={draft.result}
                   onChange={(event) =>
                     setDrafts((current) => ({
@@ -4721,7 +5582,7 @@ function AndroidAiBatchFeedbackPanel({
               )}
               <textarea
                 className="android-textarea android-ai-note"
-                disabled={!draft.enabled}
+                disabled={!draft.enabled || loading}
                 placeholder={
                   flowMode
                     ? "写流程测试结果：停在哪一步、是否误触、需要什么延迟"
@@ -4744,7 +5605,7 @@ function AndroidAiBatchFeedbackPanel({
         })}
       </div>
       <button
-        className="android-button"
+        className="android-button android-button-primary"
         disabled={loading || selectedFeedbacks.length === 0}
         type="button"
         onClick={() => {
@@ -4752,7 +5613,11 @@ function AndroidAiBatchFeedbackPanel({
         }}
       >
         {loading ? <RefreshCw className="spin" size={16} /> : <ClipboardCopy size={16} />}
-        {actionLabel}
+        {loading
+          ? "正在发送反馈并生成新一轮候选..."
+          : selectedFeedbacks.length > 0
+            ? `${actionLabel}（已选 ${selectedFeedbacks.length} 条）`
+            : "请先勾选未生效的候选后再发送反馈"}
       </button>
     </section>
   );
@@ -5041,6 +5906,7 @@ function AndroidPromptPanel({
   externalAiCandidates,
   externalAiMode,
   externalAiSession,
+  importingItemIds,
   inlineTesting,
   snapshot,
   pickResult,
@@ -5068,6 +5934,7 @@ function AndroidPromptPanel({
   externalAiCandidates: AiRuleCandidate[];
   externalAiMode: "single" | "flow" | null;
   externalAiSession: InlineAiSession | null;
+  importingItemIds: Set<string>;
   inlineTesting: InlineRuleTestingState;
   snapshot: ParsedGkdSnapshot | null;
   pickResult: NodePickResult | null;
@@ -5150,9 +6017,10 @@ function AndroidPromptPanel({
         <div className="android-ai-candidate-list">
           {externalAiCandidates.map((candidate) => (
             <AndroidAiCandidateCard
-              key={candidate.id}
+              key={`${externalAiSession?.id ?? "ext"}:${externalAiSession?.generation ?? 0}:${candidate.id}`}
               candidate={candidate}
               imported={isAiCandidateImported(testSubscription, candidate)}
+              importingItemIds={importingItemIds}
               inlineTesting={inlineTesting}
               isSelected={candidate.id === selectedAiCandidateId}
               session={externalAiSession}
@@ -5165,10 +6033,31 @@ function AndroidPromptPanel({
             />
           ))}
           <AndroidAiBatchFeedbackPanel
+            key={`${externalAiSession?.id ?? "ext"}:${externalAiSession?.generation ?? 0}`}
             actionLabel="复制测试反馈 prompt"
+            candidateTestStatuses={Object.fromEntries(
+              externalAiCandidates.flatMap((candidate) => {
+                if (!externalAiSession) return [];
+                const item = findInlineTestItem(
+                  inlineTesting,
+                  "ai-candidate",
+                  externalAiSession.mode,
+                  externalAiSession.snapshotId,
+                  externalAiSession.controlKey,
+                  aiCandidateSourceKey(
+                    externalAiSession.id,
+                    candidate.id,
+                    externalAiSession.generation,
+                  ),
+                );
+                return item ? [[candidate.id, item.status] as const] : [];
+              }),
+            )}
             candidates={externalAiCandidates}
             flowMode={(externalAiMode ?? workspaceMode) === "flow"}
+            generation={externalAiSession?.generation ?? 1}
             loading={loading}
+            sessionKey={`${externalAiSession?.id ?? "ext"}:${externalAiSession?.generation ?? 0}`}
             onSubmit={onCopyExternalFeedback}
           />
         </div>
@@ -5373,11 +6262,19 @@ function AndroidFlowEditor({
   activeStep,
   activeStepId,
   customScenarios,
-  flowName,
   flowDesc,
+  flowDraft,
+  flowName,
   flowPreview,
   copied,
+  importingItemIds,
+  inlineTesting,
+  snapshot,
+  testSubscription,
   onAddFlowToTestZone,
+  onEndFlowTest,
+  onMarkFlowTest,
+  onImportFlowTest,
   onFlowNameChange,
   onFlowDescChange,
   onSelectStep,
@@ -5390,11 +6287,22 @@ function AndroidFlowEditor({
   activeStep: FlowRuleStep | null;
   activeStepId: string | null;
   customScenarios: CustomScenario[];
-  flowName: string;
   flowDesc: string;
+  flowDraft: AppRuleDraft | null;
+  flowName: string;
   flowPreview: string;
   copied: "scene" | "rule" | "draft" | "flowDraft" | "flowPrompt" | null;
+  importingItemIds: Set<string>;
+  inlineTesting: InlineRuleTestingState;
+  snapshot: ParsedGkdSnapshot | null;
+  testSubscription: TestSubscriptionDraft;
   onAddFlowToTestZone: () => void;
+  onEndFlowTest: (itemId: string) => void;
+  onMarkFlowTest: (
+    itemId: string,
+    status: Exclude<InlineTestStatus, "idle" | "testing">,
+  ) => void;
+  onImportFlowTest: (item: InlineRuleTestItem) => void;
   onFlowNameChange: (value: string) => void;
   onFlowDescChange: (value: string) => void;
   onSelectStep: (stepId: string) => void;
@@ -5408,6 +6316,23 @@ function AndroidFlowEditor({
     activeStep && activeStepIndex >= 0
       ? flowStepDisplayTitle(activeStep, activeStepIndex)
       : "未选择步骤";
+  const flowTestItem = useMemo(() => {
+    if (!flowDraft || steps.length === 0) return null;
+    const snapshotId = activeStep?.snapshot.id ?? snapshot?.id;
+    const controlKey = `flow:${steps.map((step) => step.snapshot.id).join(",")}`;
+    const sourceKey = flowDraft.groups
+      .flatMap((group) => group.rules.flatMap((rule) => rule.matches))
+      .join("\n");
+    return findInlineTestItem(
+      inlineTesting,
+      "offline-selector",
+      "flow",
+      snapshotId,
+      controlKey,
+      sourceKey,
+    );
+  }, [activeStep?.snapshot.id, flowDraft, inlineTesting, snapshot?.id, steps]);
+  const flowImported = isInlineItemImported(testSubscription, flowTestItem);
 
   return (
     <div className="android-flow-card">
@@ -5533,15 +6458,31 @@ function AndroidFlowEditor({
         </div>
       )}
       <div className="android-action-row">
-        <button
-          className="android-button android-button-primary"
-          disabled={!flowPreview}
-          type="button"
-          onClick={onAddFlowToTestZone}
-        >
-          <Plus size={16} />
-          测试整个流程
-        </button>
+        <span className={`inline-test-status status-${flowTestItem?.status ?? "idle"}`}>
+          {inlineStatusLabel(flowTestItem?.status ?? "idle")}
+        </span>
+        {flowPreview ? (
+          renderInlineCandidateActions({
+            item: flowTestItem,
+            imported: flowImported,
+            importing: Boolean(flowTestItem && importingItemIds.has(flowTestItem.id)),
+            feedbackActions: true,
+            targetLabel: "测试整个流程",
+            onStart: onAddFlowToTestZone,
+            onEnd: onEndFlowTest,
+            onMark: onMarkFlowTest,
+            onImport: onImportFlowTest,
+          })
+        ) : (
+          <button
+            className="android-button android-button-primary"
+            disabled
+            type="button"
+          >
+            <Plus size={16} />
+            测试整个流程
+          </button>
+        )}
         <button
           className="android-button"
           disabled={!flowPreview}
@@ -5567,6 +6508,7 @@ function CandidateSummary({
   candidates,
   selectedId,
   importedSelectorKeys,
+  importingItemIds,
   inlineTesting,
   mode,
   snapshot,
@@ -5582,6 +6524,7 @@ function CandidateSummary({
   candidates: SelectorCandidate[];
   selectedId: string | null;
   importedSelectorKeys: Set<string>;
+  importingItemIds: Set<string>;
   inlineTesting: InlineRuleTestingState;
   mode: "single" | "flow";
   snapshot: ParsedGkdSnapshot | null;
@@ -5689,7 +6632,9 @@ function CandidateSummary({
                 </button>
                 {renderInlineCandidateActions({
                   item: testItem,
-                  feedbackActions: false,
+                  imported: imported || Boolean(testItem?.importedAt),
+                  importing: Boolean(testItem && importingItemIds.has(testItem.id)),
+                  feedbackActions: true,
                   targetLabel: "测试",
                   onStart: () => onStartTest(candidate),
                   onEnd: onEndTest,
@@ -5747,6 +6692,8 @@ function CandidateSummary({
 
 function renderInlineCandidateActions({
   item,
+  imported = false,
+  importing = false,
   feedbackActions,
   targetLabel,
   onStart,
@@ -5755,6 +6702,8 @@ function renderInlineCandidateActions({
   onImport,
 }: {
   item: InlineRuleTestItem | null;
+  imported?: boolean;
+  importing?: boolean;
   feedbackActions: boolean;
   targetLabel: string;
   onStart: () => void;
@@ -5831,10 +6780,13 @@ function renderInlineCandidateActions({
     );
   }
 
+  const isImported = imported || Boolean(item.importedAt);
+
   return (
     <>
       <button
         className="android-candidate-detail"
+        disabled={importing}
         type="button"
         onClick={(event) => {
           event.stopPropagation();
@@ -5843,16 +6795,42 @@ function renderInlineCandidateActions({
       >
         重新测试
       </button>
+      {feedbackActions && item.status === "tested" && (
+        <>
+          <button
+            className="android-candidate-detail"
+            disabled={importing}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onMark(item.id, "valid");
+            }}
+          >
+            有效
+          </button>
+          <button
+            className="android-candidate-detail"
+            disabled={importing}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onMark(item.id, "invalid");
+            }}
+          >
+            无效
+          </button>
+        </>
+      )}
       <button
         className="android-candidate-add"
-        disabled={!item.canImport}
+        disabled={!item.canImport || isImported || importing}
         type="button"
         onClick={(event) => {
           event.stopPropagation();
           onImport(item);
         }}
       >
-        导入
+        {isImported ? "已导入" : importing ? "导入中…" : "导入"}
       </button>
     </>
   );

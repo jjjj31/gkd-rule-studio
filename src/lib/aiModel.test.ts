@@ -1200,6 +1200,70 @@ describe("compactPromptForAi integration & critical-fact preservation", () => {
     expect(compact).toContain("#8 Button");
     expect(compact).not.toContain("这是一段非常冗长的通用背景说明废话。");
   });
+
+  it("includes prior round feedback history in batch and external feedback prompts to prevent repeating round 1 failures", () => {
+    const app = appDraft();
+    const history = [
+      {
+        at: 1000,
+        generation: 1,
+        note: "测试版 A: not-triggered (第一轮没触发)",
+        items: [
+          {
+            candidateId: "candidate-a",
+            title: "测试版 A",
+            result: "not-triggered",
+            note: "第一轮没触发",
+            selectors: ['[vid="old_failed_skip"]'],
+          },
+        ],
+      },
+    ];
+    const batchMessages = buildAiBatchFeedbackMessages({
+      mode: "single",
+      originalPrompt: "原始单步 prompt",
+      feedbackHistory: history,
+      feedbacks: [
+        {
+          candidate: {
+            id: "candidate-a",
+            title: "测试版 A",
+            summary: "第二轮方案",
+            risk: "低",
+            app,
+          },
+          result: "triggered-no-close",
+          note: "第二轮触发了但没关闭",
+        },
+      ],
+    });
+    const batchText = batchMessages.map((m) => m.content).join("\n");
+    expect(batchText).toContain("历史轮次失败记录");
+    expect(batchText).toContain("第 1 轮历史反馈");
+    expect(batchText).toContain('[vid="old_failed_skip"]');
+    expect(batchText).toContain("第一轮没触发");
+    expect(batchText).toContain("第二轮触发了但没关闭");
+
+    const externalText = buildExternalFeedbackPrompt(
+      [
+        {
+          candidate: {
+            id: "candidate-a",
+            title: "测试版 A",
+            summary: "第二轮方案",
+            risk: "低",
+            app,
+          },
+          result: "triggered-no-close",
+          note: "第二轮触发了但没关闭",
+        },
+      ],
+      false,
+      history,
+    );
+    expect(externalText).toContain("历史轮次失败记录");
+    expect(externalText).toContain('[vid="old_failed_skip"]');
+  });
 });
 
 describe("categorizeAiError", () => {
